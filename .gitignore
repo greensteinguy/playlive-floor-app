@@ -1,0 +1,25 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.log
+
+# Claude Code session state (user-specific). Selectively commit subdirectories
+# like .claude/commands/ if/when shared tooling lives there.
+.claude/
+
+# Firestore audit outputs — contain redacted but still potentially identifying
+# samples from the live database. Never commit. (Service account JSON itself
+# lives outside the repo at C:\Users\green\.config\playlive\audit-sa.json.)
+scripts/firestore-audit/output/
+
+# Defence-in-depth: refuse to commit any service-account-shaped key file even
+# if it ends up inside the repo by accident.
+**/audit-sa.json
+**/service-account*.json
+**/*-sa.json

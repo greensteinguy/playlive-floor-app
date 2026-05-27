@@ -1,0 +1,13 @@
+{
+  "name": "playlive-floor-app-firestore-audit",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "One-shot read-only audit of the playlive-25a17 Firestore. See ../../docs/schema/firestore-audit.md for the design.",
+  "scripts": {
+    "audit": "node audit.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}
