@@ -10,7 +10,7 @@
 // reconciliation, etc.).
 
 import { collectionGroup, query, where, orderBy, getDocs } from 'firebase/firestore'
-import { db, USE_MOCK_DATA } from '../../firebase/config'
+import { db, USE_MOCK_DATA, USE_EMULATOR } from '../../firebase/config'
 import { WalletTransaction } from '../schema'
 import {
   validatedGet,
@@ -59,7 +59,7 @@ export function subscribeToWalletTransactions(playerId, onUpdate, queryFn, onErr
  * called out in canonical-schema.md §7.
  */
 export async function listAllWalletTransactions({ since, until, type } = {}) {
-  if (USE_MOCK_DATA) throw new MockModeError()
+  if (USE_MOCK_DATA && !USE_EMULATOR) throw new MockModeError()
   const clauses = []
   if (type) clauses.push(where('type', '==', type))
   if (since) clauses.push(where('timestamp', '>=', since))

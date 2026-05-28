@@ -2,7 +2,7 @@
 
 > This is the living "where we left off" doc. **Update it at the end of every Claude Code session and every Cowork planning session.** Commit alongside whatever else changed. It is how context survives between sessions and across tool switches.
 
-Last updated: **28 May 2026** by Claude — testing session. Tier 1 (vitest + validator + wallet unit tests, 193 → 200 tests after a merged spinoff), then tier 2 (Firestore emulator + task 1.2 rules + rules-unit-testing matrix, 174 tests). JDK 21 installed on this machine to unblock the emulator. See the "This session" block below for detail and "Next session" at the bottom.
+Last updated: **28 May 2026** by Claude — testing + shell + audit-log + dedupe session. Tier 1 (vitest, 200 → 223 tests with CSV utility added), tier 2 (Firestore emulator + 174 rules tests), `firestore.rules` deployed to `playlive-25a17`, task 1.5 (app shell), task 1.9 (audit log viewer + reusable CSV utility + composite indexes file). See the "This session" block below for detail and "Next session" at the bottom.
 
 ---
 
@@ -12,11 +12,54 @@ Last updated: **28 May 2026** by Claude — testing session. Tier 1 (vitest + va
 
 ## This session (28 May 2026)
 
+- **Task 1.8 (Duplicate-player merge tool) DONE.** New module `src/lib/players/` with:
+  - `merge.js` — atomic `mergePlayer({sourceId, targetId, actorId, actorRole})`. Reads source + target + source's unused tickets, then in one transaction: transfers walletBalance + ticketBalance + totalDeposited onto target, re-keys unused tickets to target's subcollection (leaving used tickets attached to source for audit), marks source `isMerged=true / mergedIntoId / mergedAt`, writes a `player.merged` audit row.
+  - `duplicates.js` — pure `normalizePhone` + `findDuplicateCandidates`. Normalizes Australian phone variants ("+61 4 ...", "0412...", "412...") to the same key.
+  - `errors.js` — typed errors: `AlreadyMergedError`, `SameSourceAndTargetError`, `ActiveEntriesError`, `PendingWithdrawalsError`.
+  - **Refuses** when source is already merged, source === target, source has active (non-busted, non-voided) entries, or source has pending withdrawals. Pre-transaction collection-group checks + transaction-time re-reads for race safety.
+  - 21 unit tests covering happy path + every rejection + the race window (ticket used between pre-check and commit is gracefully skipped, not errored).
+  - Page at `src/pages/admin/Dedupe.jsx` — candidate list → side-by-side compare → "type MERGE to confirm" → commit. Reusable CSV export on the candidate list.
+  - Seed script `npm run seed:dedupe` writes 8 players (clean / pair / trio / already-merged) with a wallet balance + unused ticket on one record so the merge transfers something visible.
+
+- **Emulator-mode fixes to collection-group queries.** `entries.listEntriesByPlayer`, `tickets.listAllUnusedTickets`, and `walletTransactions.listAllWalletTransactions` were doing their own `USE_MOCK_DATA` checks that bypassed the `_client.js` `ensureLive()` guard. Updated each to respect `USE_EMULATOR` so the merge module (which calls `listEntriesByPlayer`) and adjacent emulator-backed flows work end-to-end.
+
+- **Local emulator dev workflow added** ("verify a feature with real data" runbook). New env flag `VITE_FIRESTORE_EMULATOR=true` makes `src/firebase/config.js` initialize a real Firestore client pointed at `127.0.0.1:8080` instead of throwing `MockModeError`. Auth stays mocked so we don't need to run the Auth emulator too. New npm scripts:
+  - `npm run emulator` — boots the Firestore emulator with `firebase.dev.json` (which points at the permissive `firestore.dev.rules` rather than the production `firestore.rules`). Keeps the production rules and `npm run test:rules` untouched.
+  - `npm run seed:audit` — pushes permissive rules to the running emulator via its REST `/emulator/v1/.../securityRules` endpoint (defence-in-depth in case the boot-time rules load is flaky on Windows), then writes 30 varied auditLog entries spanning the last 30 days via `@firebase/rules-unit-testing`'s `withSecurityRulesDisabled` path.
+  - To use: terminal 1 `npm run emulator`, terminal 2 `npm run seed:audit`, terminal 3 `npm run dev` with `VITE_FIRESTORE_EMULATOR=true` in `.env.local`. Browse to `/admin/audit` to see real data.
+  - Project ID `demo-playlive` (intentionally different from `playlive-25a17`) so an accidental misconfiguration can't write to production.
+  - `firebase.dev.json` + `firestore.dev.rules` are committed; they document intent and back the emulator boot. The seed-time runtime push is the actually-load-bearing mechanism — empirically the CLI's `--config` flag didn't always cause the boot-time rules to take effect on Windows.
+
+- **Task 1.9 (Audit log viewer) DONE.** `src/pages/admin/AuditLog.jsx` — manager-only table. Filter bar (date preset chips + custom range, action-type drop-down, actor / target text fields), expandable metadata JSON per row, cursor pagination (50 per page, timestamp-based), and CSV export. Backed by:
+  - `src/hooks/useAuditLog.js` — reducer-driven state, query construction, mock-mode handling, export-all path with a 10k-row safety cap.
+  - `src/lib/csv.js` — generic CSV utility (`toCsvString` + `downloadCsv` + `csvFilename`). Handles Timestamp / Date / object serialization, RFC 4180 escaping, UTF-8 BOM for Excel. **Reusable across the app** — every future list page (tournaments, players, walletTransactions, reconciliation) drops in a one-line export by passing rows + a column spec. 23 unit tests covering escaping edge cases, type formatting, and the column-spec contract.
+  - `firestore.indexes.json` — composite indexes for `(actionType, timestamp)`, `(actorId, timestamp)`, `(targetType, targetId, timestamp)`. Added `"indexes": "firestore.indexes.json"` to `firebase.json`. Deploy with `npx firebase deploy --only firestore:indexes --project playlive-25a17` (not yet run — same hard-gate pattern as the rules deploy). Other filter combos will surface a "click here to create the index" error from Firestore on first use; extend the file and redeploy.
+
+- **`.env.local` added.** Was missing — caused the blank screen on `npm run dev`. Mock mode now defaults on for local dev. Documented in HANDOFF + suggested README update for new dev setup.
+
+
+
+- **Task 1.5 (App shell) DONE.** Permission-aware persona-tailored shell:
+  - `src/shell/AppShell.jsx` — sidebar on desktop, slide-in drawer on iPad/mobile.
+  - `src/shell/Sidebar.jsx` — reads `src/shell/nav.js`, filters items by role.
+  - `src/shell/nav.js` — single source of truth for the access matrix; `roleCanSee()` + `landingPathFor()` + the section/items config. Manager always passes; empty `allowedRoles` ⇒ manager-only.
+  - `src/shell/RoleHome.jsx` — `/` redirects per role: manager + cashier → `/desk`, td + readonly → `/td`.
+  - `src/shell/Toast.jsx` + `ToastContext.js` + `useToast.js` — DIY toast system (no library dep). Three variants (success / error / info), auto-dismiss, manual ×.
+  - `src/shell/ErrorBoundary.jsx` — one app-level catch-all + per-route boundaries so a bug in `/td` doesn't kill `/desk`.
+  - `src/shell/MockRoleSwitcher.jsx` — dev-only floating chips to flip mock role on the fly; hidden in production. `AuthProvider` exposes `setMockRole` only when `VITE_USE_MOCK_DATA=true`.
+  - `src/shell/LandingTile.jsx` — large-touch-target card used by both persona landings.
+  - Persona landings at `src/pages/desk/DeskLanding.jsx` and `src/pages/td/TdLanding.jsx`. Tile visibility mirrors the sidebar via the same `roleCanSee()` helper.
+  - Placeholder pages for every Phase 2/3/4 destination: `src/pages/desk/{Players,Register,Deposit,Withdrawals,Tickets}.jsx`, `src/pages/td/{Tournaments,TournamentNew,Clock,Tables,Bounty,Payouts}.jsx`, `src/pages/admin/{AuditLog,Dedupe,Reconciliation}.jsx`. Each uses `Placeholder.jsx` and notes which phase/task lands the real implementation.
+  - Per Guy: Manager lands on `/desk` (registration page is the manager landing). Tournament creation is manager-only at the UI layer. Read-only sees the TD floor in observer mode.
+  - Lint + build + tests all clean (still 200 tier-1 + 174 tier-2).
+
+
+
 - **Tier 1 unit testing landed.** Vitest installed; `npm test` runs the suite in ~1.5s. 200 tests across 19 files covering: `balanceDelta` / `ticketBalanceDelta` math, every `superRefine` invariant across the 9 collection schemas (one `.test.js` file per schema + a shared `_fixtures.js`), and every wallet operation's happy path + every typed-error rejection path (`_test-helpers.js` factory builds a fresh mock store + tx per test). Both HARD invariants pinned with no-override coverage. `payViaTicket` manager-override path verified to emit the `manager.override` audit entry. Reconciliation aggregation + drift detection covered.
 
 - **Real bug found and fixed mid-session.** Reconciliation was inferring adjustment direction from the free-text `notes` field via `notes.includes('credit')`, which mis-classified a debit whose reason naturally mentioned "credit" (e.g., "over-credited yesterday"). The spinoff task added an explicit `direction: 'credit'|'debit'` field to walletTransactions (required when type=adjustment, null otherwise), updated `writeAdjustment` to set it, and rewrote both `getReconciliationTotals` and `verifyBalanceMatchesLedger` to read it directly. Schema layer enforces presence on adjustment rows. Regression tests added with adversarial note text.
 
-- **Task 1.2 (Firestore rules) DONE.** `firestore.rules` at project root. Scope per the "rules are role-gate only" decision: per-collection allow expressions check `request.auth.token.role` against one of the four valid roles. Access matrix (see DECISIONS entry from this session for justification):
+- **Task 1.2 (Firestore rules) DONE and deployed.** `firestore.rules` at project root, deployed to `playlive-25a17` via `firebase deploy --only firestore:rules` at end of session. Scope per the "rules are role-gate only" decision: per-collection allow expressions check `request.auth.token.role` against one of the four valid roles. Access matrix (see DECISIONS entry from this session for justification):
 
   | Collection | Read | Write |
   |---|---|---|
@@ -99,14 +142,11 @@ The audit was the biggest source of new information in this session. Headline fi
 
 ## What's next (in priority order)
 
-1. **Deploy the rules to `playlive-25a17`.** `firestore.rules` is written and tested against the emulator, but not yet deployed. Run `npx firebase deploy --only firestore:rules --project playlive-25a17`. Note: this is the hard gate "Firestore rules deployed before any production write" from the SOW. Waits on explicit go from Guy (touches production).
-2. **Task 1.5 (App shell with persona-tailored landings)** — needs Guy's UI direction on TD and Registration Desk landings.
-3. **Task 1.8 (Duplicate-player merge tool)** — admin UI for merging duplicate player records.
-4. **Task 1.9 (Audit log scaffold UI)** — log writers are done; needs a simple admin viewer UI.
-5. **Task 1.10 (iPad layout pass)** — once 1.5 lands.
-6. **Drop the legacy `tournaments` collection** (1,695 docs in `playlive-25a17`). Required before the canonical schema can reuse the collection name. Claude has the script ready to write; waits for explicit go from Guy (destructive).
-7. **Narrow SA role back down.** The audit SA currently has `Editor`. Audit is done; downgrade to `Cloud Datastore Viewer` or disable. Not urgent.
-8. **(For Guy's awareness) Provision a real Manager user** in Firebase Auth. Steps in `docs/operator/initial-admin-setup.md`. Not blocking — mock mode covers UI iteration.
+1. **Deploy `firestore.indexes.json` to `playlive-25a17`.** Run `npx firebase deploy --only firestore:indexes --project playlive-25a17` once Guy approves (touches production; pairs with the rules deploy from earlier this session). The audit log viewer's filtered queries will error in production until this lands.
+2. **Task 1.10 (iPad layout pass)** — last task in Phase 1. Every operator screen tested on an actual iPad with touch input. Shell already has the drawer behaviour; smoke test the placeholder routes + login + landings + audit log viewer + dedupe tool.
+5. **Drop the legacy `tournaments` collection** (1,695 docs in `playlive-25a17`). Required before the canonical schema can reuse the collection name. Claude has the script ready to write; waits for explicit go from Guy (destructive).
+6. **Narrow SA role back down.** The audit SA currently has `Editor`. Audit is done; downgrade to `Cloud Datastore Viewer` or disable. Not urgent.
+7. **(For Guy's awareness) Provision a real Manager user** in Firebase Auth. Steps in `docs/operator/initial-admin-setup.md`. Not blocking — mock mode covers UI iteration.
 
 ## What's blocked
 
@@ -147,7 +187,6 @@ npm run build
 ## Deferred follow-ups (not blocking, not this-session)
 
 - **Drop the legacy `tournaments` collection** (1,695 docs). Destructive — waits on explicit go from Guy.
-- **Deploy `firestore.rules` to `playlive-25a17`.** Tested against emulator (174 tests green); not yet pushed to production. Required before any production write.
 
 **Recently resolved (27 May 2026):**
 

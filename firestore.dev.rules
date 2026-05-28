@@ -1,0 +1,21 @@
+// DEV ONLY — permissive rules used by the local Firestore emulator (npm run emulator)
+// to make UI iteration possible without running the Firebase Auth emulator and
+// signing real ID tokens with custom claims.
+//
+// The PRODUCTION rules live in `firestore.rules` at the project root. Those
+// rules are what get deployed via `firebase deploy --only firestore:rules` and
+// what the rules-unit-testing suite (npm run test:rules) exercises.
+//
+// If you find yourself wanting to verify a rule-gated read/write path against
+// real claims, run the Firebase Auth emulator and sign in for real — don't
+// loosen this file beyond "allow all on the local emulator".
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

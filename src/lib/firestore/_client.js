@@ -22,11 +22,14 @@ import {
   runTransaction,
   writeBatch,
 } from 'firebase/firestore'
-import { db, USE_MOCK_DATA } from '../../firebase/config'
+import { db, USE_MOCK_DATA, USE_EMULATOR } from '../../firebase/config'
 import { NotFoundError, ValidationError, MockModeError } from './_errors'
 
 function ensureLive() {
-  if (USE_MOCK_DATA) throw new MockModeError()
+  // Emulator mode keeps `USE_MOCK_DATA=true` for the convenience of mocked auth,
+  // but the data layer has a real Firestore client pointed at the local emulator.
+  // Only the pure-mock case (no emulator, no production) throws here.
+  if (USE_MOCK_DATA && !USE_EMULATOR) throw new MockModeError()
 }
 
 /**

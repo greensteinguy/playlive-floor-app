@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-rules \"vitest run --config vitest.rules.config.js\""
+    "test:rules": "firebase emulators:exec --only firestore --project demo-rules \"vitest run --config vitest.rules.config.js\"",
+    "emulator": "firebase --config ./firebase.dev.json --project demo-playlive emulators:start --only firestore",
+    "seed:audit": "node scripts/seed/audit-log.js",
+    "seed:dedupe": "node scripts/seed/dedupe.js"
   },
   "dependencies": {
     "date-fns": "^4.1.0",

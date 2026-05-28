@@ -95,8 +95,20 @@ export function AuthProvider({ children }) {
     setRole(null)
   }
 
+  // Mock-mode role switcher (used by the dev-only floating MockRoleSwitcher
+  // panel). Returns undefined in production so the panel hides itself.
+  const setMockRole = USE_MOCK_DATA
+    ? (next) => {
+        if (!VALID_ROLES.includes(next)) {
+          console.warn(`[auth] setMockRole: "${next}" is not a valid role`)
+          return
+        }
+        setRole(next)
+      }
+    : undefined
+
   return (
-    <AuthContext.Provider value={{ user, role, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, role, loading, signIn, signOut, setMockRole }}>
       {children}
     </AuthContext.Provider>
   )

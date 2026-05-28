@@ -6,7 +6,7 @@
 // for that lives below.
 
 import { collectionGroup, query, where, orderBy, getDocs } from 'firebase/firestore'
-import { db, USE_MOCK_DATA } from '../../firebase/config'
+import { db, USE_MOCK_DATA, USE_EMULATOR } from '../../firebase/config'
 import { Entry } from '../schema'
 import {
   validatedGet,
@@ -58,7 +58,7 @@ export function subscribeToEntries(tournamentId, onUpdate, queryFn, onError) {
  * (called out in canonical-schema.md §7).
  */
 export async function listEntriesByPlayer(playerId) {
-  if (USE_MOCK_DATA) throw new MockModeError()
+  if (USE_MOCK_DATA && !USE_EMULATOR) throw new MockModeError()
   const q = query(
     collectionGroup(db, ENTRIES),
     where('playerId', '==', playerId),

@@ -5,7 +5,7 @@
 // reads are fine.
 
 import { collectionGroup, query, where, getDocs } from 'firebase/firestore'
-import { db, USE_MOCK_DATA } from '../../firebase/config'
+import { db, USE_MOCK_DATA, USE_EMULATOR } from '../../firebase/config'
 import { Ticket } from '../schema'
 import {
   validatedGet,
@@ -32,7 +32,7 @@ export function subscribeToTickets(playerId, onUpdate, queryFn, onError) {
  * For venue-wide ticket-liability reporting.
  */
 export async function listAllUnusedTickets() {
-  if (USE_MOCK_DATA) throw new MockModeError()
+  if (USE_MOCK_DATA && !USE_EMULATOR) throw new MockModeError()
   const q = query(collectionGroup(db, TICKETS), where('state', '==', 'unused'))
   const snap = await getDocs(q)
   return snap.docs.map((docSnap) => {
