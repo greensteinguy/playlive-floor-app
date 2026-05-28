@@ -2,13 +2,80 @@
 
 > This is the living "where we left off" doc. **Update it at the end of every Claude Code session and every Cowork planning session.** Commit alongside whatever else changed. It is how context survives between sessions and across tool switches.
 
-Last updated: **28 May 2026** by Claude — testing + shell + audit-log + dedupe + iPad pass session. Phase 1 implementation tasks complete (1.1–1.9 ✅; 1.10 code-review done, on-device smoke test pending Guy). Tier 1 (vitest, 200 → 223 tests with CSV utility added), tier 2 (Firestore emulator + 174 rules tests), `firestore.rules` deployed to `playlive-25a17`, task 1.5 (app shell), task 1.9 (audit log viewer + reusable CSV utility + composite indexes file). See the "This session" block below for detail and "Next session" at the bottom.
+Last updated: **28 May 2026** by Claude — Phase 1 closed at end of session. All 10 task rows ✅ or 🟡 in `docs/02_Action_Plan.md`. Three small items deferred forward (see "Carried into Phase 2" below): iPad on-device smoke test, deploy `firestore.indexes.json`, drop the legacy `tournaments` collection. **Next session should start Phase 2 (Tournament Setup & Clock) — read the "Phase 2 starting notes" block below first.**
 
 ---
 
 ## Project phase
 
-**Phase 1 — Foundations: in progress, week 2 of 12.**
+**Phase 2 — Tournament Setup & Clock: not yet started, week 3+ of 12.** (Phase 1 closed end of week 2.)
+
+## Phase 2 starting notes — READ FIRST IF YOU ARE THE NEXT AGENT
+
+Phase 1 left a working foundation: typed data layer, validated schemas, atomic wallet module, app shell with persona-tailored landings + permission-filtered sidebar, audit log viewer, dedupe tool, deployed rules. Phase 2's job is to **make tournaments actually work**: list / create / clock / seating / payouts setup / templates. None of those exist beyond the placeholder pages at `/td/*`.
+
+### Read these before writing code
+
+1. **`CLAUDE.md`** — project context.
+2. **This file (HANDOFF.md)** — everything below.
+3. **`docs/schema/canonical-schema.md`** — the authoritative shape of tournaments, sessions, entries, tables, bountyDraws. Especially §5.1 (sessions model with `convergesIntoSessionId` routing graph + `maximumStart/EndIndex` cap vs `actualStart/EndIndex` runtime — non-obvious and load-bearing for multi-day/multi-flight).
+4. **`docs/02_Action_Plan.md` Phase 2 row block** — task scope.
+5. **`src/lib/wallet/README.md`** + **`src/lib/players/README.md` if it exists** + **`src/lib/firestore/README.md`** — patterns to follow. The wallet module is the most polished example: pure helpers, atomic transactions, typed errors, unit-tested.
+6. **`src/lib/schema/README.md`** — schema conventions (`.strict()`, `superRefine` for cross-field invariants, never relax a HARD invariant).
+
+### Conventions established in Phase 1 — follow them
+
+- **One module per domain area.** `src/lib/players/` (dedupe + merge), `src/lib/wallet/` (money), and soon `src/lib/tournaments/` (Phase 2). Operations are pure async functions; each takes `{actorId, actorRole}` for audit-trail traceability.
+- **All multi-doc writes go through `runValidatedTransaction`.** No exceptions. Reads first, writes second. Race-safe: re-read inside the transaction what you also need to mutate.
+- **Typed errors per domain.** Subclass a base `<Domain>Error`. Each operation throws specific subclasses (`AlreadyMergedError`, `InsufficientWalletBalanceError`, etc.) so callers can `catch (e instanceof X)`.
+- **Audit-log writes are best-effort** (`writeAuditLogSafe`) and happen *after* the transaction commits. A missing audit row never undoes a successful operation.
+- **Pages use reducer-driven `use*` hooks** in `src/hooks/`. See `useAuditLog.js` for the pattern: a `reducer` with explicit action types, mock-mode handled silently (don't surface `MockModeError` as a UI error), `exportAll` separate from paginated fetch.
+- **List pages get CSV export.** Wire `src/lib/csv.js`'s `downloadCsv` with a column spec. The pattern is in `AuditLog.jsx` and `Dedupe.jsx`. Manager-only pages typically have it in the top-right of the filter bar.
+- **Confirmation for destructive actions**: "type WORD to confirm" pattern (see `Dedupe.jsx`'s `MERGE` input). Avoid raw confirm dialogs.
+- **Tap targets ≥44px** (iOS HIG). Use `py-3` for sidebar / action buttons, `py-2` for filter chips. Add `active:` states for tap feedback.
+- **Mock-mode is a first-class concern.** `VITE_USE_MOCK_DATA=true` should produce a clean empty state ("Mock mode — no data available") rather than an error.
+- **Tier 1 unit tests for every operation.** Use the `src/lib/wallet/_test-helpers.js` factory pattern (`makeMockStore`, mock `tx`, seed data in an in-memory store). Don't skip tests on a new operation — Phase 1's HARD-invariant tests caught a real bug (the adjustment-direction parsing).
+
+### Phase 2 implementation order (suggested)
+
+Roughly the order tasks unblock each other:
+
+1. **Task 2.5 — Templates first.** Structure templates + tournament templates. Cheap to build (mostly CRUD), and they unblock the create wizards by giving them defaults to load from.
+2. **Task 2.1 — Tournament create.** Single-day NLH first; multi-day / multi-flight / satellite are 2.4. Build the form using the existing `Placeholder` shape for now → real form. Manager-only (rule: UI-layer gate, since Firestore rules permit TD+manager writes).
+3. **Task 2.2 — Tournament list.** Replaces the placeholder at `/td/tournaments`. Will need a list hook (`useTournaments`) following `useAuditLog`'s pattern. CSV export.
+4. **Task 2.4 — Multi-format wizards.** The sessions model is the trickiest part of the project so far. Re-read canonical-schema.md §5.1 carefully. Sessions have a routing graph (`convergesIntoSessionId` is the only routing field — `dayNumber` / `flightLabel` are display-only). Use `runValidatedBatch` to create all sessions atomically at tournament-setup time (pre-known IDs via `generateId()`).
+5. **Task 2.3 — Live clock.** Use Firestore real-time subscriptions (`subscribeToTournament`) for the clock. The venue display will subscribe to the same doc. Pause/resume sets `pausedAt`. Advancing levels updates `currentStructureIndex`. Server-time discipline: never trust client clock for "what time is it now" — use `Timestamp.now()` from the SDK consistently.
+6. **Task 2.6 — Seating.** Tables + entries. Bulk operations (open all tables, balance) are batched. Seat-card / alternate-ticket printing is later in Phase 5 — for now, just produce the data.
+7. **Task 2.7 — Status transitions.** Default invariants with manager-override path (`tournament.statusChanged` audit + optional `manager.override` audit when bypassing the default sequence).
+
+### Things to verify with Guy at the start of Phase 2
+
+- **Tournament create form layout** — likely needs design input (template picker, scheduled-start picker, structure editor for non-template flows, satellite-config / bounty-config visibility tied to gameType select).
+- **Clock visual design** — venue display is Phase 5, but the TD's clock control should be readable across the room too (giant blind text, big pause/resume buttons).
+- **Seat-card print format** — Phase 5 will wire it to a thermal printer, but the data we capture in 2.6 needs to be what shows on the card. Confirm with Guy what he wants on each seat card.
+- **What "register player to tournament" actually looks like** — Guy's call earlier was "tournament-first" (cashier picks tournament, then registers a player into it). The route is scaffolded at `/td/tournaments/:id/register`. Confirm the full UX before building.
+
+### Carried into Phase 2 (Phase 1 leftovers — none block Phase 2 start)
+
+1. **iPad on-device smoke test.** Code-review pass is done; Guy needs to actually open a dev URL on an iPad and run through the runbook in the "This session" block below. Most likely findings: CSV download UX in Safari (Files-app prompt? inline view?); home-indicator overlap on toasts and the mock-role-switcher.
+2. **Deploy `firestore.indexes.json` to `playlive-25a17`.** `npx firebase deploy --only firestore:indexes --project playlive-25a17`. Required for the audit log viewer's filtered queries to work in production; everything else is fine without it. Waits on Guy's go (touches production).
+3. **Drop the legacy `tournaments` collection** (1,695 docs in the old Casinoware-snapshot shape). **This is a hard gate before any Phase 2 production write.** The canonical schema's `tournaments` collection name is the same — we can't write to it while 1,695 incompatible docs sit there. The script is ready in Claude's head; waits on Guy's explicit go (destructive). Phase 2 development against the emulator is fine until then.
+
+### Dev workflow reminders
+
+- `npm run dev` (with `VITE_USE_MOCK_DATA=true` + `VITE_FIRESTORE_EMULATOR=false` in `.env.local`) → pure mock mode, no Firestore.
+- `npm run dev` (with `VITE_FIRESTORE_EMULATOR=true`) → talks to the local Firestore emulator. Requires `npm run emulator` to be running in another terminal. Auth stays mocked.
+- `npm run seed:*` → seed scripts. Phase 2 will want a `seed:tournaments` script following the same pattern (push permissive dev rules + write via `withSecurityRulesDisabled`).
+- `npm test` → 244 tier-1 unit tests, ~1.5s.
+- `npm run test:rules` → 174 emulator-backed rules tests, ~7s. Requires Java on PATH (Eclipse Temurin 21 installed; `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin:$PATH"` if a shell doesn't see `java`).
+- `npm run lint && npm run build` → must be clean before each commit.
+
+### What NOT to do in Phase 2
+
+- **Don't relax the two HARD invariants** (`walletBalance >= 0`, `walletTransactions.amount > 0`). They survived Phase 1; they're the foundation of the wallet ledger's integrity.
+- **Don't add a new walletTransaction type** without updating the type union in `src/lib/schema/walletTransaction.js` AND `src/lib/wallet/_shared.js` `balanceDelta` AND `src/lib/wallet/reconciliation.js`. The audit-log direction-field fix happened because a similar three-place change was made and one place fell behind.
+- **Don't bypass the wallet module** for ticket / walletTransaction / withdrawal writes. The data layer's per-collection wrappers intentionally don't expose write helpers for those collections. Phase 2 task 2.6 should call `payViaWallet` / `payViaTicket` / etc. when registering players into tournaments.
+- **Don't drop the legacy `tournaments` collection in production without Guy's explicit, in-session "yes drop it now" confirmation.** Destructive. Backup paths: Casinoware itself, manual CSV exports, local audit dump at `scripts/firestore-audit/output/tournaments.dump.json`.
 
 ## This session (28 May 2026)
 
@@ -161,26 +228,25 @@ The audit was the biggest source of new information in this session. Headline fi
 
 ## What's next (in priority order)
 
-1. **iPad on-device smoke test (1.10 finishing step).** Code-review pass + fixes are in. Guy: open the dev URL on an iPad, run through the runbook in the "Task 1.10" block above, log issues. Most likely findings: CSV download UX (Safari Files-app prompt vs. inline), any home-indicator overlap on toasts / mock-role-switcher.
-2. **Deploy `firestore.indexes.json` to `playlive-25a17`.** Run `npx firebase deploy --only firestore:indexes --project playlive-25a17` once Guy approves (touches production; pairs with the rules deploy from earlier this session). The audit log viewer's filtered queries will error in production until this lands.
-3. **Phase 2 — Tournament Setup & Clock.** Once 1.10 sign-off lands, Phase 1 is closed and the build moves to Phase 2 (tournament list/create wizards, structure templates, the live clock).
-5. **Drop the legacy `tournaments` collection** (1,695 docs in `playlive-25a17`). Required before the canonical schema can reuse the collection name. Claude has the script ready to write; waits for explicit go from Guy (destructive).
-6. **Narrow SA role back down.** The audit SA currently has `Editor`. Audit is done; downgrade to `Cloud Datastore Viewer` or disable. Not urgent.
-7. **(For Guy's awareness) Provision a real Manager user** in Firebase Auth. Steps in `docs/operator/initial-admin-setup.md`. Not blocking — mock mode covers UI iteration.
+The agenda for the next session is laid out fully in the **"Phase 2 starting notes"** block at the top of this doc. The short version:
+
+1. **Start Phase 2 task 2.5 (templates) → 2.1 (tournament create) → 2.2 (list) → 2.4 (multi-format wizards) → 2.3 (clock) → 2.6 (seating) → 2.7 (status transitions).**
+2. Three Phase 1 leftovers carried forward — none block starting Phase 2:
+   - iPad on-device smoke test (Guy, with an iPad).
+   - Deploy `firestore.indexes.json` (waits on Guy's go; touches production).
+   - Drop the legacy `tournaments` collection in production (hard gate before any Phase 2 production write; waits on Guy's explicit go).
+3. **Narrow SA role back down.** The audit SA currently has `Editor`. Audit is done; downgrade to `Cloud Datastore Viewer` or disable. Not urgent.
+4. **(For Guy's awareness) Provision a real Manager user** in Firebase Auth. Steps in `docs/operator/initial-admin-setup.md`. Not blocking — mock mode covers UI iteration.
 
 ## What's blocked
 
-Nothing right now. Phase 1 is fully unblocked.
+Nothing today. Phase 2 development can start immediately against the emulator. The only thing that's gated is **production writes** to the canonical `tournaments` collection — they wait on the legacy-collection drop (item 2 above).
 
 **Coordination risk to watch** (not a blocker today): if the analytics dashboard or Player App needs to come back online mid-build, the in-progress rules / schema state of `playlive-25a17` must not break them. Likely fine — Phase 6 was always going to handle the schema migration for the other two apps — but worth being explicit about.
 
 ## Open questions for Guy
 
-None outstanding for design.
-
-## Next session
-
-Top of the queue is **deploying the rules to `playlive-25a17`** (`npx firebase deploy --only firestore:rules --project playlive-25a17`) — this is the SOW's "rules deployed before any production write" hard gate. Waits on Guy's go since it touches production. After that: task 1.5 (app shell).
+Logged at the bottom of the "Phase 2 starting notes" block (form layouts, clock visual design, seat-card print format, full registration UX). Next agent should surface these to Guy before building.
 
 ## Test infrastructure (reference)
 
