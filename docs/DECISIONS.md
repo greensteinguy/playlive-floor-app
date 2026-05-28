@@ -6,6 +6,35 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 27 May 2026 — Enforce business invariants in the app/UI, not in Firestore rules (with two named exceptions)
+
+**Decided:** Firestore security rules cover **role-based access only** (e.g., "must be signed in", "must have role X to write to this collection path"). Business invariants — ticket face-value rules, status-transition rules, etc. — are enforced at the **application / UI layer**, with manager UI override paths for legitimate exceptions. Every override writes a `manager.override` entry to `auditLog` with reason + context.
+
+**Two named exceptions** that stay as hard, non-overridable invariants:
+
+1. **Wallet balance ≥ 0.** Wallet going negative creates real venue liability (the venue would owe the player money it never received), not a service-level favour the manager can extend. Cashier must take a deposit or alternative payment first — no UI path to bypass.
+2. **`walletTransactions.amount > 0`** (the always-positive sign convention). Structural, not a business rule — a negative amount would corrupt the ledger semantics, not just bend an operational policy.
+
+All other defaults — ticket face-value rules, status transitions, etc. — get manager override paths.
+
+**Why:** Per Guy (first pass): "Poker is a client based business. While it opens us up to some security concern we want Managers to have the final say on how things go. If a manager wants to allow a player to break up their ticket for instance as a favor to the player we don't need to prevent that. We want to enable it." Per Guy (second pass, same day): "a player balance CANNOT go below zero. that is not something even a manager could do as a favor."
+
+**Trade-offs accepted:**
+
+- Larger security surface for the overrideable invariants: a bug or a malicious actor with appropriate auth claims could write data that violates a default. Mitigation: validators reject obviously-malformed shapes (e.g., negative amount on a transaction); audit log captures every state-changing action; manager override is itself attributable.
+- The wallet module + UI bear most invariant-enforcement weight. Rules are a thin role-gate layer only.
+- Phase 1 task 1.2 scope narrows considerably — just role-based access, no invariant logic.
+
+**Affected docs (all updated this session):**
+
+- `docs/schema/canonical-schema.md` §6.2 — "Default invariants" table with two rows flagged as hard / no override.
+- `docs/wallet-design.md` §6 and Q6 resolution — Q6 carries the full history of the position change.
+- `docs/02_Action_Plan.md` task 1.2 scope narrowed.
+- SOW v0.7 §3.4 — wallet ≥ 0 stays hard; other wallet rules relax.
+- New auditLog actionType `manager.override` introduced.
+
+**Decider:** Guy. Captured during the Phase 1 schema review.
+
 ## 27 May 2026 — Historical CSV import is deferred to pre-Rollout, sized as its own work block
 
 **Decided:** The Casinoware CSV import (historical players, balances, tournaments) is **not part of Phase 1**. Sequencing is:

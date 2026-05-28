@@ -1,13 +1,24 @@
 # Scope of Work — PlayLive Floor App
 
-**Version:** v0.6 (Revised after Phase 0 Firestore audit + migration sequencing decision)
+**Version:** v0.7 (Revised after Phase 1 schema review — enforce-at-app philosophy + schema clarifications)
 **Date:** 27 May 2026
 **Owner:** Guy Greenstein  |  **Build partner:** Claude (AI collaborator)
 **Build window:** 12 weeks of development; rollout (UAT, training, cutover) scheduled separately on top.
 
-> Markdown mirror of `01_Scope_of_Work.docx` for Claude Code. The .docx is the version shared with the team; this is the version the AI collaborator reads. **v0.6 has not been mirrored back to the .docx yet — when Guy next refreshes the team-facing version, the .docx needs to pick up the changelogs and §7 edits below.**
+> Markdown mirror of `01_Scope_of_Work.docx` for Claude Code. The .docx is the version shared with the team; this is the version the AI collaborator reads. **v0.7 has not been mirrored back to the .docx yet — when Guy next refreshes the team-facing version, the .docx needs to pick up all the changelogs below (v0.4 → v0.5 → v0.6 → v0.7).**
 
 ---
+
+## Changelog (v0.6 → v0.7)
+
+Came out of Guy's review of the canonical-schema v1 draft (Phase 1 task 1.3) and an accompanying philosophy clarification.
+
+- **§5.4 Firestore rules narrowed to role-based access only.** Business invariants (wallet ≥ 0, ticket face-value rules, status-transition rules, etc.) are enforced at the application / UI layer instead. Managers have UI override paths for every default invariant; every override is audit-logged. Driver: Guy — "Poker is a client-based business; managers have final say." Full rationale in `DECISIONS.md`.
+- **§3.4 wallet rule: split into two hard rules and a softened one.** Wallet balance ≥ 0 stays a HARD rule with NO override (wallet going negative is venue liability, not a favour). Sign convention (always-positive amounts) stays a hard rule (structural). All OTHER wallet invariants (e.g., ticket face-value rules) become "default with manager override." Net effect: the v0.4 "no override anywhere" stance is split — wallet-non-negative + sign convention stay hard, everything else relaxes per the new philosophy.
+- **§3.2 player profile:** bank details (BSB, account number) **removed from v1**. Bank-transfer withdrawals capture destination info out-of-band (handled by venue staff outside the Floor App). Removes a compliance / breach surface; revisit in v1.5+ if a workflow requires it.
+- **§3.1 tournament fields:** the term "fee" is dropped (no rake at this venue). Players pay `buyIn + hospitalityCost` (hospitality optional, 0 if none). Hospitality does not enter the prize pool — venue keeps it.
+- **§3.1 multi-day vs multi-flight:** modelled as two booleans (`isMultiDay`, `isMultiFlight`) with the invariant `isMultiFlight ⇒ isMultiDay`, rather than a single enum. The hierarchy is real (every multi-flight is multi-day; not vice versa).
+- **§3.1 tournament templates:** templates no longer carry a recurring schedule. Recurrence is selected by the manager at tournament-creation time (from a template or from scratch), and the system bulk-creates N tournament instances upfront for the chosen window (1 month / 6 months / 1 year). Each instance is independent thereafter.
 
 ## Changelog (v0.5 → v0.6)
 
@@ -69,7 +80,7 @@ The Floor App is the operational source of truth — it writes the data the othe
 
 ### 3.1 Tournament Setup, Clock & Display
 
-- Define tournaments. Fields: name, short description, type, buy-in, fee, guarantee, start time, late-reg cutoff, hospitality cost, **house consumption budget (includes trophy cost when relevant — single field)**, **Upper Deck / Main Deck split toggle (this is the last-longer side bet — same concept in venue terminology)**, add-on toggle, bounty toggle, freezeout or re-entry with configurable counts.
+- Define tournaments. Fields: name, short description, type, **buy-in** (entire amount goes to the prize pool), **optional hospitality cost** (additional venue charge for food/drink; not added to prize pool — there is no rake at this venue), guarantee, start time, late-reg cutoff, **house consumption budget (includes trophy cost when relevant — single field; tracked for analytics, not deducted)**, **Upper Deck / Main Deck split toggle (this is the last-longer side bet — same concept in venue terminology)**, add-on toggle, bounty toggle, freezeout or re-entry with configurable counts, **`isMultiDay` and `isMultiFlight` flags (every multi-flight is multi-day; not vice versa)**.
 - Supported formats: NLH (freezeout / re-entry), PLO and other variants (Omaha, mixed games, HORSE, Stud), satellites with **milestone auto-removal** (player removed and issued a ticket when their stack reaches a multiple of the starting stack equal to the ticket-reward/buy-in ratio — e.g. $100 buy-in with $1000 ticket reward triggers at 10× starting stack), **multi-day events** (single tournament resuming on a later day after playing down to ~15% of the field), **multi-flight events** (multi-day with multiple Day 1s converging to one Day 2 with prize-pool accumulation), Mystery Bounty (published bounty pool drawn at random on each knockout), Main Event.
 - Blind structure builder: levels, blinds, antes, duration, breaks; copy-from-structure-template; validation.
 - Payout structure: by position or by percentage, with rounding. Auto-generated default from entries + buy-in, manually overridable. Bounty events have a separate bounty-pool definition.
@@ -80,7 +91,7 @@ The Floor App is the operational source of truth — it writes the data the othe
 
 ### 3.2 Player Registration, Seating & Table Balancing
 
-- Player profile fields. **Mandatory:** full name, phone number. **Optional:** email, street address. **Sensitive (Cashier + Manager role only, audit-logged on read):** BSB, account number. **Derived/display:** total deposited, current wallet balance, ticket balance.
+- Player profile fields. **Mandatory:** full name, phone number. **Optional:** email, street address. **Derived/display:** total deposited, current wallet balance, ticket balance. _(Bank details — BSB, account number — deliberately not stored in v1. Bank-transfer withdrawals capture destination info out-of-band. See v0.7 changelog.)_
 - New player registration: quick-create form covering the mandatory fields.
 - Fast fuzzy-name player search.
 - Duplicate-merge tooling.
@@ -115,7 +126,7 @@ The wallet is a record-keeping front-end. The Floor App tracks per-player balanc
 - **Tickets:** per-player balance of generic credit, **tournament-entry only in v1**. Each ticket has a face value and may only be used on tournaments whose total cost ≥ ticket face value. Top-up with another method supported for the gap.
 - **Withdrawal requests:** player asks for balance back. App records the request, desired payout method (cash, EFTPOS refund, bank transfer to stored BSB/account — all three used daily), amount. Two-step pattern: any Cashier creates, only a Manager marks completed (which debits the wallet).
 - **Win credits:** at payout, the cashier confirms each `win_credit` before it lands on the player's wallet. No auto-credit.
-- **Hard rule — wallet balance can never go negative.** Any spend that would push balance < 0 is rejected at the module layer and at the Firestore rules layer. No manager override path; cashier takes a top-up via another method first.
+- **Hard rule — wallet balance can never go negative.** Any spend that would push balance < 0 is rejected at the wallet module layer. **No manager override path** — wallet going negative is venue liability, not a service-level favour, so it sits outside the otherwise-permissive "enforce at app, not rules" philosophy. Cashier must take a deposit or alternative payment first. (This is one of two named exceptions to the app-layer override philosophy in DECISIONS.md; the other is the sign-convention rule on transaction amounts.)
 - **Ledger sign convention:** `amount` is always positive; `type` determines credit-vs-debit. Easier to read; safer to validate.
 - **Transaction ledger per player:** full immutable history. Corrections happen by appending a compensating `adjustment` entry, not by editing past rows.
 - **Wallet reconciliation view:** end-of-day staff view showing total venue float vs total wallet liabilities by payment method.
@@ -178,9 +189,8 @@ Floor App writes canonical tournament, entry, player, level, payout, bounty, and
 ### 5.4 Firestore security rules
 
 - First proper `firestore.rules` file covering all three apps' access patterns.
-- Role-based access (Manager / TD / Cashier / Read-only) enforced at rules layer.
-- Wallet writes restricted to Cashier and Manager.
-- Sensitive fields (BSB, account number, full transaction ledger detail) require Cashier or Manager; reads audit-logged.
+- **Scope narrowed in v0.7:** rules cover **role-based access only** (Manager / TD / Cashier / Read-only). Business invariants — wallet ≥ 0, ticket face-value rules, status-transition rules — are enforced at the application / UI layer instead, with manager override paths. See DECISIONS.md "enforce at app, not rules" for the philosophy.
+- Wallet writes restricted to Cashier and Manager via rules.
 - Player App anonymous-auth users get read-only/appropriate-write rules.
 - ~~Staging Firebase project for testing rule changes.~~ **Skipped in v0.6** — building directly on shared `playlive-25a17` because the analytics dashboard and Player App are not currently in active use, removing the original "production-impact" concern. See `DECISIONS.md` for the trade-off accepted.
 

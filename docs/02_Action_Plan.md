@@ -1,6 +1,6 @@
 # Action Plan — PlayLive Floor App
 
-**Version:** v0.5 — Companion to SOW v0.6
+**Version:** v0.6 — Companion to SOW v0.7
 
 > Markdown mirror of `02_Action_Plan.docx` for Claude Code consumption. **v0.5 has not been mirrored back to the .docx yet** — when Guy next refreshes the team-facing version, the .docx needs to pick up the deltas below.
 
@@ -12,6 +12,15 @@ v0.3 splits the work into two phases of activity:
 - **Rollout phase** — runs after the build is feature-complete. Covers handbook, training, parallel run with Casinoware, and cutover. Calendar time depends on PlayLive's tournament schedule.
 
 Owner column: `Guy` = decision-maker / reviewer. `Claude` = AI dev collaborator producing the code / designs / docs.
+
+## Changelog (v0.5 → v0.6)
+
+Came out of Guy's Phase 1 schema-review feedback. Detail in `DECISIONS.md`; this changelog is the summary.
+
+- **Phase 1 task 1.2 (rules) scope narrowed:** role-based access only. Business invariants moved to the app layer with manager-override paths. No sensitive-field gating (BSB/account removed from schema in v0.7).
+- **Phase 1 task 1.7 (wallet ledger)** acquires the responsibility for enforcing wallet ≥ 0 (HARD — no override) and amount > 0 (HARD — structural). Other default invariants get manager-override paths. Same enforcement pattern for task 3.5 (ticket rules) and task 2.7 (status transitions).
+- Audit log gains four new well-known actionTypes: `manager.override` (for default-invariant bypasses), `wallet.managerCredit`, `wallet.managerDebit` (for intentional manager-authorized ledger moves), `wallet.ticketIssued` (for ticket grants).
+- New walletTransaction types: `managerCredit` and `managerDebit` for intentional manager-authorized ledger moves (distinct from `adjustment`, which is for fixing data-entry mistakes). Reconciliation breaks them out as separate line items.
 
 ## Changelog (v0.4 → v0.5)
 
@@ -75,13 +84,13 @@ Auth, security rules, schema, validators, wallet ledger, app shell. Nothing user
 
 | # | Task | Output | Owner |
 |---|---|---|---|
-| 1.1 | Firebase Auth: email/password staff accounts, four roles (Manager, TD, Cashier, Read-only). | Login + role claims | Claude |
-| 1.2 | Firestore security rules v1: role-based read/write on all collections including wallets, walletTransactions, withdrawalRequests. Sensitive-field gating on BSB/account. | rules deployed to staging | Claude |
-| 1.3 | Canonical schema doc: tournament, entry, player, level, payout, bounty, wallet, walletTransaction, ticket, withdrawalRequest. | Schema doc v1 | Claude |
-| 1.4 | Runtime validators: Zod-style module covering every shape. All writes and reads validated. | lib/schema module | Claude |
+| 1.1 | ✅ Firebase Auth: email/password staff accounts, four roles (Manager, TD, Cashier, Read-only). Implemented 27 May 2026. AuthContext + AuthProvider + useAuth + ProtectedRoute + Login + Forbidden pages. Admin role-setting script at `scripts/admin/set-role.js`. Mock mode (`VITE_USE_MOCK_DATA=true` + `VITE_MOCK_ROLE`) supported. Operator setup doc at `docs/operator/initial-admin-setup.md`. | Login + role claims | Claude |
+| 1.2 | Firestore security rules v1: **role-based read/write only** (Manager / TD / Cashier / Readonly). Business invariants (wallet ≥ 0, ticket rules, status transitions) enforced at the app layer instead — per the "enforce at app, not rules" decision (DECISIONS.md). Scope is narrower than v0.5: no sensitive-field gating (BSB / account removed from schema in v0.7), no invariant enforcement. Deploys to `playlive-25a17` directly. | firestore.rules deployed | Claude |
+| 1.3 | ✅ Canonical schema doc v1 written 27 May 2026 (`docs/schema/canonical-schema.md`). Six top-level collections + six subcollections. Wallet design from `docs/wallet-design.md` folded in (with `wallets` collection dropped — balance lives on player doc). All five draft open-questions resolved with Guy. Awaiting final line-by-line review. | Schema doc v1 | Claude |
+| 1.4 | ✅ Runtime validators implemented 27 May 2026. Zod schemas at `src/lib/schema/` covering all 12 collections (6 top-level + 6 subcollections) plus embedded sub-schemas (structure discriminated union, payout structure). Includes cross-field invariants (e.g., isMultiFlight ⇒ isMultiDay; satelliteConfig set iff gameType='satellite'; session needs termination criterion unless final; ticket state consistency; entry seat consistency). Hard invariants (walletBalance ≥ 0, amount > 0) encoded structurally. Default invariants with manager override (e.g., ticket face-value rule) deferred to wallet module. Lint + build pass. See `src/lib/schema/README.md` for usage. | lib/schema module | Claude |
 | 1.5 | App shell with persona-tailored landing screens (TD and Registration Desk); role-aware nav; error boundaries; toast system. | Navigable empty app | Claude |
-| 1.6 | Firestore data layer: typed query/write helpers wrapping all calls in validators. Online-only — no offline persistence. | lib/firestore module | Claude |
-| 1.7 | Wallet ledger module: append-only walletTransactions; balance derived from ledger; atomic spend-with-registration helper. Foundational, no UI. | lib/wallet module + tests | Claude |
+| 1.6 | ✅ Firestore data layer implemented 27 May 2026. `src/lib/firestore/` wraps every read/write through the Zod validators from task 1.4. Generic helpers (`validatedGet/GetMany/Set/Update/Delete/subscribe*` + `runValidatedTransaction` + `runValidatedBatch`) plus per-collection wrappers for all 12 collections. Collection-group query helpers for cross-tournament entries and cross-player walletTransactions/tickets. Typed errors (`NotFoundError`, `ValidationError`, `MockModeError`). UUID v4 id generation via `crypto.randomUUID`. Online-only per ADR-001. Lint + build pass. See `src/lib/firestore/README.md`. | lib/firestore module | Claude |
+| 1.7 | ✅ Wallet ledger module implemented 27 May 2026. `src/lib/wallet/` exposes 13 operations: recordDeposit, payViaExternalMethod / payViaWallet / payViaTicket, create/complete/cancel withdrawal, confirmWinCredit / confirmBountyWinCredit, issueTicket, recordOpeningBalance (migration), writeAdjustment (corrections), recordManagerCredit / recordManagerDebit (intentional manager comps/recoupings — new walletTransaction types `managerCredit` / `managerDebit`), plus reconciliation helpers. Every operation wraps writes in runValidatedTransaction (data + entries + walletTransactions + player balance update all atomic). Two HARD invariants (walletBalance ≥ 0, amount > 0) with no override anywhere — even on manager debits. Default invariants take `managerOverride={reason:"..."}` parameter (emits `manager.override` audit entry). Lint + build pass. **Tests deferred to next session** — see "Next session: tier-1 testing setup" in HANDOFF for the full plan. | lib/wallet module + tests (tests deferred) | Claude |
 | 1.8 | Duplicate-player merge tool. | Merge admin UI | Claude |
 | 1.9 | Audit log scaffold. | auditLog collection writing | Claude |
 | 1.10 | iPad layout pass: shell, login, merge tool, audit log all usable on iPad. | iPad smoke test passed | Claude |
@@ -95,7 +104,7 @@ First user-visible feature: create a tournament in any supported format, configu
 | 2.1 | Tournament create/edit form. Core fields: name, short description, format (NLH / PLO / mixed / satellite / **multi-day** / **multi-flight** / Mystery Bounty / Main Event), buy-in, fee, guarantee, start time, late-reg cutoff, hospitality, **house consumption (single field, includes trophy when relevant)**, **Upper Deck / Main Deck split toggle (= last-longer side bet — same concept)**, add-on toggle, freezeout vs re-entry with counts. | Create tournament UI | Claude |
 | 2.2 | Blind structure builder. | Blind structure UI | Claude |
 | 2.3 | Payout structure: by position or percentage, with rounding. Auto-generated default, manually overridable. Bounty events get separate bounty-pool field. | Payout structure UI | Claude |
-| 2.4 | Satellite (with milestone auto-removal — see SOW §3.1), multi-day, and multi-flight setup. Multi-day = single tournament resuming on Day 2+; multi-flight = multiple Day 1s converging. | Satellite + multi-day + multi-flight UI | Claude |
+| 2.4 | Satellite (with milestone auto-removal — see SOW §3.1), multi-day, and multi-flight setup. Multi-day = single tournament resuming on later days; multi-flight = parallel sessions on a day converging downstream. Schema in `docs/schema/canonical-schema.md` §5.1 covers the sophisticated cases: arbitrary N days with arbitrary flights per day, `playToPercentRemaining` per-session termination, automatic rollback on convergence (Day 2's `actualStartIndex` derives from `min(upstream actualEndIndex) + 1` when its converged-from flights ended at different levels), and nullable `maximumEndIndex` for "play to a winner" final sessions. | Satellite + multi-day + multi-flight UI | Claude |
 | 2.5 | Templates — **two-level**: structure templates (blind structures, reusable) and tournament templates (referencing a structure template). Weekly recurring generator instantiates from tournament templates. | Structure + tournament templates + recurring UI | Claude |
 | 2.6 | Live clock engine: client-side tick, transitions, breaks, sound alerts. | Working clock | Claude |
 | 2.7 | Floor controls. | Floor controls UI | Claude |
