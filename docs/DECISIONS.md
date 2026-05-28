@@ -6,6 +6,45 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 28 May 2026 — Adjustment direction is an explicit field, not inferred from notes text
+
+**Decided:** `walletTransactions` documents of type `adjustment` carry a structured `direction: 'credit' | 'debit'` field. The free-text `notes` field still records human reason but is no longer load-bearing for arithmetic.
+
+**Why:** Tier 1 testing surfaced a real bug in `reconciliation.js`. Both `getReconciliationTotals` and `verifyBalanceMatchesLedger` were inferring direction via `(tx.notes ?? '').includes('credit')`. A debit whose reason naturally mentioned the word "credit" (e.g., "over-credited yesterday", "wrongly credited") got mis-classified as a credit. End-of-day totals and per-player ledger sums would silently drift. The fix removes the free-text dependency entirely.
+
+**Implementation:**
+- Schema: `walletTransactions.direction` is `'credit' | 'debit' | null`; `superRefine` requires it set on `type === 'adjustment'` rows and rejects non-null values on every other type.
+- Writer: `writeAdjustment` sets the field directly.
+- Readers: `getReconciliationTotals` and `verifyBalanceMatchesLedger` switch on `tx.direction`.
+- Tests: regression cases use adversarial notes ("debit — over-credited the bonus") to lock in correct behaviour.
+
+**Decider:** Claude (caught during testing), confirmed by Guy via the spinoff task. No alternative considered; the substring-match heuristic was wrong and the fix is unambiguous.
+
+## 28 May 2026 — Firestore rules access matrix (task 1.2)
+
+**Decided:** `firestore.rules` enforces the following per-collection role gates and nothing else. Reads are uniformly any-signed-in-role except `auditLog` (manager-only). Writes follow operational ownership:
+
+| Write access | Collections |
+|---|---|
+| manager + td | tournaments, sessions, tables, structureTemplates, tournamentTemplates |
+| all staff (manager + td + cashier) | entries, bountyDraws, walletTransactions, tickets, auditLog |
+| manager + cashier | players, withdrawalRequests |
+
+Unauthenticated requests, signed-in users with no `role` claim, signed-in users with an unrecognized role, and any path outside the explicit allow-list all hit the default-deny.
+
+**Why:**
+- Per the 27 May "enforce at app, not rules" decision, the rules layer is a coarse role-gate. No invariant enforcement, no per-field gating, no sensitive-field rules (BSB / account were removed in v0.7).
+- The matrix matches who actually does what on the floor: TDs configure & run tournaments, cashiers handle players & money, all staff register entries and confirm bounty win-credits. WalletTransactions allow all-staff write because TDs legitimately confirm satellite wins via `confirmWinCredit` (per the `actorRole` enum on the wallet ops).
+- AuditLog read is manager-only because it captures every manager override + every wallet adjustment — sensitive in aggregate. Write is open to all staff because every wallet op emits an audit row via `writeAuditLogSafe`.
+
+**Trade-offs accepted:**
+- Rules don't enforce that walletTransactions go through the wallet module — a cashier with direct Firestore access could write a malformed row (the validators would catch obviously-malformed shapes, but bypass of `runValidatedTransaction` atomicity is structurally possible). Mitigation: app-only writes, audit log captures all actions, no published direct-write tooling.
+- A compromised cashier account can read every player record and write to most operational collections. We're trusting the role assignment.
+
+**Tested:** 174 emulator tests in `tests/firestore-rules/`. Matrix coverage is per-role × per-collection × read/write.
+
+**Decider:** Claude (drafted from operational personas in CLAUDE.md + the role enum in `walletTransaction.js`). To be confirmed by Guy before deploy.
+
 ## 27 May 2026 — Enforce business invariants in the app/UI, not in Firestore rules (with two named exceptions)
 
 **Decided:** Firestore security rules cover **role-based access only** (e.g., "must be signed in", "must have role X to write to this collection path"). Business invariants — ticket face-value rules, status-transition rules, etc. — are enforced at the **application / UI layer**, with manager UI override paths for legitimate exceptions. Every override writes a `manager.override` entry to `auditLog` with reason + context.

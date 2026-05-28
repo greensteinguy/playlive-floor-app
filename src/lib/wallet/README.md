@@ -99,10 +99,16 @@ Every wallet operation writes a `WELL_KNOWN_ACTION_TYPES` audit entry after the 
 
 ## Testing
 
-Tests are deferred — covered by a follow-up TODO. The module is built to be testable: pure helper functions in `_shared.js`, dependency-injected through the data layer's transaction wrapper. When tests land, they'll cover:
+Tier 1 (unit) tests live alongside the implementation files: `_shared.test.js`, `deposit.test.js`, `payment.test.js`, `withdrawal.test.js`, `winCredit.test.js`, `ticket.test.js`, `migration.test.js`, `adjustment.test.js`, `managerAdjustment.test.js`, `reconciliation.test.js`. Run with `npm test`.
 
-- Each operation's happy path
-- The two HARD invariants (walletBalance ≥ 0, amount > 0)
-- The ticket / withdrawal state transitions
-- The role-gated operations
-- The reconciliation math
+Pattern: every test stubs the `../firestore` module (`vi.mock`) and replaces `runValidatedTransaction` with a callback that hands the wallet code a fake `tx` object. A small in-memory store in [_test-helpers.js](_test-helpers.js) lets tests seed Player / Ticket / WithdrawalRequest / BountyDraw docs and then assert on the resulting `set` / `update` calls. No real Firestore is hit; the unit suite runs in well under a second.
+
+Coverage:
+- Every operation's happy path
+- Both HARD invariants (`walletBalance >= 0`, `amount > 0`) with no-override behaviour pinned down
+- Ticket / withdrawal state transitions
+- Role-gated operations (`recordManagerCredit`, `recordManagerDebit`, `completeWithdrawal`, `createWithdrawalRequest`, `cancelWithdrawal`)
+- `payViaTicket` manager-override path (verifies the `manager.override` audit entry is written)
+- Reconciliation aggregation across every type/method combination, plus drift detection by `verifyBalanceMatchesLedger`
+
+Rules tests (tier 2) live separately at `tests/firestore-rules/` and run against the Firestore emulator via `npm run test:rules`. They cover the role-vs-collection access matrix, not wallet semantics.

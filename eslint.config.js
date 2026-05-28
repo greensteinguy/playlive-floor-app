@@ -43,4 +43,13 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+
+  // Test files (vitest, Node env). Symbols are imported explicitly from 'vitest',
+  // but tests sometimes need Node-only APIs too.
+  {
+    files: ['**/*.test.js', 'vitest.config.js', 'vitest.rules.config.js', 'tests/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 ])

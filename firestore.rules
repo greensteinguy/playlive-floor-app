@@ -1,0 +1,114 @@
+// PlayLive Floor App — Firestore security rules v1.
+//
+// Scope (per docs/DECISIONS.md 27 May 2026 entry):
+//   ROLE-BASED ACCESS ONLY. No business-invariant enforcement (wallet >= 0,
+//   ticket face-value, status transitions, etc.) — those live in the app/UI
+//   layer with manager-override paths. Rules are a thin auth-and-role gate.
+//
+// Roles live in the Firebase Auth custom claim `role` (set by
+// scripts/admin/set-role.js). Four values: manager, td, cashier, readonly.
+// Any signed-in user without one of these four roles is treated as having
+// no role and gets nothing.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Role helpers ───────────────────────────────────────────────────────
+    function authed() {
+      return request.auth != null;
+    }
+    function role() {
+      // request.auth.token is null-safe only inside authed(); callers must guard.
+      return request.auth.token.role;
+    }
+    function hasRole(roles) {
+      return authed() && (role() in roles);
+    }
+
+    function canRead()           { return hasRole(['manager', 'td', 'cashier', 'readonly']); }
+    function isStaff()           { return hasRole(['manager', 'td', 'cashier']); }
+    function isManager()         { return hasRole(['manager']); }
+    function isTDorManager()     { return hasRole(['td', 'manager']); }
+    function isCashierOrManager(){ return hasRole(['cashier', 'manager']); }
+
+    // ── Tournaments and subcollections ─────────────────────────────────────
+    // TDs and Managers configure and run tournaments. Cashiers register
+    // players (entries). Bounty draws and entries are written by floor staff.
+    match /tournaments/{tid} {
+      allow read:  if canRead();
+      allow write: if isTDorManager();
+
+      match /sessions/{sid} {
+        allow read:  if canRead();
+        allow write: if isTDorManager();
+      }
+      match /entries/{eid} {
+        allow read:  if canRead();
+        allow write: if isStaff();
+      }
+      match /tables/{tableId} {
+        allow read:  if canRead();
+        allow write: if isTDorManager();
+      }
+      match /bountyDraws/{drawId} {
+        allow read:  if canRead();
+        // TD records knockouts; cashier confirms win-credit by patching
+        // walletTransactionId. Both ops happen via floor staff.
+        allow write: if isStaff();
+      }
+    }
+
+    // ── Players and subcollections ─────────────────────────────────────────
+    // Cashiers create and edit players. Wallet writes go through the wallet
+    // module (rules don't enforce that — app's job). Tickets follow the same
+    // pattern: any staff member can write through the wallet module.
+    match /players/{pid} {
+      allow read:  if canRead();
+      allow write: if isCashierOrManager();
+
+      match /walletTransactions/{txId} {
+        allow read:  if canRead();
+        allow write: if isStaff();
+      }
+      match /tickets/{ticketId} {
+        allow read:  if canRead();
+        allow write: if isStaff();
+      }
+    }
+
+    // ── Withdrawal requests ────────────────────────────────────────────────
+    // Cashier creates; manager completes (atomic debit lives in the wallet
+    // module). Either can cancel. Role enforcement for "complete" is at the
+    // app layer because both roles legitimately write to the same doc.
+    match /withdrawalRequests/{id} {
+      allow read:  if canRead();
+      allow write: if isCashierOrManager();
+    }
+
+    // ── Templates ──────────────────────────────────────────────────────────
+    match /structureTemplates/{id} {
+      allow read:  if canRead();
+      allow write: if isTDorManager();
+    }
+    match /tournamentTemplates/{id} {
+      allow read:  if canRead();
+      allow write: if isTDorManager();
+    }
+
+    // ── Audit log ──────────────────────────────────────────────────────────
+    // Sensitive. Only managers read (captures all overrides + manager
+    // adjustments). Any floor staff can write, since every wallet operation
+    // emits an audit row.
+    match /auditLog/{id} {
+      allow read:  if isManager();
+      allow write: if isStaff();
+    }
+
+    // ── Default deny ───────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

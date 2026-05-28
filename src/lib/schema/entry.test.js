@@ -1,0 +1,106 @@
+import { describe, it, expect } from 'vitest'
+import { Entry } from './entry'
+import { buildEntry, ts } from './_fixtures'
+
+describe('Entry', () => {
+  it('accepts a minimal valid entry', () => {
+    expect(() => Entry.parse(buildEntry())).not.toThrow()
+  })
+
+  describe('seat consistency', () => {
+    it('rejects currentTableId set with currentSeatNumber null', () => {
+      const result = Entry.safeParse(
+        buildEntry({ currentTableId: 'table-1', currentSeatNumber: null })
+      )
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects currentSeatNumber set with currentTableId null', () => {
+      const result = Entry.safeParse(
+        buildEntry({ currentTableId: null, currentSeatNumber: 4 })
+      )
+      expect(result.success).toBe(false)
+    })
+
+    it('accepts both set', () => {
+      expect(() =>
+        Entry.parse(buildEntry({ currentTableId: 'table-1', currentSeatNumber: 4 }))
+      ).not.toThrow()
+    })
+
+    it('accepts both null', () => {
+      expect(() =>
+        Entry.parse(buildEntry({ currentTableId: null, currentSeatNumber: null }))
+      ).not.toThrow()
+    })
+  })
+
+  describe('bust consistency', () => {
+    it('rejects bustedAt set with bustedInSessionId null', () => {
+      const result = Entry.safeParse(
+        buildEntry({ bustedAt: ts(), bustedInSessionId: null })
+      )
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects bustedInSessionId set with bustedAt null', () => {
+      const result = Entry.safeParse(
+        buildEntry({ bustedAt: null, bustedInSessionId: 'session-1' })
+      )
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects busted entry with currentTableId still set', () => {
+      const result = Entry.safeParse(
+        buildEntry({
+          bustedAt: ts(),
+          bustedInSessionId: 'session-1',
+          currentTableId: 'table-1',
+          currentSeatNumber: 4,
+        })
+      )
+      expect(result.success).toBe(false)
+      expect(result.error.issues.some((i) => i.path.includes('currentTableId'))).toBe(true)
+    })
+
+    it('accepts a properly busted entry (table cleared)', () => {
+      expect(() =>
+        Entry.parse(
+          buildEntry({
+            bustedAt: ts(),
+            bustedInSessionId: 'session-1',
+            currentTableId: null,
+            currentSeatNumber: null,
+            finishingPlace: 50,
+          })
+        )
+      ).not.toThrow()
+    })
+  })
+
+  describe('voided consistency (all three or none)', () => {
+    it('rejects partial: voidedAt only', () => {
+      const result = Entry.safeParse(buildEntry({ voidedAt: ts() }))
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects partial: voidedBy + voidReason but no voidedAt', () => {
+      const result = Entry.safeParse(
+        buildEntry({ voidedBy: 'manager-1', voidReason: 'data entry mistake' })
+      )
+      expect(result.success).toBe(false)
+    })
+
+    it('accepts all three set', () => {
+      expect(() =>
+        Entry.parse(
+          buildEntry({
+            voidedAt: ts(),
+            voidedBy: 'manager-1',
+            voidReason: 'data entry mistake',
+          })
+        )
+      ).not.toThrow()
+    })
+  })
+})

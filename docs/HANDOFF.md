@@ -2,13 +2,38 @@
 
 > This is the living "where we left off" doc. **Update it at the end of every Claude Code session and every Cowork planning session.** Commit alongside whatever else changed. It is how context survives between sessions and across tool switches.
 
-Last updated: **27 May 2026** by Claude — end of long Phase 1 foundations session. Auth (1.1), schema (1.3), validators (1.4), data layer (1.6), and wallet module (1.7) all implemented. Tests deferred to next session per scope-vs-context call. See "Next session: tier-1 testing setup" at the bottom.
+Last updated: **28 May 2026** by Claude — testing session. Tier 1 (vitest + validator + wallet unit tests, 193 → 200 tests after a merged spinoff), then tier 2 (Firestore emulator + task 1.2 rules + rules-unit-testing matrix, 174 tests). JDK 21 installed on this machine to unblock the emulator. See the "This session" block below for detail and "Next session" at the bottom.
 
 ---
 
 ## Project phase
 
 **Phase 1 — Foundations: in progress, week 2 of 12.**
+
+## This session (28 May 2026)
+
+- **Tier 1 unit testing landed.** Vitest installed; `npm test` runs the suite in ~1.5s. 200 tests across 19 files covering: `balanceDelta` / `ticketBalanceDelta` math, every `superRefine` invariant across the 9 collection schemas (one `.test.js` file per schema + a shared `_fixtures.js`), and every wallet operation's happy path + every typed-error rejection path (`_test-helpers.js` factory builds a fresh mock store + tx per test). Both HARD invariants pinned with no-override coverage. `payViaTicket` manager-override path verified to emit the `manager.override` audit entry. Reconciliation aggregation + drift detection covered.
+
+- **Real bug found and fixed mid-session.** Reconciliation was inferring adjustment direction from the free-text `notes` field via `notes.includes('credit')`, which mis-classified a debit whose reason naturally mentioned "credit" (e.g., "over-credited yesterday"). The spinoff task added an explicit `direction: 'credit'|'debit'` field to walletTransactions (required when type=adjustment, null otherwise), updated `writeAdjustment` to set it, and rewrote both `getReconciliationTotals` and `verifyBalanceMatchesLedger` to read it directly. Schema layer enforces presence on adjustment rows. Regression tests added with adversarial note text.
+
+- **Task 1.2 (Firestore rules) DONE.** `firestore.rules` at project root. Scope per the "rules are role-gate only" decision: per-collection allow expressions check `request.auth.token.role` against one of the four valid roles. Access matrix (see DECISIONS entry from this session for justification):
+
+  | Collection | Read | Write |
+  |---|---|---|
+  | tournaments, sessions, tables, structureTemplates, tournamentTemplates | any role | manager, td |
+  | entries, bountyDraws, walletTransactions, tickets | any role | manager, td, cashier |
+  | players, withdrawalRequests | any role | manager, cashier |
+  | auditLog | manager only | manager, td, cashier |
+
+  Unauthenticated, unknown-role, and unknown-collection-path requests all hit the default-deny. Business invariants (wallet ≥ 0, ticket face-value, status transitions, etc.) are NOT enforced here — that's the wallet/UI layer's job, per the decision.
+
+- **Tier 2 testing infrastructure landed.** `@firebase/rules-unit-testing` added as devDep. `firebase.json` configured for the Firestore emulator on port 8080. `tests/firestore-rules/firestore-rules.test.js` runs the full role × collection × read/write matrix plus unauthenticated, no-claim, and unknown-role bands plus default-deny. **174 tests pass.** Run with `npm run test:rules` — that wraps the suite in `firebase emulators:exec` so the emulator boots, tests run, emulator shuts down.
+
+- **JDK 21 installed.** Firestore emulator requires Java. Installed Eclipse Temurin 21 via winget. New shells will pick it up from system PATH automatically; in-session shells need `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin:$PATH"` if `java` isn't visible yet.
+
+- **Wallet README and schema README** updated to reflect tests landing (was: "tests deferred"; now: tier 1 alongside the code, tier 2 in `tests/firestore-rules/`).
+
+## Previous session (27 May 2026)
 
 Five tasks completed in the kick-off session:
 
@@ -74,15 +99,14 @@ The audit was the biggest source of new information in this session. Headline fi
 
 ## What's next (in priority order)
 
-1. **Tier 1 tests** (next session — see the **"Next session: tier-1 testing setup"** section at the bottom of this doc for the full plan). Sets up vitest + writes unit tests for validators + wallet module against mocked data layer. ~3-4 hours. Should land before more Phase 1 code is built on top of the wallet module.
-2. **Task 1.2 (Firestore rules)** — narrowed scope per the new app-not-rules philosophy: role-based access only. Pairs naturally with tier 2 testing (Firebase Emulator) — set up emulator and rules tests together. Probably 1-2 hours of rules + 1-2 hours of emulator setup.
-3. **Task 1.5 (App shell with persona-tailored landings)** — needs Guy's UI direction on TD and Registration Desk landings. Can wait until after rules.
-4. **Task 1.8 (Duplicate-player merge tool)** — admin UI for merging duplicate player records.
-5. **Task 1.9 (Audit log scaffold UI)** — log writers are done; needs a simple admin viewer UI.
-6. **Task 1.10 (iPad layout pass)** — once 1.5 lands.
-7. **Drop the legacy `tournaments` collection** (1,695 docs in `playlive-25a17`). Required before the canonical schema can reuse the collection name. Claude has the script ready to write; waits for explicit go from Guy (destructive).
-8. **Narrow SA role back down.** The audit SA currently has `Editor`. Audit is done; downgrade to `Cloud Datastore Viewer` or disable. Not urgent.
-9. **(For Guy's awareness) Provision a real Manager user** in Firebase Auth. Steps in `docs/operator/initial-admin-setup.md`. Not blocking — mock mode covers UI iteration.
+1. **Deploy the rules to `playlive-25a17`.** `firestore.rules` is written and tested against the emulator, but not yet deployed. Run `npx firebase deploy --only firestore:rules --project playlive-25a17`. Note: this is the hard gate "Firestore rules deployed before any production write" from the SOW. Waits on explicit go from Guy (touches production).
+2. **Task 1.5 (App shell with persona-tailored landings)** — needs Guy's UI direction on TD and Registration Desk landings.
+3. **Task 1.8 (Duplicate-player merge tool)** — admin UI for merging duplicate player records.
+4. **Task 1.9 (Audit log scaffold UI)** — log writers are done; needs a simple admin viewer UI.
+5. **Task 1.10 (iPad layout pass)** — once 1.5 lands.
+6. **Drop the legacy `tournaments` collection** (1,695 docs in `playlive-25a17`). Required before the canonical schema can reuse the collection name. Claude has the script ready to write; waits for explicit go from Guy (destructive).
+7. **Narrow SA role back down.** The audit SA currently has `Editor`. Audit is done; downgrade to `Cloud Datastore Viewer` or disable. Not urgent.
+8. **(For Guy's awareness) Provision a real Manager user** in Firebase Auth. Steps in `docs/operator/initial-admin-setup.md`. Not blocking — mock mode covers UI iteration.
 
 ## What's blocked
 
@@ -94,154 +118,36 @@ Nothing right now. Phase 1 is fully unblocked.
 
 None outstanding for design.
 
-## Next session: tier-1 testing setup
+## Next session
 
-Decided this session: set up vitest + unit tests for the validators and wallet module before tackling any more Phase 1 work. The wallet module is the highest-stakes code in v1 (money handling) and is freshly built — testing it now is much cheaper than testing it later. Tier 2 (Firestore Emulator for rules + integration tests) lands later, with task 1.2.
+Top of the queue is **deploying the rules to `playlive-25a17`** (`npx firebase deploy --only firestore:rules --project playlive-25a17`) — this is the SOW's "rules deployed before any production write" hard gate. Waits on Guy's go since it touches production. After that: task 1.5 (app shell).
 
-### Scope (tier 1 only — defer tier 2)
+## Test infrastructure (reference)
 
-- **Install vitest** as a devDep. No other test runner. No jsdom needed for tier 1 (no UI tests yet).
-- **Mock the data layer** — every wallet test stubs `runValidatedTransaction` so no Firestore is hit. Tests run in milliseconds.
-- **Cover:** validator cross-field invariants + `balanceDelta` pure math + every wallet operation's happy path + every wallet operation's HARD invariant rejection.
-- **STOP** before doing tier 2. Tier 2 needs the Firebase Emulator Suite (requires Java on the dev machine), and lands naturally with task 1.2 (Firestore rules). Don't do it in this testing session.
+For future sessions and future devs.
 
-### Setup checklist
-
-```bash
-cd "/c/Users/green/Documents/PlayLive Tournament Tool/Application"
-npm install -D vitest
-# Add to package.json scripts: "test": "vitest run", "test:watch": "vitest"
-# Add vitest.config.js with minimal config (Node environment, ESM, no jsdom)
+```
+npm test               # tier 1: validators + wallet (200 tests, ~1.5s)
+npm run test:watch     # vitest watch mode
+npm run test:rules     # tier 2: emulator + firestore.rules (174 tests, ~7s)
+                       #         requires Java on PATH — see "Dev prereqs" below
+npm run lint
+npm run build
 ```
 
-### Mock pattern (the load-bearing piece)
+**Tier 1** (`src/**/*.test.js`): pure unit tests, no Firestore. Each wallet test `vi.mock`s `../firestore` and replaces `runValidatedTransaction` with a callback that hands the wallet code a fake `tx`. A small in-memory store in `src/lib/wallet/_test-helpers.js` lets tests seed docs and assert on `set`/`update` calls. Each schema's tests use `src/lib/schema/_fixtures.js` to build validator-passing base docs and override one field per case.
 
-The wallet module imports from `../firestore`. Tests `vi.mock('../firestore')` and provide a stubbed `runValidatedTransaction` that immediately invokes the callback with a mock `tx` object whose `get`/`set`/`update` are `vi.fn()`s. Tests configure the mock to return controlled values (e.g. a Player with a known balance) and assert on what `set`/`update` were called with.
+**Tier 2** (`tests/firestore-rules/*.test.js`): boots the Firestore emulator via `firebase emulators:exec`, uses `@firebase/rules-unit-testing` to assert the per-role × per-collection access matrix. The rules file is `firestore.rules` at the project root.
 
-Rough sketch — adapt as needed:
+### Dev prereqs
 
-```js
-// src/lib/wallet/deposit.test.js
-import { vi, describe, it, expect, beforeEach } from 'vitest'
-import { Timestamp } from 'firebase/firestore'
-
-// Mock the data layer module
-vi.mock('../firestore', () => ({
-  runValidatedTransaction: vi.fn(),
-  generateId: vi.fn(() => 'mock-uuid'),
-  auditLog: { writeAuditLogSafe: vi.fn() },
-  paths: {
-    playerPath: (id) => ['players', id],
-    walletTransactionPath: (pid, tid) => ['players', pid, 'walletTransactions', tid],
-  },
-}))
-
-import { runValidatedTransaction, auditLog } from '../firestore'
-import { recordDeposit } from './deposit'
-import { Player, WalletTransaction } from '../schema'
-
-describe('recordDeposit', () => {
-  let mockTx
-  beforeEach(() => {
-    mockTx = { get: vi.fn(), set: vi.fn(), update: vi.fn() }
-    runValidatedTransaction.mockImplementation(async (fn) => fn(mockTx))
-    auditLog.writeAuditLogSafe.mockResolvedValue(undefined)
-  })
-
-  it('credits walletBalance and totalDeposited by the deposit amount', async () => {
-    mockTx.get.mockResolvedValue({
-      id: 'player-1', firstName: 'Test', lastName: 'User', phone: '555',
-      walletBalance: 5000, ticketBalance: 0, totalDeposited: 5000,
-      // ... fill in required Player fields
-    })
-    const result = await recordDeposit({
-      playerId: 'player-1', amount: 1000, method: 'cash', reference: 'cash',
-      actorId: 'cashier-1', actorRole: 'cashier',
-    })
-    expect(result.newBalance).toBe(6000)
-    expect(mockTx.update).toHaveBeenCalledWith(
-      ['players', 'player-1'],
-      expect.objectContaining({ walletBalance: 6000, totalDeposited: 6000 })
-    )
-  })
-
-  it('rejects amount <= 0', async () => {
-    await expect(recordDeposit({ playerId: 'x', amount: 0, method: 'cash', reference: '', actorId: 'a', actorRole: 'cashier' }))
-      .rejects.toThrow(/amount must be > 0/)
-  })
-})
-```
-
-Things to figure out on the way (probably trip-ups):
-
-- **Firestore Timestamp.** `z.instanceof(Timestamp)` in validators expects real Timestamp instances. Tests can use `Timestamp.now()` from `firebase/firestore` directly — that's a real instance.
-- **`paths` is exported as a namespace** (`export * as paths from './_paths'`). The mock structure above handles it.
-- **Validator pulls in `firebase-admin` indirectly?** No — validators are pure Zod + Firestore client SDK (browser-friendly). Should mock fine.
-- **`crypto.randomUUID`.** Mock `generateId()` instead of relying on the actual crypto API in test environment.
-
-### Priority order
-
-Do in this exact order. Each is a discrete chunk; stop and verify (lint + test pass) after each before moving on.
-
-1. **vitest setup** (~30 min) — install, config, package.json scripts, smoke test (one trivial passing test in a `setup.test.js` file).
-
-2. **`_shared.js` — `balanceDelta`** (~15 min) — pure function. Test every type. Sanity-check the +/- math:
-   - `deposit` / `winCredit` / `openingBalance` / `managerCredit` → `+amount`
-   - `spend` (method='wallet') → `-amount`; (other methods) → `0`
-   - `withdrawalComplete` / `managerDebit` → `-amount`
-   - `ticketUse` / `withdrawalRequest` / `withdrawalCancel` → `0`
-   - `adjustment` → throws (caller must use explicit sign)
-   - unknown type → throws
-
-3. **Validators** (~1.5 hr) — `src/lib/schema/*.test.js` files. Cover:
-   - **`Tournament`:** isMultiFlight⇒isMultiDay refinement; satelliteConfig iff gameType=satellite; bountyPoolConfig iff gameType=mysteryBounty; currentStructureIndex in bounds of structure; structure discriminated union with sequential blindNumber.
-   - **`Player`:** walletBalance < 0 rejected (schema layer); merge state consistency (isMerged ↔ mergedIntoId + mergedAt).
-   - **`WithdrawalRequest`:** state-dependent field presence (pending must have nulls; completed must have completedBy/At/walletTransactionId).
-   - **`WalletTransaction`:** TYPES_REQUIRING_NULL_METHOD enforcement; openingBalance requires actorRole='system' + reference='opening_balance'; managerCredit/Debit requires actorRole='manager' + non-empty notes; ticketUse requires relatedDocId.
-   - **`Session`:** maximumEndIndex nullable; non-final session needs termination criterion; actualEndIndex ≤ maximumEndIndex when both set; same-day flights share maximumStart/EndIndex.
-   - **`Entry`:** seat consistency (currentTableId & currentSeatNumber both set or both null); bust consistency (bustedAt & bustedInSessionId together; currentTableId null when busted); voided fields together.
-   - **`Table`:** seats.length === seatCount; seat numbers 1..N unique; closedAt requires openedAt; status=broken requires closedAt.
-   - **`Ticket`:** used-state fields together (all three set when state=used; all null when state=unused).
-   - **`BountyDraw`:** knocker ≠ knocked-out.
-
-4. **Wallet operations** (~2 hr) — `src/lib/wallet/*.test.js` files. For each operation: at least one happy-path test, plus rejection tests for every typed error it can throw. Cover at minimum:
-   - **`recordDeposit`:** happy path; rejects amount ≤ 0; rejects invalid method.
-   - **`payViaExternalMethod`:** happy path with cash; happy path with EFTPOS; rejects invalid method (e.g. 'wallet').
-   - **`payViaWallet`:** happy path; **HARD: rejects when balance < totalCost** (InsufficientWalletBalanceError) — no override accepted.
-   - **`payViaTicket`:** happy path with faceValue == totalCost; faceValue > totalCost (venue keeps the difference); faceValue < totalCost with top-up; faceValue < totalCost with managerOverride; **rejects when faceValue < totalCost AND no top-up AND no override** (TicketBelowFaceValueError); rejects already-used ticket; verifies `manager.override` audit emitted when override used.
-   - **`createWithdrawalRequest`:** happy path; rejects non-cashier/manager.
-   - **`completeWithdrawal`:** happy path; **rejects non-manager** (RoleNotAuthorizedError); rejects non-pending state (WithdrawalStateError); **HARD: rejects when balance insufficient**.
-   - **`cancelWithdrawal`:** happy path; rejects non-pending state; rejects empty cancelReason.
-   - **`confirmWinCredit`:** happy path; rejects amount ≤ 0.
-   - **`confirmBountyWinCredit`:** happy path; **rejects double-confirm** (when bountyDraw.walletTransactionId already set).
-   - **`issueTicket`:** happy path; rejects faceValue ≤ 0.
-   - **`recordOpeningBalance`:** happy path; rejects amount ≤ 0.
-   - **`writeAdjustment`:** credit happy path; debit happy path; **HARD: rejects debit when balance insufficient**; rejects invalid direction; rejects empty reason.
-   - **`recordManagerCredit`:** happy path; **rejects non-manager**; rejects amount ≤ 0; rejects empty reason; verifies `wallet.managerCredit` audit emitted.
-   - **`recordManagerDebit`:** happy path; **rejects non-manager**; **HARD: rejects when balance insufficient** (no override); rejects empty reason.
-
-5. **Reconciliation** (~30 min) — `getReconciliationTotals` aggregates correctly across all types; `verifyBalanceMatchesLedger` correctly sums and reports drift.
-
-### Stop points
-
-- After step 1 (vitest setup): run `npm test` and confirm the smoke test passes. Commit if Guy approves.
-- After step 3 (validators): re-run lint + test, confirm green.
-- After step 4 (wallet operations): re-run lint + test. **STOP HERE** — do NOT proceed to tier 2 (Firebase Emulator) in this session. Surface results to Guy and discuss what to commit.
-
-### What to read first in the new session
-
-1. `CLAUDE.md`
-2. `docs/HANDOFF.md` — focus on this section
-3. `src/lib/wallet/README.md` and `src/lib/schema/README.md` — what's actually being tested
-4. `src/lib/firestore/README.md` — explains the `runValidatedTransaction` pattern that needs mocking
-5. `docs/schema/canonical-schema.md` §6.2 — the invariant table that drives the rejection tests
-
-Don't re-read the chat history of this session — everything load-bearing is in the docs.
+- **Node**: as in `package.json` engines.
+- **Java**: required only for `npm run test:rules`. Install Eclipse Temurin (JDK 21 used on Guy's machine; older versions probably work but untested). Windows: `winget install EclipseAdoptium.Temurin.21.JDK`. After install, restart the shell so `java` is on PATH. If `npm run test:rules` errors with "Could not spawn `java -version`" in an existing shell, that shell hasn't picked up the new PATH yet — open a new terminal or, in bash, `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin:$PATH"`.
 
 ## Deferred follow-ups (not blocking, not this-session)
 
-- **Tier 2 testing (Firebase Emulator).** Lands with task 1.2 (rules). Will require Java on the dev machine.
 - **Drop the legacy `tournaments` collection** (1,695 docs). Destructive — waits on explicit go from Guy.
+- **Deploy `firestore.rules` to `playlive-25a17`.** Tested against emulator (174 tests green); not yet pushed to production. Required before any production write.
 
 **Recently resolved (27 May 2026):**
 

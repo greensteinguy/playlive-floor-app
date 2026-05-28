@@ -83,3 +83,8 @@ For these we rely on the corresponding module's logic. Validators are the shape-
 4. Add a `.superRefine()` block for cross-field invariants.
 5. Export from `index.js`.
 6. Update the file layout in this README.
+7. Add a `<singular>.test.js` alongside it. Use [_fixtures.js](_fixtures.js) to build a valid base doc and override one field per test case.
+
+## Testing
+
+One `.test.js` file per collection, plus a shared [_fixtures.js](_fixtures.js) that produces validator-passing base objects. Tests cover every `.superRefine` invariant in both directions (acceptance + rejection). Run with `npm test`.

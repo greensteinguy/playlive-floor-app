@@ -19,8 +19,9 @@ import { InsufficientWalletBalanceError } from './errors'
  *
  * The adjustment carries a signed direction: 'credit' adds to the balance,
  * 'debit' subtracts from it. The walletTransactions row's amount is always
- * positive (per the sign convention); the direction is recorded in metadata.notes
- * AND in the audit log so reconciliation can group adjustments correctly.
+ * positive (per the sign convention); the direction is recorded in its own
+ * `direction` field (and echoed in notes / audit log for human readability)
+ * so reconciliation can group adjustments correctly without parsing notes.
  *
  * Always enforces the HARD wallet ≥ 0 invariant: a debit adjustment that
  * would push balance negative is rejected.
@@ -72,8 +73,9 @@ export async function writeAdjustment({
       tx.set(paths.walletTransactionPath(playerId, walletTransactionId), WalletTransaction, {
         playerId,
         type: 'adjustment',
-        amount, // always positive — direction is metadata
+        amount, // always positive — direction lives in its own field
         method: null,
+        direction,
         reference: null,
         relatedDocId,
         actorId,

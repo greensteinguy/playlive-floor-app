@@ -31,6 +31,10 @@ const Type = z.enum([
 // Five payment methods + null for types where method doesn't apply.
 const Method = z.enum(['cash', 'eftpos', 'payid', 'wallet', 'ticket'])
 
+// Direction is only meaningful for type='adjustment' (compensating credit vs debit).
+// All other types encode their balance effect in `type` itself.
+const Direction = z.enum(['credit', 'debit'])
+
 // Types where `method` MUST be null (the operation isn't a payment-method-bearing one).
 const TYPES_REQUIRING_NULL_METHOD = new Set([
   'withdrawalRequest',
@@ -52,6 +56,7 @@ export const WalletTransaction = z
     amount: PositiveMoney, // HARD invariant: always > 0
 
     method: Method.nullable(),
+    direction: Direction.nullable().default(null), // required iff type='adjustment'
     reference: z.string().nullable(),
     relatedDocId: DocumentRef.nullable(),
 
@@ -76,6 +81,24 @@ export const WalletTransaction = z
         code: z.ZodIssueCode.custom,
         path: ['method'],
         message: `method is required when type='${tx.type}'`,
+      })
+    }
+
+    // direction is required iff type='adjustment' (encodes credit vs debit for the
+    // compensating row; reconciliation reads this field directly rather than
+    // parsing notes — see src/lib/wallet/reconciliation.js).
+    if (tx.type === 'adjustment' && tx.direction === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['direction'],
+        message: "direction is required when type='adjustment' (must be 'credit' or 'debit')",
+      })
+    }
+    if (tx.type !== 'adjustment' && tx.direction !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['direction'],
+        message: `direction must be null when type='${tx.type}' (only adjustment rows carry direction)`,
       })
     }
 

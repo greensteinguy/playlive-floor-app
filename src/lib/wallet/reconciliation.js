@@ -73,10 +73,8 @@ export async function getReconciliationTotals({ since, until }) {
         totals.withdrawalsCompleted += tx.amount
         break
       case 'adjustment': {
-        // Direction is encoded in notes (per writeAdjustment): "adjustment: credit ..."
-        const isCredit = (tx.notes ?? '').includes('credit')
-        if (isCredit) totals.adjustments.credit += tx.amount
-        else totals.adjustments.debit += tx.amount
+        if (tx.direction === 'credit') totals.adjustments.credit += tx.amount
+        else if (tx.direction === 'debit') totals.adjustments.debit += tx.amount
         break
       }
       case 'managerCredit':
@@ -128,8 +126,7 @@ export async function verifyBalanceMatchesLedger(playerId) {
   let derived = 0
   for (const tx of txs) {
     if (tx.type === 'adjustment') {
-      const isCredit = (tx.notes ?? '').includes('credit')
-      derived += isCredit ? tx.amount : -tx.amount
+      derived += tx.direction === 'credit' ? tx.amount : -tx.amount
     } else {
       derived += balanceDelta({ type: tx.type, amount: tx.amount, method: tx.method })
     }
