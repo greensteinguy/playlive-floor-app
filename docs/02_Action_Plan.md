@@ -1,8 +1,8 @@
 # Action Plan — PlayLive Floor App
 
-**Version:** v0.6 — Companion to SOW v0.7
+**Version:** v0.7 — Companion to SOW v0.7
 
-> Markdown mirror of `02_Action_Plan.docx` for Claude Code consumption. **v0.5 has not been mirrored back to the .docx yet** — when Guy next refreshes the team-facing version, the .docx needs to pick up the deltas below.
+> Markdown mirror of `02_Action_Plan.docx` for Claude Code consumption. **v0.5 / v0.6 / v0.7 have not been mirrored back to the .docx yet** — when Guy next refreshes the team-facing version, the .docx needs to pick up the deltas below.
 
 ## Structure
 
@@ -12,6 +12,26 @@ v0.3 splits the work into two phases of activity:
 - **Rollout phase** — runs after the build is feature-complete. Covers handbook, training, parallel run with Casinoware, and cutover. Calendar time depends on PlayLive's tournament schedule.
 
 Owner column: `Guy` = decision-maker / reviewer. `Claude` = AI dev collaborator producing the code / designs / docs.
+
+## Changelog (v0.6 → v0.7)
+
+Phase 1 implementation tasks landed. Detail per task lives in the task rows below; this changelog is the executive summary.
+
+**Phase 1 completion status: 9 of 10 tasks ✅ done, 1 pending (1.10 on-device smoke test).**
+
+- **Task 1.2 (Firestore rules)** implemented + deployed to `playlive-25a17`. Role-based access matrix; default-deny on unknown paths. 174 rules-unit-tests against the emulator pass.
+- **Task 1.5 (App shell)** implemented. Persona-tailored landings (Manager + Cashier land at `/desk`, TD + Read-only land at `/td`), permission-filtered sidebar (single source of truth in `src/shell/nav.js`), DIY toast system, error boundaries (app-level + per-route), dev-only mock role switcher.
+- **Task 1.5 follow-up — registration flow direction confirmed.** Tournament list is the entry point for cashier-led registration (cashier + TD + manager see it); the standalone "register player" affordance was removed in favour of "pick tournament → register player into it" navigation. Tournament creation is manager-only at the UI layer (rules permit TD+manager writes generally, the UI gates the create action specifically).
+- **Task 1.8 (Duplicate-player merge tool)** implemented. New `src/lib/players/` module with atomic `mergePlayer` operation (transactional balance + ticket transfer; source marked `isMerged`; `player.merged` audit row). Heuristic: normalized-phone matching (collapses AU country code + leading-zero variants). Refuses on already-merged, source===target, active tournament entries, or pending withdrawals.
+- **Task 1.9 (Audit log viewer)** implemented. Manager-only filterable/paginated viewer at `/admin/audit`. Indexes declared in `firestore.indexes.json` (NOT yet deployed to `playlive-25a17` — that's the remaining production action).
+- **Task 1.10 (iPad layout pass)** code-review pass done; on-device smoke test pending Guy. Body scroll lock when drawer open, all tap targets bumped to ≥44px, `active:` states added for touch feedback. Runbook for the on-device pass lives in `docs/HANDOFF.md`.
+- **Reusable CSV export utility** (`src/lib/csv.js`, 23 unit tests) added per Guy's "across the board" direction. Wired into the audit log viewer and the dedupe candidate list. Future list pages (tournaments, players, walletTransactions, reconciliation) wire export in one line.
+- **Tier 1 testing landed** (vitest, 244 unit tests covering validators, wallet operations, CSV utility, player merge, dedupe heuristic). **Tier 2 testing landed** (emulator + `@firebase/rules-unit-testing`, 174 rules-matrix tests). `npm test` for tier 1, `npm run test:rules` for tier 2.
+- **Wallet schema fix** surfaced during testing: `walletTransactions.direction: 'credit' | 'debit' | null` is now an explicit field (required when `type='adjustment'`, null otherwise). Replaces a brittle `notes.includes('credit')` heuristic that mis-classified debits whose reason text mentioned "credit". Reconciliation totals + `verifyBalanceMatchesLedger` updated.
+- **Local emulator dev workflow** added for "verify a feature with real data" loops. `VITE_FIRESTORE_EMULATOR=true` flag, separate `firebase.dev.json` + `firestore.dev.rules`, seed scripts (`npm run seed:audit`, `npm run seed:dedupe`), `npm run emulator`. Project id `demo-playlive` distinct from production. Detailed runbook in `docs/HANDOFF.md`.
+- **JDK 21 installed** on Guy's machine (Eclipse Temurin via winget) — required by the Firestore emulator. Documented in HANDOFF.
+
+**Hard gate satisfied:** Firestore rules deployed to `playlive-25a17` (end Phase 1 gate). **Remaining production action:** deploy `firestore.indexes.json` so the audit log viewer's filtered queries work in production.
 
 ## Changelog (v0.5 → v0.6)
 
@@ -58,7 +78,8 @@ Came out of the Phase 0 walkthrough + wallet shadowing. Detail in `DECISIONS.md`
 
 - Build phase critical path: Phase 0 → 1 → 2 → 3 → 4 → 6.
 - Phase 5 (display + iPad polish) parallelisable with Phase 4.
-- **Hard gate before any production write:** Firestore rules deployed (end Phase 1).
+- **Hard gate before any production write:** Firestore rules deployed (end Phase 1) — ✅ **satisfied 28 May 2026.**
+- **Remaining production action** (not a gate, but enables a built feature): deploy `firestore.indexes.json` to `playlive-25a17`; required for the audit log viewer's filtered queries to work in production. Run `npx firebase deploy --only firestore:indexes --project playlive-25a17`.
 - **Hard gate before cutover** (in Rollout phase): floor staff UAT sign-off.
 
 ---
@@ -78,7 +99,7 @@ Lock down Casinoware feature set, audit existing Firestore, set up dev environme
 | 0.5 | ADR-001: confirm online-only architecture. | ADR-001 | Claude |
 | 0.6 | Wallet & payments discovery: shadow registration desk for a shift; document current deposit / spend / ticket / withdrawal flow; design v1 wallet ledger shape. | Wallet design note | Guy + Claude |
 
-### Phase 1 — Foundations  (Weeks 2–3)
+### Phase 1 — Foundations  (Weeks 2–3) — implementation tasks ✅ complete (1.10 on-device smoke test pending)
 
 Auth, security rules, schema, validators, wallet ledger, app shell. Nothing user-facing ships yet.
 
