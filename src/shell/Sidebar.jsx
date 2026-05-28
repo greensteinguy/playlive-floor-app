@@ -54,11 +54,12 @@ export default function Sidebar({ onNavigate }) {
                   to={item.to}
                   end={item.to === '/desk' || item.to === '/td'}
                   onClick={onNavigate}
+                  // py-3 = ~44px tap target per iOS HIG.
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150 ${
+                    `flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition-colors duration-150 ${
                       isActive
                         ? 'bg-gold-500/10 text-gold-400 font-medium'
-                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                        : 'text-white/60 hover:text-white hover:bg-white/5 active:bg-white/10'
                     }`
                   }
                 >
@@ -84,7 +85,7 @@ export default function Sidebar({ onNavigate }) {
         <button
           type="button"
           onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/50 hover:text-white hover:bg-white/5 transition-colors duration-150"
+          className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-white/50 hover:text-white hover:bg-white/5 active:bg-white/10 transition-colors duration-150"
         >
           <span className="text-base w-5 text-center">⎋</span>
           Sign out

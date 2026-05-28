@@ -2,7 +2,7 @@
 
 > This is the living "where we left off" doc. **Update it at the end of every Claude Code session and every Cowork planning session.** Commit alongside whatever else changed. It is how context survives between sessions and across tool switches.
 
-Last updated: **28 May 2026** by Claude — testing + shell + audit-log + dedupe session. Tier 1 (vitest, 200 → 223 tests with CSV utility added), tier 2 (Firestore emulator + 174 rules tests), `firestore.rules` deployed to `playlive-25a17`, task 1.5 (app shell), task 1.9 (audit log viewer + reusable CSV utility + composite indexes file). See the "This session" block below for detail and "Next session" at the bottom.
+Last updated: **28 May 2026** by Claude — testing + shell + audit-log + dedupe + iPad pass session. Phase 1 implementation tasks complete (1.1–1.9 ✅; 1.10 code-review done, on-device smoke test pending Guy). Tier 1 (vitest, 200 → 223 tests with CSV utility added), tier 2 (Firestore emulator + 174 rules tests), `firestore.rules` deployed to `playlive-25a17`, task 1.5 (app shell), task 1.9 (audit log viewer + reusable CSV utility + composite indexes file). See the "This session" block below for detail and "Next session" at the bottom.
 
 ---
 
@@ -11,6 +11,25 @@ Last updated: **28 May 2026** by Claude — testing + shell + audit-log + dedupe
 **Phase 1 — Foundations: in progress, week 2 of 12.**
 
 ## This session (28 May 2026)
+
+- **Task 1.10 (iPad layout pass) — code-review pass DONE; on-device smoke test pending.** Reviewed every authenticated screen with iPad usability in mind.
+  - `index.html` already has the right viewport meta (`width=device-width, initial-scale=1.0, viewport-fit=cover`) + `apple-mobile-web-app-capable=yes` + `apple-mobile-web-app-status-bar-style=black-translucent`. User-scaling intentionally NOT disabled (accessibility).
+  - Login page already iPad-friendly (`py-3` on inputs + submit button ≈ 44px, correct `inputMode`/`autoComplete`).
+  - **Fixes made:**
+    - `AppShell.jsx`: body scroll lock when the drawer is open (iOS Safari pages would otherwise drag behind the overlay). Hamburger button: `w-10 h-10` → `w-11 h-11` (44×44 per iOS HIG).
+    - `Sidebar.jsx`: nav item + sign-out tap targets bumped from `py-2.5` to `py-3` (≈ 44px). Added `active:` states so touch shows visual feedback.
+    - `AuditLog.jsx`: date-preset chips, Clear filters, Export CSV all bumped from `py-1.5` to `py-2`. Table rows bumped from `py-2.5` to `py-3` and given `active:bg-white/[0.06]` for tap feedback.
+    - `Dedupe.jsx`: Inspect button bumped from `py-1` to `py-2`. Export CSV button matched to the same `py-2` standard. Candidate-list table rows bumped `py-2.5` → `py-3`.
+  - Breakpoint sanity: Tailwind's `md:` (≥768px) means iPad portrait (820px+) and any landscape orientation show the sidebar by default; only iPhone-class screens and iPad mini portrait (≤767px width) collapse to the drawer.
+
+  **Still needs an actual iPad** — code review can't verify these. Smoke-test runbook for Guy:
+  - Drawer open/close feel; tap-outside-to-dismiss; no underlying scroll while open.
+  - iOS Safari date-picker behaviour on the AuditLog "Custom" date range.
+  - **CSV download behaviour** — Safari on iPad handles `<a download>` blobs differently than desktop Chrome. May open inline, may prompt Save to Files, may go to Downloads. Verify on `/admin/audit` Export CSV and `/admin/dedupe` Export CSV.
+  - Keyboard behaviour when typing into the MERGE confirmation input on `/admin/dedupe` — input should stay visible above the keyboard.
+  - Home-indicator overlap — toasts and the mock-role-switcher sit `bottom-4` from the edge; on iPads with the home bar, this *might* feel cramped. If so, we'll add `env(safe-area-inset-bottom)` padding.
+  - Pinch-zoom works (it should — not disabled).
+  - Tap responsiveness — no 300ms delay expected (viewport meta is correct) but worth confirming.
 
 - **Task 1.8 (Duplicate-player merge tool) DONE.** New module `src/lib/players/` with:
   - `merge.js` — atomic `mergePlayer({sourceId, targetId, actorId, actorRole})`. Reads source + target + source's unused tickets, then in one transaction: transfers walletBalance + ticketBalance + totalDeposited onto target, re-keys unused tickets to target's subcollection (leaving used tickets attached to source for audit), marks source `isMerged=true / mergedIntoId / mergedAt`, writes a `player.merged` audit row.
@@ -142,8 +161,9 @@ The audit was the biggest source of new information in this session. Headline fi
 
 ## What's next (in priority order)
 
-1. **Deploy `firestore.indexes.json` to `playlive-25a17`.** Run `npx firebase deploy --only firestore:indexes --project playlive-25a17` once Guy approves (touches production; pairs with the rules deploy from earlier this session). The audit log viewer's filtered queries will error in production until this lands.
-2. **Task 1.10 (iPad layout pass)** — last task in Phase 1. Every operator screen tested on an actual iPad with touch input. Shell already has the drawer behaviour; smoke test the placeholder routes + login + landings + audit log viewer + dedupe tool.
+1. **iPad on-device smoke test (1.10 finishing step).** Code-review pass + fixes are in. Guy: open the dev URL on an iPad, run through the runbook in the "Task 1.10" block above, log issues. Most likely findings: CSV download UX (Safari Files-app prompt vs. inline), any home-indicator overlap on toasts / mock-role-switcher.
+2. **Deploy `firestore.indexes.json` to `playlive-25a17`.** Run `npx firebase deploy --only firestore:indexes --project playlive-25a17` once Guy approves (touches production; pairs with the rules deploy from earlier this session). The audit log viewer's filtered queries will error in production until this lands.
+3. **Phase 2 — Tournament Setup & Clock.** Once 1.10 sign-off lands, Phase 1 is closed and the build moves to Phase 2 (tournament list/create wizards, structure templates, the live clock).
 5. **Drop the legacy `tournaments` collection** (1,695 docs in `playlive-25a17`). Required before the canonical schema can reuse the collection name. Claude has the script ready to write; waits for explicit go from Guy (destructive).
 6. **Narrow SA role back down.** The audit SA currently has `Editor`. Audit is done; downgrade to `Cloud Datastore Viewer` or disable. Not urgent.
 7. **(For Guy's awareness) Provision a real Manager user** in Firebase Auth. Steps in `docs/operator/initial-admin-setup.md`. Not blocking — mock mode covers UI iteration.

@@ -126,7 +126,7 @@ function ListView({ groups, onPick, onExport }) {
         <button
           type="button"
           onClick={onExport}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gold-500/15 text-gold-300 hover:bg-gold-500/25"
+          className="px-3 py-2 rounded-lg text-xs font-medium bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35"
         >
           Export CSV
         </button>
@@ -145,16 +145,16 @@ function ListView({ groups, onPick, onExport }) {
           <tbody>
             {groups.map((g) => (
               <tr key={g.key} className="border-t border-white/5 hover:bg-white/[0.03]">
-                <td className="px-4 py-2.5 font-mono text-xs text-white/70">{g.key}</td>
-                <td className="px-4 py-2.5 text-white/80">{g.members.length}</td>
-                <td className="px-4 py-2.5 text-xs text-white/70">
+                <td className="px-4 py-3 font-mono text-xs text-white/70">{g.key}</td>
+                <td className="px-4 py-3 text-white/80">{g.members.length}</td>
+                <td className="px-4 py-3 text-xs text-white/70">
                   {g.members.map((m) => `${m.firstName} ${m.lastName}`).join(' · ')}
                 </td>
-                <td className="px-4 py-2.5 text-right">
+                <td className="px-4 py-3 text-right">
                   <button
                     type="button"
                     onClick={() => onPick(g.key)}
-                    className="px-3 py-1 rounded text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                    className="px-3 py-2 rounded text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white active:bg-white/15"
                   >
                     Inspect →
                   </button>

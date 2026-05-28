@@ -126,16 +126,17 @@ export default function AuditLog() {
         {/* Row 1: date presets */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 mr-2">Date</span>
+          {/* py-2 chips ≈ 36px tap height — wider gives the iPad finger room. */}
           {DATE_PRESETS.map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => setDatePresetId(p.id)}
               className={
-                'px-3 py-1.5 rounded-full text-xs font-mono uppercase tracking-wider ' +
+                'px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wider ' +
                 (datePresetId === p.id
                   ? 'bg-gold-500/20 text-gold-300'
-                  : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white')
+                  : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white active:bg-white/15')
               }
             >
               {p.label}
@@ -146,7 +147,7 @@ export default function AuditLog() {
             <button
               type="button"
               onClick={clearFilters}
-              className="px-3 py-1.5 rounded-lg text-xs text-white/50 hover:text-white hover:bg-white/5"
+              className="px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white hover:bg-white/5 active:bg-white/10"
             >
               Clear filters
             </button>
@@ -155,10 +156,10 @@ export default function AuditLog() {
               onClick={handleExport}
               disabled={exporting || mockMode}
               className={
-                'px-3 py-1.5 rounded-lg text-xs font-medium ' +
+                'px-3 py-2 rounded-lg text-xs font-medium ' +
                 (exporting || mockMode
                   ? 'bg-white/5 text-white/30 cursor-not-allowed'
-                  : 'bg-gold-500/15 text-gold-300 hover:bg-gold-500/25')
+                  : 'bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35')
               }
             >
               {exporting ? 'Exporting…' : 'Export CSV'}
@@ -357,12 +358,12 @@ function Row({ entry, expanded, onToggle }) {
     <>
       <tr
         onClick={onToggle}
-        className="border-t border-white/5 hover:bg-white/[0.03] cursor-pointer"
+        className="border-t border-white/5 hover:bg-white/[0.03] active:bg-white/[0.06] cursor-pointer"
       >
-        <td className="px-4 py-2.5 font-mono text-xs text-white/70 whitespace-nowrap">
+        <td className="px-4 py-3 font-mono text-xs text-white/70 whitespace-nowrap">
           {isoTs}
         </td>
-        <td className="px-4 py-2.5 whitespace-nowrap">
+        <td className="px-4 py-3 whitespace-nowrap">
           <div className="font-mono text-xs text-white/80 truncate max-w-[12rem]" title={entry.actorId}>
             {entry.actorId}
           </div>
@@ -372,10 +373,10 @@ function Row({ entry, expanded, onToggle }) {
             {entry.actorRole}
           </span>
         </td>
-        <td className="px-4 py-2.5 whitespace-nowrap font-mono text-xs text-gold-300/90">
+        <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-gold-300/90">
           {entry.actionType}
         </td>
-        <td className="px-4 py-2.5 whitespace-nowrap text-xs text-white/70">
+        <td className="px-4 py-3 whitespace-nowrap text-xs text-white/70">
           {entry.targetType ? (
             <>
               <span className="text-white/40">{entry.targetType}</span>
@@ -386,7 +387,7 @@ function Row({ entry, expanded, onToggle }) {
             <span className="text-white/30">—</span>
           )}
         </td>
-        <td className="px-4 py-2.5 text-right text-xs text-white/40">
+        <td className="px-4 py-3 text-right text-xs text-white/40">
           {entry.metadata && Object.keys(entry.metadata).length > 0
             ? expanded
               ? 'Hide'
