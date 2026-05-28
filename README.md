@@ -22,7 +22,13 @@ Visit `http://localhost:5173`. The venue display lives at `/display`.
 
 ## Project status
 
-In Phase 0 (Discovery & Setup) of a 12-week build phase, followed by a separate Rollout phase (UAT, training, cutover).
+In Phase 1 (Foundations) of a 12-week build phase, followed by a separate Rollout phase (UAT, training, cutover).
+
+## Auth
+
+The Floor App uses Firebase Auth (email + password) with four roles: `manager`, `td`, `cashier`, `readonly`. There is no signup screen — staff accounts are provisioned by the venue operator. See `docs/operator/initial-admin-setup.md` for how to create the first user and set roles.
+
+For local UI iteration without a Firebase project, set `VITE_USE_MOCK_DATA=true` in `.env.local` — the app signs you in as a fake user.
 
 ## Where to find things
 

@@ -1,0 +1,13 @@
+{
+  "name": "playlive-floor-app-admin-scripts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "One-shot admin scripts for the Floor App. Run by the venue operator (Guy) to provision users and set custom claims. See docs/operator/initial-admin-setup.md.",
+  "scripts": {
+    "set-role": "node set-role.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}
