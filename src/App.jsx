@@ -27,6 +27,7 @@ import DeskTickets from './pages/desk/Tickets'
 import TdLanding from './pages/td/TdLanding'
 import TdTournaments from './pages/td/Tournaments'
 import TdTournamentNew from './pages/td/TournamentNew'
+import TdTemplates from './pages/td/Templates'
 import TdTournamentDetail from './pages/td/TournamentDetail'
 import TdTournamentRegister from './pages/td/TournamentRegister'
 import TdClock from './pages/td/Clock'
@@ -114,6 +115,16 @@ export default function App() {
                   <ErrorBoundary>
                     <ProtectedRoute requiredRoles={['manager']}>
                       <TdTournamentNew />
+                    </ProtectedRoute>
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/td/templates"
+                element={
+                  <ErrorBoundary>
+                    <ProtectedRoute requiredRoles={['manager']}>
+                      <TdTemplates />
                     </ProtectedRoute>
                   </ErrorBoundary>
                 }

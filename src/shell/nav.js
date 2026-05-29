@@ -85,6 +85,13 @@ const NAV_ITEMS = [
   },
   {
     section: 'td',
+    to: '/td/templates',
+    label: 'Templates',
+    icon: '▤',
+    allowedRoles: [], // manager-only — blind structures + tournament configs
+  },
+  {
+    section: 'td',
     to: '/td/clock',
     label: 'Live clock',
     icon: '◷',

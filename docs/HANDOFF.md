@@ -2,13 +2,13 @@
 
 > This is the living "where we left off" doc. **Update it at the end of every Claude Code session and every Cowork planning session.** Commit alongside whatever else changed. It is how context survives between sessions and across tool switches.
 
-Last updated: **28 May 2026** by Claude — Phase 1 closed at end of session. All 10 task rows ✅ or 🟡 in `docs/02_Action_Plan.md`. Three small items deferred forward (see "Carried into Phase 2" below): iPad on-device smoke test, deploy `firestore.indexes.json`, drop the legacy `tournaments` collection. **Next session should start Phase 2 (Tournament Setup & Clock) — read the "Phase 2 starting notes" block below first.**
+Last updated: **29 May 2026** by Claude — Phase 2 **task 2.5 (templates) DONE**. Full vertical slice: tournaments domain module (6 template CRUD ops + typed errors), 13 tier-1 tests, list hooks, reusable `StructureEditor`, structure- + tournament-template UIs at `/td/templates`, nav + manager-only route, `seed:templates` script. Verified: `npm test` 257 pass, `npm run lint` clean, `npm run build` clean, **emulator round-trip confirmed** (6 docs seed + read back with the correct `Structure` shape). Guy's 4 Phase 2 design calls logged in DECISIONS.md. **Next: task 2.1 (tournament create) — reuses `StructureEditor` + loads template defaults.** Three Phase 1 leftovers still carried (iPad smoke test, deploy indexes, drop legacy `tournaments`).
 
 ---
 
 ## Project phase
 
-**Phase 2 — Tournament Setup & Clock: not yet started, week 3+ of 12.** (Phase 1 closed end of week 2.)
+**Phase 2 — Tournament Setup & Clock: IN PROGRESS, week 3+ of 12.** Task 2.5 (templates) complete; 2.1 next. (Phase 1 closed end of week 2.)
 
 ## Phase 2 starting notes — READ FIRST IF YOU ARE THE NEXT AGENT
 
@@ -40,20 +40,20 @@ Phase 1 left a working foundation: typed data layer, validated schemas, atomic w
 
 Roughly the order tasks unblock each other:
 
-1. **Task 2.5 — Templates first.** Structure templates + tournament templates. Cheap to build (mostly CRUD), and they unblock the create wizards by giving them defaults to load from.
-2. **Task 2.1 — Tournament create.** Single-day NLH first; multi-day / multi-flight / satellite are 2.4. Build the form using the existing `Placeholder` shape for now → real form. Manager-only (rule: UI-layer gate, since Firestore rules permit TD+manager writes).
+1. **Task 2.5 — Templates. ✅ DONE (29 May 2026).** Structure templates + tournament templates, both manager-only at `/td/templates`. Domain module `src/lib/tournaments/` (6 ops: create/update/archive × structure/tournament), `useStructureTemplates`/`useTournamentTemplates` hooks, reusable `src/components/StructureEditor.jsx`, panels under `src/pages/td/templates/`, `seed:templates`. **2.1 should reuse `StructureEditor` and load a tournament template's `config` as form defaults.**
+2. **Task 2.1 — Tournament create. ← NEXT.** Single-day NLH first; multi-day / multi-flight / satellite are 2.4. Sectioned single-page form per Guy's design call (see DECISIONS 29 May) — mirror the section layout already built in `TournamentTemplatesPanel.jsx`, and reuse `StructureEditor` for non-template structures. Optionally seed defaults from a chosen tournament template. Manager-only (rule: UI-layer gate, since Firestore rules permit TD+manager writes).
 3. **Task 2.2 — Tournament list.** Replaces the placeholder at `/td/tournaments`. Will need a list hook (`useTournaments`) following `useAuditLog`'s pattern. CSV export.
 4. **Task 2.4 — Multi-format wizards.** The sessions model is the trickiest part of the project so far. Re-read canonical-schema.md §5.1 carefully. Sessions have a routing graph (`convergesIntoSessionId` is the only routing field — `dayNumber` / `flightLabel` are display-only). Use `runValidatedBatch` to create all sessions atomically at tournament-setup time (pre-known IDs via `generateId()`).
 5. **Task 2.3 — Live clock.** Use Firestore real-time subscriptions (`subscribeToTournament`) for the clock. The venue display will subscribe to the same doc. Pause/resume sets `pausedAt`. Advancing levels updates `currentStructureIndex`. Server-time discipline: never trust client clock for "what time is it now" — use `Timestamp.now()` from the SDK consistently.
 6. **Task 2.6 — Seating.** Tables + entries. Bulk operations (open all tables, balance) are batched. Seat-card / alternate-ticket printing is later in Phase 5 — for now, just produce the data.
 7. **Task 2.7 — Status transitions.** Default invariants with manager-override path (`tournament.statusChanged` audit + optional `manager.override` audit when bypassing the default sequence).
 
-### Things to verify with Guy at the start of Phase 2
+### Things to verify with Guy at the start of Phase 2 — ✅ ANSWERED 29 May 2026 (full detail in DECISIONS.md)
 
-- **Tournament create form layout** — likely needs design input (template picker, scheduled-start picker, structure editor for non-template flows, satellite-config / bounty-config visibility tied to gameType select).
-- **Clock visual design** — venue display is Phase 5, but the TD's clock control should be readable across the room too (giant blind text, big pause/resume buttons).
-- **Seat-card print format** — Phase 5 will wire it to a thermal printer, but the data we capture in 2.6 needs to be what shows on the card. Confirm with Guy what he wants on each seat card.
-- **What "register player to tournament" actually looks like** — Guy's call earlier was "tournament-first" (cashier picks tournament, then registers a player into it). The route is scaffolded at `/td/tournaments/:id/register`. Confirm the full UX before building.
+- **Tournament create form layout** → **sectioned single page** (not a wizard). Mirror the section layout already built in `TournamentTemplatesPanel.jsx`. gameType drives conditional Satellite / Mystery-bounty sections.
+- **Clock visual design** → **big & readable across the room** — giant blind text, large pause/resume + advance controls on the TD's own clock screen, not just the Phase 5 venue display.
+- **Seat-card print format** → four fields: **Player name, Table & seat number, Tournament name + start time, Starting stack.** Task 2.6 must capture all four; Phase 5 renders them.
+- **Registration UX** → **tournament-first, with a confirm step.** Cashier picks the tournament (`/td/tournaments/:id/register`), then registers a player, confirming before the wallet/entry write commits.
 
 ### Carried into Phase 2 (Phase 1 leftovers — none block Phase 2 start)
 
@@ -66,7 +66,7 @@ Roughly the order tasks unblock each other:
 - `npm run dev` (with `VITE_USE_MOCK_DATA=true` + `VITE_FIRESTORE_EMULATOR=false` in `.env.local`) → pure mock mode, no Firestore.
 - `npm run dev` (with `VITE_FIRESTORE_EMULATOR=true`) → talks to the local Firestore emulator. Requires `npm run emulator` to be running in another terminal. Auth stays mocked.
 - `npm run seed:*` → seed scripts. Phase 2 will want a `seed:tournaments` script following the same pattern (push permissive dev rules + write via `withSecurityRulesDisabled`).
-- `npm test` → 244 tier-1 unit tests, ~1.5s.
+- `npm test` → 257 tier-1 unit tests, ~4.5s.
 - `npm run test:rules` → 174 emulator-backed rules tests, ~7s. Requires Java on PATH (Eclipse Temurin 21 installed; `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin:$PATH"` if a shell doesn't see `java`).
 - `npm run lint && npm run build` → must be clean before each commit.
 
@@ -77,7 +77,26 @@ Roughly the order tasks unblock each other:
 - **Don't bypass the wallet module** for ticket / walletTransaction / withdrawal writes. The data layer's per-collection wrappers intentionally don't expose write helpers for those collections. Phase 2 task 2.6 should call `payViaWallet` / `payViaTicket` / etc. when registering players into tournaments.
 - **Don't drop the legacy `tournaments` collection in production without Guy's explicit, in-session "yes drop it now" confirmation.** Destructive. Backup paths: Casinoware itself, manual CSV exports, local audit dump at `scripts/firestore-audit/output/tournaments.dump.json`.
 
-## This session (28 May 2026)
+## This session (29 May 2026)
+
+**Phase 2 task 2.5 (Templates) — DONE.** Full vertical slice, manager-only, live at `/td/templates`. New `src/lib/tournaments/` domain module follows the wallet-module conventions exactly.
+
+- **Domain module `src/lib/tournaments/`:**
+  - `errors.js` — base `TournamentError`.
+  - `templates.js` — six operations: `createStructureTemplate` / `updateStructureTemplate` / `archiveStructureTemplate` and the three `…TournamentTemplate` equivalents. Internal DRY helpers `createTemplate` / `reviseTemplate` keyed off a `TEMPLATE_KINDS` table (path + schema + audit targetType per kind) so the six public exports don't duplicate bodies.
+  - **Updates go through `runValidatedTransaction` read-modify-write, NOT `validatedUpdate`.** This is load-bearing: `validatedUpdate` does a partial write that does **not** re-validate against the schema (see the WARNING in `firestore/_client.js`), so it would let an invariant-bearing field (`levels`' sequential `blindNumber`, `config`'s `superRefine`) drift. Re-reading and `tx.set`-ing the full merged doc re-runs the validator. Any future template-like editor must do the same.
+  - Audit: best-effort `writeAuditLogSafe` after commit. `…created` carries `{name, levelCount}` / `{name, gameType}`; `…updated` carries `{changedFields}`; `…archived` sets `archivedAt: now()`.
+  - `index.js` re-exports the six ops + `TournamentError`.
+- **13 tier-1 tests** (`templates.test.js`) — `vi.mock`s `../firestore`, runs the transaction callback against an in-memory `tx`. Covers full-doc assembly, description default `null`, metadata shape, patch-merge + `updatedAt` bump + `changedFields`, archive timestamp, and rejections (blank actorId/id → `TournamentError`; `NotFoundError` propagates with no audit row). All green.
+- **`useTemplates.js` hook** — reducer pattern matching `useAuditLog`. `useStructureTemplates()` / `useTournamentTemplates()` fetch all, **filter `archivedAt === null`**, sort by name. Mock mode → clean empty state.
+- **`src/components/StructureEditor.jsx`** — reusable controlled editor over a `Structure` array (level | break rows). Every mutation re-runs `renumber()` so `blindNumber` stays sequential across level entries (breaks skipped) — the exact invariant `Structure.superRefine` enforces. Inline per-row validation hints via `Structure.safeParse`. **Task 2.1 reuses this.**
+- **UI:** `src/pages/td/Templates.jsx` hub (tabs: structures / tournaments) → `StructureTemplatesPanel.jsx` (list ↔ editor, CSV export, type-to-confirm archive) and `TournamentTemplatesPanel.jsx` (sectioned single-page form per Guy's design call; money fields held as strings, converted at save; `isMultiFlight ⇒ isMultiDay` enforced by coupled setters; conditional Satellite / Mystery-bounty sections by gameType).
+- **Wiring:** `nav.js` Templates item (manager-only, `allowedRoles: []`), `App.jsx` manager-only route, `scripts/seed/templates.js` (+ `seed:templates` npm script) seeding 2 structure + 3 active + 1 archived tournament template.
+- **`auditLog.js`** — added the six template action types to `WELL_KNOWN_ACTION_TYPES`.
+- **`canonical-schema.md` fixes:** §3.4 `structureTemplates.levels` rewritten — it reuses the `Structure` discriminated union (level | break entries), **not** the stale flat array with per-level `breakAfterMinutes`/`isColorUp` that was documented. §3.6 well-known actionType table gained the six template rows.
+- **Verification:** `npm test` → 257 pass (23 files). `npm run lint` → clean. `npm run build` → clean (pre-existing 500 kB chunk warning only). **Emulator round-trip:** booted Firestore emulator, ran `seed:templates`, read both collections back over the REST API — all 6 docs present, `levels` round-tripped as the discriminated-union shape. (`npm run test:rules` was NOT re-run this session — no rules changes; the access matrix already covers `structureTemplates`/`tournamentTemplates`.)
+
+## Previous session (28 May 2026)
 
 - **Task 1.10 (iPad layout pass) — code-review pass DONE; on-device smoke test pending.** Reviewed every authenticated screen with iPad usability in mind.
   - `index.html` already has the right viewport meta (`width=device-width, initial-scale=1.0, viewport-fit=cover`) + `apple-mobile-web-app-capable=yes` + `apple-mobile-web-app-status-bar-style=black-translucent`. User-scaling intentionally NOT disabled (accessibility).
@@ -162,7 +181,7 @@ Roughly the order tasks unblock each other:
 
 - **Wallet README and schema README** updated to reflect tests landing (was: "tests deferred"; now: tier 1 alongside the code, tier 2 in `tests/firestore-rules/`).
 
-## Previous session (27 May 2026)
+## Earlier session (27 May 2026)
 
 Five tasks completed in the kick-off session:
 
@@ -230,7 +249,7 @@ The audit was the biggest source of new information in this session. Headline fi
 
 The agenda for the next session is laid out fully in the **"Phase 2 starting notes"** block at the top of this doc. The short version:
 
-1. **Start Phase 2 task 2.5 (templates) → 2.1 (tournament create) → 2.2 (list) → 2.4 (multi-format wizards) → 2.3 (clock) → 2.6 (seating) → 2.7 (status transitions).**
+1. **Continue Phase 2: ~~2.5 (templates) ✅~~ → 2.1 (tournament create, NEXT) → 2.2 (list) → 2.4 (multi-format wizards) → 2.3 (clock) → 2.6 (seating) → 2.7 (status transitions).** Task 2.1 reuses `StructureEditor` and the sectioned-form layout from `TournamentTemplatesPanel.jsx`, and can seed defaults from a chosen tournament template.
 2. Three Phase 1 leftovers carried forward — none block starting Phase 2:
    - iPad on-device smoke test (Guy, with an iPad).
    - Deploy `firestore.indexes.json` (waits on Guy's go; touches production).
@@ -246,14 +265,14 @@ Nothing today. Phase 2 development can start immediately against the emulator. T
 
 ## Open questions for Guy
 
-Logged at the bottom of the "Phase 2 starting notes" block (form layouts, clock visual design, seat-card print format, full registration UX). Next agent should surface these to Guy before building.
+The four Phase 2 design questions (form layout, clock visual design, seat-card print format, registration UX) were **answered 29 May 2026** — see the "Things to verify with Guy" block above and the 29 May DECISIONS.md entry. No open design questions blocking task 2.1. New questions will surface when 2.4 (multi-format / sessions model) and 2.3 (clock) are built.
 
 ## Test infrastructure (reference)
 
 For future sessions and future devs.
 
 ```
-npm test               # tier 1: validators + wallet (200 tests, ~1.5s)
+npm test               # tier 1: validators + wallet + tournaments (257 tests, ~4.5s)
 npm run test:watch     # vitest watch mode
 npm run test:rules     # tier 2: emulator + firestore.rules (174 tests, ~7s)
                        #         requires Java on PATH — see "Dev prereqs" below

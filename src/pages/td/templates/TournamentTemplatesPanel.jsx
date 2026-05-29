@@ -1,0 +1,589 @@
+// Tournament-config template management (manager-only). Sectioned single-page
+// form (per Guy's design call): basics always visible, format-specific sections
+// (satellite / mystery bounty) show based on gameType. List ↔ editor toggled
+// in-page, like the structure panel.
+//
+// Money is entered in dollars and stored as integer cents. Numeric form fields
+// are held as strings so decimal entry isn't fought by re-renders; they're
+// parsed to numbers only when the config is assembled for save.
+
+import { useState } from 'react'
+import { useAuth } from '../../../auth/useAuth'
+import { useToast } from '../../../shell/useToast'
+import { useTournamentTemplates, useStructureTemplates } from '../../../hooks/useTemplates'
+import {
+  createTournamentTemplate,
+  updateTournamentTemplate,
+  archiveTournamentTemplate,
+  TournamentError,
+} from '../../../lib/tournaments'
+import { downloadCsv, csvFilename } from '../../../lib/csv'
+
+const GAME_TYPES = [
+  { value: 'nlh', label: "No-Limit Hold'em" },
+  { value: 'plo', label: 'Pot-Limit Omaha' },
+  { value: 'plo5', label: 'PLO 5-card' },
+  { value: 'omaha', label: 'Omaha' },
+  { value: 'horse', label: 'HORSE' },
+  { value: 'stud', label: 'Stud' },
+  { value: 'mixed', label: 'Mixed game' },
+  { value: 'mainEvent', label: 'Main Event' },
+  { value: 'mysteryBounty', label: 'Mystery Bounty' },
+  { value: 'satellite', label: 'Satellite' },
+]
+const GAME_TYPE_LABEL = Object.fromEntries(GAME_TYPES.map((g) => [g.value, g.label]))
+
+const REENTRY_TYPES = [
+  { value: 'freezeout', label: 'Freezeout' },
+  { value: 'reentry', label: 'Re-entry' },
+  { value: 'rebuy', label: 'Rebuy' },
+]
+
+const CSV_COLUMNS = [
+  { key: 'id', label: 'Template ID' },
+  { key: 'name', label: 'Template name' },
+  { key: 'tournamentName', label: 'Tournament name' },
+  { key: 'gameType', label: 'Game type' },
+  { key: 'buyIn', label: 'Buy-in (cents)' },
+  { key: 'guarantee', label: 'Guarantee (cents)' },
+  { key: 'isMultiDay', label: 'Multi-day' },
+  { key: 'isMultiFlight', label: 'Multi-flight' },
+  { key: 'createdAt', label: 'Created at' },
+]
+
+function fmtMoney(cents) {
+  return `$${(cents / 100).toFixed(2)}`
+}
+function centsToStr(cents) {
+  return cents === 0 ? '' : (cents / 100).toString()
+}
+function dollarsToCents(str) {
+  const n = parseFloat(str)
+  return Number.isNaN(n) ? 0 : Math.round(n * 100)
+}
+function intOrNull(str) {
+  if (str === '' || str === null || str === undefined) return null
+  const n = parseInt(str, 10)
+  return Number.isNaN(n) ? null : n
+}
+function intOf(str) {
+  const n = parseInt(str, 10)
+  return Number.isNaN(n) ? 0 : n
+}
+
+export default function TournamentTemplatesPanel() {
+  const { templates, loading, error, mockMode, reload } = useTournamentTemplates()
+  const toast = useToast()
+  const [editing, setEditing] = useState(null)
+
+  function handleExport() {
+    if (templates.length === 0) {
+      toast.info('Nothing to export — no tournament templates yet.')
+      return
+    }
+    const rows = templates.map((t) => ({
+      id: t.id,
+      name: t.name,
+      tournamentName: t.config.name,
+      gameType: t.config.gameType,
+      buyIn: t.config.buyIn,
+      guarantee: t.config.guarantee,
+      isMultiDay: t.config.isMultiDay,
+      isMultiFlight: t.config.isMultiFlight,
+      createdAt: t.createdAt,
+    }))
+    downloadCsv(rows, CSV_COLUMNS, csvFilename('tournament-templates'))
+    toast.success(`Exported ${rows.length} template${rows.length === 1 ? '' : 's'} to CSV.`)
+  }
+
+  if (editing !== null) {
+    return (
+      <TournamentTemplateEditor
+        template={editing.id ? editing : null}
+        onDone={() => {
+          setEditing(null)
+          reload()
+        }}
+        onCancel={() => setEditing(null)}
+      />
+    )
+  }
+
+  if (mockMode) {
+    return (
+      <EmptyState
+        title="Mock mode — no template data available."
+        body="Run npm run emulator + npm run seed:templates to populate the local emulator, then reload. You can still build a template below; it just won't persist in mock mode."
+      />
+    )
+  }
+  if (error) return <EmptyState title="Couldn't load tournament templates." body={error.message} tone="error" />
+  if (loading) return <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <div className="text-xs text-white/40 font-mono">
+          {templates.length} active template{templates.length === 1 ? '' : 's'}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            className="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-white/70 hover:bg-white/10 active:bg-white/15"
+          >
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing({})}
+            className="px-3 py-2 rounded-lg text-xs font-medium bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35"
+          >
+            + New template
+          </button>
+        </div>
+      </div>
+
+      {templates.length === 0 ? (
+        <EmptyState
+          title="No tournament templates yet."
+          body="Create a reusable tournament config here to pre-fill the create form."
+        />
+      ) : (
+        <div className="bg-felt-800 border border-white/5 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+              <tr>
+                <th className="text-left px-4 py-2">Name</th>
+                <th className="text-left px-4 py-2">Game</th>
+                <th className="text-left px-4 py-2 whitespace-nowrap">Buy-in</th>
+                <th className="text-left px-4 py-2">Format</th>
+                <th className="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {templates.map((t) => (
+                <tr key={t.id} className="border-t border-white/5 hover:bg-white/[0.03]">
+                  <td className="px-4 py-3 text-white/90">
+                    {t.name}
+                    {t.config.name !== t.name && (
+                      <span className="block text-[11px] text-white/40">→ {t.config.name}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-white/70">{GAME_TYPE_LABEL[t.config.gameType] ?? t.config.gameType}</td>
+                  <td className="px-4 py-3 text-white/70 whitespace-nowrap">{fmtMoney(t.config.buyIn)}</td>
+                  <td className="px-4 py-3 text-xs text-white/50">
+                    {t.config.isMultiFlight ? 'Multi-flight' : t.config.isMultiDay ? 'Multi-day' : 'Single day'}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(t)}
+                      className="px-3 py-1.5 rounded text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white active:bg-white/15"
+                    >
+                      Edit →
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
+function initialForm(template) {
+  const c = template?.config
+  return {
+    templateName: template?.name ?? '',
+    templateDescription: template?.description ?? '',
+    name: c?.name ?? '',
+    shortDescription: c?.shortDescription ?? '',
+    gameType: c?.gameType ?? 'nlh',
+    buyIn: centsToStr(c?.buyIn ?? 0),
+    hospitalityCost: centsToStr(c?.hospitalityCost ?? 0),
+    guarantee: centsToStr(c?.guarantee ?? 0),
+    houseConsumption: centsToStr(c?.houseConsumption ?? 0),
+    startingStack: String(c?.startingStack ?? 20000),
+    isMultiDay: c?.isMultiDay ?? false,
+    isMultiFlight: c?.isMultiFlight ?? false,
+    structureTemplateId: c?.structureTemplateId ?? '',
+    hasUpperDeckMainDeck: c?.hasUpperDeckMainDeck ?? false,
+    reentryType: c?.reentryConfig?.type ?? 'freezeout',
+    maxReentries: c?.reentryConfig?.maxReentries != null ? String(c.reentryConfig.maxReentries) : '',
+    maxRebuys: c?.reentryConfig?.maxRebuys != null ? String(c.reentryConfig.maxRebuys) : '',
+    hasAddOn: c?.reentryConfig?.hasAddOn ?? false,
+    ticketReward: centsToStr(c?.satelliteConfig?.ticketReward ?? 0),
+    bountyTotalPool: centsToStr(c?.bountyPoolConfig?.totalPool ?? 0),
+    bountyValues: (c?.bountyPoolConfig?.bountyValues ?? []).map(centsToStr),
+  }
+}
+
+function buildConfig(form) {
+  return {
+    name: form.name.trim(),
+    shortDescription: form.shortDescription,
+    isMultiDay: form.isMultiDay,
+    isMultiFlight: form.isMultiFlight,
+    gameType: form.gameType,
+    buyIn: dollarsToCents(form.buyIn),
+    hospitalityCost: dollarsToCents(form.hospitalityCost),
+    guarantee: dollarsToCents(form.guarantee),
+    houseConsumption: dollarsToCents(form.houseConsumption),
+    structureTemplateId: form.structureTemplateId === '' ? null : form.structureTemplateId,
+    startingStack: intOf(form.startingStack),
+    reentryConfig: {
+      type: form.reentryType,
+      maxReentries: form.reentryType === 'reentry' ? intOrNull(form.maxReentries) : null,
+      maxRebuys: form.reentryType === 'rebuy' ? intOrNull(form.maxRebuys) : null,
+      hasAddOn: form.hasAddOn,
+    },
+    hasUpperDeckMainDeck: form.hasUpperDeckMainDeck,
+    satelliteConfig: form.gameType === 'satellite' ? { ticketReward: dollarsToCents(form.ticketReward) } : null,
+    bountyPoolConfig:
+      form.gameType === 'mysteryBounty'
+        ? { totalPool: dollarsToCents(form.bountyTotalPool), bountyValues: form.bountyValues.map(dollarsToCents) }
+        : null,
+  }
+}
+
+function TournamentTemplateEditor({ template, onDone, onCancel }) {
+  const { user, role } = useAuth()
+  const toast = useToast()
+  const isEdit = Boolean(template)
+  const structures = useStructureTemplates()
+
+  const [form, setForm] = useState(() => initialForm(template))
+  const [submitting, setSubmitting] = useState(false)
+  const [confirmArchive, setConfirmArchive] = useState(false)
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }))
+
+  // Keep the schema's isMultiFlight ⇒ isMultiDay invariant true by construction.
+  const setMultiFlight = (on) => set(on ? { isMultiFlight: true, isMultiDay: true } : { isMultiFlight: false })
+  const setMultiDay = (on) => set(on ? { isMultiDay: true } : { isMultiDay: false, isMultiFlight: false })
+
+  function validate() {
+    if (form.templateName.trim() === '') return 'Template name is required.'
+    if (form.name.trim() === '') return 'Tournament name is required.'
+    if (form.gameType === 'mysteryBounty' && form.bountyValues.length < 1) {
+      return 'Mystery bounty needs at least one bounty value.'
+    }
+    return null
+  }
+
+  async function handleSave() {
+    const err = validate()
+    if (err) {
+      toast.error(err)
+      return
+    }
+    setSubmitting(true)
+    try {
+      const config = buildConfig(form)
+      const name = form.templateName.trim()
+      const description = form.templateDescription.trim() === '' ? null : form.templateDescription.trim()
+      if (isEdit) {
+        await updateTournamentTemplate({
+          id: template.id,
+          patch: { name, description, config },
+          actorId: user.uid,
+          actorRole: role,
+        })
+        toast.success(`Updated "${name}".`)
+      } else {
+        await createTournamentTemplate({ name, description, config, actorId: user.uid, actorRole: role })
+        toast.success(`Created "${name}".`)
+      }
+      onDone()
+    } catch (e) {
+      toast.error(e instanceof TournamentError ? e.message : `Save failed: ${e.message}`)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleArchive() {
+    setSubmitting(true)
+    try {
+      await archiveTournamentTemplate({ id: template.id, actorId: user.uid, actorRole: role })
+      toast.success(`Archived "${template.name}".`)
+      onDone()
+    } catch (e) {
+      toast.error(e instanceof TournamentError ? e.message : `Archive failed: ${e.message}`)
+    } finally {
+      setSubmitting(false)
+      setConfirmArchive(false)
+    }
+  }
+
+  const d = submitting
+
+  return (
+    <div className="max-w-4xl">
+      <button type="button" onClick={onCancel} className="text-sm text-white/50 hover:text-white mb-4">
+        ← Back to templates
+      </button>
+
+      <h2 className="font-display text-2xl text-white mb-5">
+        {isEdit ? `Edit template — ${template.name}` : 'New tournament template'}
+      </h2>
+
+      <Section title="Template details">
+        <Text label="Template name" value={form.templateName} onChange={(v) => set({ templateName: v })} placeholder="e.g. Friday Night Special" disabled={d} />
+        <Text label="Template note (optional)" value={form.templateDescription} onChange={(v) => set({ templateDescription: v })} placeholder="Internal note" disabled={d} />
+      </Section>
+
+      <Section title="Tournament basics">
+        <Text label="Tournament name" value={form.name} onChange={(v) => set({ name: v })} placeholder="e.g. $100 NLH" disabled={d} />
+        <Text label="Short description" value={form.shortDescription} onChange={(v) => set({ shortDescription: v })} placeholder="Shown to players" disabled={d} />
+        <Select label="Game type" value={form.gameType} onChange={(v) => set({ gameType: v })} options={GAME_TYPES} disabled={d} />
+        <Money label="Buy-in" value={form.buyIn} onChange={(v) => set({ buyIn: v })} disabled={d} />
+        <Money label="Hospitality / fee" value={form.hospitalityCost} onChange={(v) => set({ hospitalityCost: v })} disabled={d} />
+        <Money label="Guarantee" value={form.guarantee} onChange={(v) => set({ guarantee: v })} disabled={d} />
+        <Money label="House consumption" value={form.houseConsumption} onChange={(v) => set({ houseConsumption: v })} disabled={d} />
+        <Num label="Starting stack (chips)" value={form.startingStack} onChange={(v) => set({ startingStack: v })} disabled={d} />
+      </Section>
+
+      <Section title="Format & structure">
+        <Select
+          label="Blind structure"
+          value={form.structureTemplateId}
+          onChange={(v) => set({ structureTemplateId: v })}
+          options={[
+            { value: '', label: structures.loading ? 'Loading…' : '— None (set later) —' },
+            ...structures.templates.map((s) => ({ value: s.id, label: s.name })),
+          ]}
+          disabled={d}
+        />
+        <div className="flex flex-col gap-2 justify-end">
+          <Toggle label="Multi-day" checked={form.isMultiDay} onChange={setMultiDay} disabled={d} />
+          <Toggle label="Multi-flight" checked={form.isMultiFlight} onChange={setMultiFlight} disabled={d} hint="Implies multi-day" />
+          <Toggle label="Upper deck / main deck" checked={form.hasUpperDeckMainDeck} onChange={(v) => set({ hasUpperDeckMainDeck: v })} disabled={d} />
+        </div>
+      </Section>
+
+      <Section title="Re-entry">
+        <Select label="Type" value={form.reentryType} onChange={(v) => set({ reentryType: v })} options={REENTRY_TYPES} disabled={d} />
+        {form.reentryType === 'reentry' && (
+          <Num label="Max re-entries (blank = unlimited)" value={form.maxReentries} onChange={(v) => set({ maxReentries: v })} disabled={d} allowEmpty />
+        )}
+        {form.reentryType === 'rebuy' && (
+          <Num label="Max rebuys (blank = unlimited)" value={form.maxRebuys} onChange={(v) => set({ maxRebuys: v })} disabled={d} allowEmpty />
+        )}
+        <div className="flex flex-col justify-end">
+          <Toggle label="Has add-on" checked={form.hasAddOn} onChange={(v) => set({ hasAddOn: v })} disabled={d} />
+        </div>
+      </Section>
+
+      {form.gameType === 'satellite' && (
+        <Section title="Satellite">
+          <Money label="Ticket reward (per seat)" value={form.ticketReward} onChange={(v) => set({ ticketReward: v })} disabled={d} />
+        </Section>
+      )}
+
+      {form.gameType === 'mysteryBounty' && (
+        <Section title="Mystery bounty">
+          <Money label="Total bounty pool" value={form.bountyTotalPool} onChange={(v) => set({ bountyTotalPool: v })} disabled={d} />
+          <div className="md:col-span-2">
+            <BountyValues values={form.bountyValues} onChange={(vals) => set({ bountyValues: vals })} disabled={d} />
+          </div>
+        </Section>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-4 mt-6">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={d}
+          className={
+            'px-4 py-2 rounded-lg text-sm font-medium ' +
+            (d ? 'bg-white/5 text-white/30 cursor-not-allowed' : 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30')
+          }
+        >
+          {d ? 'Saving…' : isEdit ? 'Save changes' : 'Create template'}
+        </button>
+        <button type="button" onClick={onCancel} disabled={d} className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5">
+          Cancel
+        </button>
+
+        {isEdit && (
+          <div className="ml-auto">
+            {confirmArchive ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/60">Archive this template?</span>
+                <button type="button" onClick={handleArchive} disabled={d} className="px-3 py-2 rounded-lg text-xs font-medium bg-red-500/20 text-red-200 hover:bg-red-500/30">
+                  Confirm
+                </button>
+                <button type="button" onClick={() => setConfirmArchive(false)} disabled={d} className="px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white">
+                  Keep
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setConfirmArchive(true)} disabled={d} className="px-3 py-2 rounded-lg text-xs text-red-300/70 hover:text-red-200 hover:bg-red-500/10">
+                Archive
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Field primitives ─────────────────────────────────────────────────────────
+
+function Section({ title, children }) {
+  return (
+    <section className="mb-5">
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">{title}</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-felt-800 border border-white/5 rounded-lg p-4">
+        {children}
+      </div>
+    </section>
+  )
+}
+
+function fieldLabel(label) {
+  return <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{label}</span>
+}
+
+function Text({ label, value, onChange, placeholder, disabled }) {
+  return (
+    <label className="flex flex-col gap-1">
+      {fieldLabel(label)}
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm disabled:opacity-50"
+      />
+    </label>
+  )
+}
+
+function Money({ label, value, onChange, disabled }) {
+  return (
+    <label className="flex flex-col gap-1">
+      {fieldLabel(label)}
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">$</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="0.00"
+          disabled={disabled}
+          className="w-full bg-felt-900 border border-white/10 rounded pl-6 pr-3 py-2 text-sm disabled:opacity-50"
+        />
+      </div>
+    </label>
+  )
+}
+
+function Num({ label, value, onChange, disabled, allowEmpty = false }) {
+  return (
+    <label className="flex flex-col gap-1">
+      {fieldLabel(label)}
+      <input
+        type="number"
+        inputMode="numeric"
+        min={0}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={allowEmpty ? 'unlimited' : '0'}
+        disabled={disabled}
+        className="bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm disabled:opacity-50"
+      />
+    </label>
+  )
+}
+
+function Select({ label, value, onChange, options, disabled }) {
+  return (
+    <label className="flex flex-col gap-1">
+      {fieldLabel(label)}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm disabled:opacity-50"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function Toggle({ label, checked, onChange, disabled, hint }) {
+  return (
+    <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} disabled={disabled} className="accent-gold-500" />
+      {label}
+      {hint && <span className="text-[10px] text-white/30">({hint})</span>}
+    </label>
+  )
+}
+
+function BountyValues({ values, onChange, disabled }) {
+  const setAt = (i, v) => onChange(values.map((x, idx) => (idx === i ? v : x)))
+  const add = () => onChange([...values, ''])
+  const removeAt = (i) => onChange(values.filter((_, idx) => idx !== i))
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        {fieldLabel('Bounty values (at least one)')}
+        <button type="button" onClick={add} disabled={disabled} className="px-2 py-1 rounded text-[11px] bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40">
+          + Add value
+        </button>
+      </div>
+      {values.length === 0 ? (
+        <p className="text-xs text-white/40">Add at least one bounty value.</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {values.map((v, i) => (
+            <div key={i} className="relative">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={v}
+                onChange={(e) => setAt(i, e.target.value)}
+                placeholder="0.00"
+                disabled={disabled}
+                className="w-28 bg-felt-900 border border-white/10 rounded pl-5 pr-6 py-1.5 text-sm disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => removeAt(i)}
+                disabled={disabled}
+                aria-label="Remove value"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-white/30 hover:text-red-300 text-sm"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EmptyState({ title, body, tone = 'neutral' }) {
+  const border = tone === 'error' ? 'border-red-500/30' : 'border-white/5'
+  return (
+    <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
+      <div className="font-display text-lg text-white mb-1">{title}</div>
+      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
+    </div>
+  )
+}

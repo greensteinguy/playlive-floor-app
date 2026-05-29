@@ -6,6 +6,20 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 29 May 2026 — Phase 2 UX design calls (form layout, registration flow, clock, seat cards)
+
+Four design questions surfaced at the start of Phase 2 (flagged in HANDOFF's "Things to verify with Guy" block). Guy's answers, to be treated as binding for the relevant Phase 2 tasks:
+
+**1. Tournament template / create form layout → sectioned single page** (not a multi-step wizard). One scrolling page with labelled sections (Template details, Tournament basics, Format & structure, Re-entry, plus conditional Satellite / Mystery-bounty sections that appear based on `gameType`). *Why:* managers configuring a tournament want to see and tweak everything at once; a wizard hides fields and adds clicks. Applies to task 2.5 (template editor — already built this way) and task 2.1 (create form, which reuses the same section layout + the shared `StructureEditor`).
+
+**2. Player registration flow → tournament-first, with a confirm step.** Cashier picks the tournament first, then registers a player into it (route `/td/tournaments/:id/register`), and the registration is explicitly confirmed before the wallet/entry write commits. *Why:* matches how the desk actually works at the venue (a player walks up naming the event); the confirm step guards against mis-registration since the buy-in moves money. Applies to task 2.6 / the desk registration flow.
+
+**3. Live clock → big and readable across the room.** The TD's clock control screen (not just the Phase 5 venue display) must have giant blind text and large pause/resume + advance controls legible from across the floor. *Why:* the TD glances at it from a distance while managing tables; small desktop-dashboard text fails that. Applies to task 2.3.
+
+**4. Seat-card fields → Player name, Table & seat number, Tournament name + start time, Starting stack.** These four are what print on each seat card. *Why:* the minimum a player needs to find their seat and a TD needs to verify placement; everything else is noise on a thermal-printed card. The data captured in task 2.6 must include all four; the Phase 5 print job renders them.
+
+**Decider:** Guy, 29 May 2026, in the Phase 2 kickoff. Recorded so the create-form, registration, clock, and seating tasks don't re-litigate layout.
+
 ## 28 May 2026 — Adjustment direction is an explicit field, not inferred from notes text
 
 **Decided:** `walletTransactions` documents of type `adjustment` carry a structured `direction: 'credit' | 'debit'` field. The free-text `notes` field still records human reason but is no longer load-bearing for arithmetic.

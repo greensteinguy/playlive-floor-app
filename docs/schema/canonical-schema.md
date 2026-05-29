@@ -308,16 +308,15 @@ structureTemplates/{id}
   name:                        string          (e.g., "Standard 30-min", "Turbo 15-min", "Deep 60-min")
   description:                 string | null
 
-  levels:                      Array<{         (same shape as tournament's embedded structure — see §3.1)
-    blindNumber:               number
-    smallBlind:                number
-    bigBlind:                  number
-    ante:                      number
-    bringIn:                   number
-    durationMinutes:           number
-    breakAfterMinutes:         number
-    isColorUp:                 boolean
-  }>
+  levels:                      Structure       (the SAME discriminated-union array used by tournaments'
+                                                embedded structure — see §3.1. Entries are level | break,
+                                                not a flat per-level array.)
+
+  // level entry:  { type: 'level', blindNumber, smallBlind, bigBlind, ante, bringIn, durationMinutes }
+  // break entry:  { type: 'break', durationMinutes, label: string | null, isColorUp: boolean }
+  //
+  // blindNumber runs 1,2,3… across LEVEL entries only (breaks are skipped). Breaks are
+  // standalone entries in the array — there is no per-level `breakAfterMinutes`.
 
   // Standard
   createdAt, updatedAt, createdBy
@@ -326,6 +325,7 @@ structureTemplates/{id}
 
 **Notes**
 
+- `levels` reuses the `Structure` schema verbatim (`src/lib/schema/structure.js`), so a template's `levels` can be copied into a tournament's embedded `structure` with **no shape transform**.
 - When a tournament references a structure template via `structureTemplateId`, the template's `levels` are **copied** into `tournaments/{id}.structure` at create time. Editing the template later does not affect already-created tournaments.
 
 ---
@@ -403,6 +403,12 @@ auditLog/{id}
 | `tournament.structureEdited` | Embedded structure edited mid-tournament. `metadata.diff`. |
 | `tournament.payoutEdited` | Embedded payout structure edited. |
 | `tournament.dealEntered` | Manual deal-making entry recorded. `metadata.payouts`. |
+| `structureTemplate.created` | Blind-structure template created. `metadata.name`, `metadata.levelCount`. |
+| `structureTemplate.updated` | Structure template edited. `metadata.changedFields`. |
+| `structureTemplate.archived` | Structure template archived (soft-delete; `archivedAt` set). |
+| `tournamentTemplate.created` | Tournament-config template created. `metadata.name`, `metadata.gameType`. |
+| `tournamentTemplate.updated` | Tournament template edited. `metadata.changedFields`. |
+| `tournamentTemplate.archived` | Tournament template archived (soft-delete; `archivedAt` set). |
 | `entry.created` | Player registered for a tournament. `metadata.paymentMethod`. |
 | `entry.busted` | Bust-out recorded. `metadata.place`. |
 | `entry.voided` | Entry voided (data-entry error). |
