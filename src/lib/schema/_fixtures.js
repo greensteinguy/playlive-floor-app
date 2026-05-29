@@ -76,7 +76,7 @@ export function buildTournament(overrides = {}) {
     status: 'scheduled',
     isOnBreak: false,
     pausedAt: null,
-    reentryConfig: { type: 'freezeout', maxReentries: null, maxRebuys: null, hasAddOn: false },
+    reentryConfig: { type: 'freezeout', maxReentries: null, maxRebuys: null, hasAddOn: false, addOnCost: null, addOnChips: null },
     hasUpperDeckMainDeck: false,
     satelliteConfig: null,
     bountyPoolConfig: null,

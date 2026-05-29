@@ -179,6 +179,8 @@ function initialForm(template) {
     maxReentries: c?.reentryConfig?.maxReentries != null ? String(c.reentryConfig.maxReentries) : '',
     maxRebuys: c?.reentryConfig?.maxRebuys != null ? String(c.reentryConfig.maxRebuys) : '',
     hasAddOn: c?.reentryConfig?.hasAddOn ?? false,
+    addOnCost: c?.reentryConfig?.addOnCost != null ? centsToStr(c.reentryConfig.addOnCost) : '',
+    addOnChips: c?.reentryConfig?.addOnChips != null ? String(c.reentryConfig.addOnChips) : '',
     ticketReward: centsToStr(c?.satelliteConfig?.ticketReward ?? 0),
     bountyTotalPool: centsToStr(c?.bountyPoolConfig?.totalPool ?? 0),
     bountyValues: (c?.bountyPoolConfig?.bountyValues ?? []).map(centsToStr),
@@ -203,6 +205,8 @@ function buildConfig(form) {
       maxReentries: form.reentryType === 'reentry' ? intOrNull(form.maxReentries) : null,
       maxRebuys: form.reentryType === 'rebuy' ? intOrNull(form.maxRebuys) : null,
       hasAddOn: form.hasAddOn,
+      addOnCost: form.hasAddOn ? dollarsToCents(form.addOnCost) : null,
+      addOnChips: form.hasAddOn ? intOf(form.addOnChips) : null,
     },
     hasUpperDeckMainDeck: form.hasUpperDeckMainDeck,
     satelliteConfig: form.gameType === 'satellite' ? { ticketReward: dollarsToCents(form.ticketReward) } : null,
@@ -241,6 +245,9 @@ function TournamentTemplateEditor({ template, onDone, onCancel }) {
     else if (form.name.trim() === '') errors.general = 'Tournament name is required.'
     if (form.gameType === 'mysteryBounty' && form.bountyValues.length < 1) {
       errors.rest = 'Mystery bounty needs at least one bounty value.'
+    }
+    if (!errors.rest && form.hasAddOn && intOf(form.addOnChips) <= 0) {
+      errors.rest = 'An add-on must grant a positive number of chips.'
     }
     return errors
   }
@@ -359,6 +366,12 @@ function TournamentTemplateEditor({ template, onDone, onCancel }) {
             <div className="flex flex-col justify-end">
               <Toggle label="Has add-on" checked={form.hasAddOn} onChange={(v) => set({ hasAddOn: v })} disabled={d} />
             </div>
+            {form.hasAddOn && (
+              <Money label="Add-on cost" value={form.addOnCost} onChange={(v) => set({ addOnCost: v })} disabled={d} />
+            )}
+            {form.hasAddOn && (
+              <Num label="Add-on chips" value={form.addOnChips} onChange={(v) => set({ addOnChips: v })} disabled={d} />
+            )}
           </Section>
 
           {form.gameType === 'satellite' && (

@@ -124,6 +124,8 @@ tournaments/{id}
     maxReentries:              number | null   (null = unlimited; ignored when type == 'freezeout')
     maxRebuys:                 number | null   (null = unlimited; ignored when type == 'freezeout')
     hasAddOn:                  boolean
+    addOnCost:                 integer | null  (cents; the add-on is variable — non-null iff hasAddOn)
+    addOnChips:                number | null   (chips the add-on grants; non-null iff hasAddOn)
   }
 
   // Side bets

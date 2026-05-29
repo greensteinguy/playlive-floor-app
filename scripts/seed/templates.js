@@ -95,8 +95,11 @@ const STRUCTURE_TEMPLATES = [
   },
 ]
 
-function reentry(type, { maxReentries = null, maxRebuys = null, hasAddOn = false } = {}) {
-  return { type, maxReentries, maxRebuys, hasAddOn }
+function reentry(
+  type,
+  { maxReentries = null, maxRebuys = null, hasAddOn = false, addOnCost = null, addOnChips = null } = {},
+) {
+  return { type, maxReentries, maxRebuys, hasAddOn, addOnCost, addOnChips }
 }
 
 const TOURNAMENT_TEMPLATES = [
@@ -186,7 +189,7 @@ const TOURNAMENT_TEMPLATES = [
       houseConsumption: 5_00,
       structureTemplateId: null,
       startingStack: 20_000,
-      reentryConfig: reentry('rebuy', { maxRebuys: 1, hasAddOn: true }),
+      reentryConfig: reentry('rebuy', { maxRebuys: 1, hasAddOn: true, addOnCost: 50_00, addOnChips: 20_000 }),
       hasUpperDeckMainDeck: false,
       satelliteConfig: null,
       bountyPoolConfig: null,

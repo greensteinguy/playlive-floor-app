@@ -29,9 +29,46 @@ const ReentryConfig = z
     type: z.enum(['freezeout', 'reentry', 'rebuy']),
     maxReentries: z.number().int().nonnegative().nullable(),
     maxRebuys: z.number().int().nonnegative().nullable(),
+    // Add-on is variable: when offered, both its cost (money) and the chips it
+    // grants are set; both are null when no add-on is offered.
     hasAddOn: z.boolean(),
+    addOnCost: Money.nullable(),
+    addOnChips: ChipCount.nullable(),
   })
   .strict()
+  .superRefine((cfg, ctx) => {
+    if (cfg.hasAddOn) {
+      if (cfg.addOnCost === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['addOnCost'],
+          message: 'addOnCost is required when hasAddOn is true',
+        })
+      }
+      if (cfg.addOnChips === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['addOnChips'],
+          message: 'addOnChips is required when hasAddOn is true',
+        })
+      }
+    } else {
+      if (cfg.addOnCost !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['addOnCost'],
+          message: 'addOnCost must be null when hasAddOn is false',
+        })
+      }
+      if (cfg.addOnChips !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['addOnChips'],
+          message: 'addOnChips must be null when hasAddOn is false',
+        })
+      }
+    }
+  })
 
 const SatelliteConfig = z
   .object({

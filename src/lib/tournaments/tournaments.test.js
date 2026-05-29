@@ -35,7 +35,7 @@ function makeArgs(overrides = {}) {
     startingStack: 20_000,
     structure: LEVELS,
     scheduledStartTime: new Date('2026-06-01T09:00:00Z'),
-    reentryConfig: { type: 'freezeout', maxReentries: null, maxRebuys: null, hasAddOn: false },
+    reentryConfig: { type: 'freezeout', maxReentries: null, maxRebuys: null, hasAddOn: false, addOnCost: null, addOnChips: null },
     actorId: 'manager-1',
     actorRole: 'manager',
     ...overrides,
@@ -195,6 +195,29 @@ describe('createTournament — schema conformance', () => {
     await createTournament(makeArgs({ isMultiDay: true, isMultiFlight: true }))
     const result = Tournament.safeParse(capturedDoc())
     expect(result.success, result.error?.toString()).toBe(true)
+  })
+
+  it('assembles a valid tournament with a variable add-on (cost + chips set)', async () => {
+    await createTournament(
+      makeArgs({
+        reentryConfig: { type: 'rebuy', maxReentries: null, maxRebuys: 1, hasAddOn: true, addOnCost: 50_00, addOnChips: 20_000 },
+      })
+    )
+    const doc = capturedDoc()
+    expect(doc.reentryConfig.addOnCost).toBe(50_00)
+    expect(doc.reentryConfig.addOnChips).toBe(20_000)
+    const result = Tournament.safeParse(doc)
+    expect(result.success, result.error?.toString()).toBe(true)
+  })
+
+  it('rejects an add-on with no cost/chips (hasAddOn true but fields null)', async () => {
+    await createTournament(
+      makeArgs({
+        reentryConfig: { type: 'freezeout', maxReentries: null, maxRebuys: null, hasAddOn: true, addOnCost: null, addOnChips: null },
+      })
+    )
+    const result = Tournament.safeParse(capturedDoc())
+    expect(result.success).toBe(false)
   })
 })
 

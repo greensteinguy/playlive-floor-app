@@ -6,6 +6,30 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 29 May 2026 — Tournament add-ons are variable (configurable cost + chips)
+
+Extended the tournament **add-on** model from a bare boolean to a configurable cost + chip grant. When a tournament (or tournament template) offers an add-on, staff now set **both** how much it costs **and** how many chips it grants.
+
+**Schema change (both `Tournament` and `TournamentTemplate`):** `ReentryConfig` gains two nullable fields beside the existing `hasAddOn` boolean —
+
+- `addOnCost: Money.nullable()` (integer cents, AUD; `Money` allows 0)
+- `addOnChips: ChipCount.nullable()` (non-negative integer)
+
+A `superRefine` enforces the cross-field invariant: when `hasAddOn === true` both must be non-null; when `false` both must be null. This mirrors the existing type-gated `maxReentries` / `maxRebuys` pattern, but adds **schema-level** enforcement (the older type-gating is only applied in the form builders — there's no `superRefine` behind it).
+
+**Form behaviour (create form task 2.1 + template editor task 2.5, which share the `FormFields` primitives):** the Has-add-on toggle reveals an **Add-on cost** (`Money` input) and **Add-on chips** (`Num` input) directly beneath it; both clear to `null` when the toggle is off. Values are held as strings and converted at the save boundary (`dollarsToCents` / `intOf`).
+
+**Two deliberate asymmetries:**
+
+- **Cost may be 0** — a free add-on is valid (`Money` is `>= 0`). The venue occasionally runs a free chip-up.
+- **Chips must be > 0** — enforced at the form `validate()` level ("An add-on must grant a positive number of chips"), not in the schema. The schema's `ChipCount` is `>= 0`; the form is the stricter gate because an add-on granting zero chips is a data-entry mistake, not a real configuration.
+
+**Why a field, not a fixed convention:** the venue's add-on price and chip amount vary per tournament; hard-coding either (e.g. "add-on = one starting stack at the buy-in price") would be wrong for most events. Both values are also needed downstream for prize-pool and chips-in-play math.
+
+**Verification:** `npm test` **283 pass** (+2 conformance tests in `tournaments.test.js`: a valid rebuy-with-add-on doc parses and carries the values; a `hasAddOn: true` with null cost/chips is rejected by the real `Tournament` schema). Lint + build clean. Both forms smoke-tested against the Firestore emulator (Mode 2): gating verified in both directions, and end-to-end persistence confirmed via REST read-back (create form addOnCost 7500 / addOnChips 25000; template editor 4000 / 15000 with the re-entry type preserved; seed `tt-retired` 5000 / 20000).
+
+**Decider:** Guy (requested the feature: "Tournament add ons are variable, both the add on and the amount of chips should be adjustable"). The schema-enforcement design and the cost-may-be-0 / chips-must-be-positive split were Claude's implementation calls, flagged here for awareness.
+
 ## 29 May 2026 — Tournament config forms → 3-step wizard (reverses the single-page call)
 
 The tournament **create form** (task 2.1) and the **tournament-template editor** (task 2.5) are now both 3-step wizards — **General Information / Structure / Re-entry & extras** — built on a shared presentational `src/components/FormWizard.jsx`. This **reverses decision #1 of the "Phase 2 UX design calls" entry below** (sectioned single page, not a wizard).

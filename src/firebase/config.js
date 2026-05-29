@@ -20,7 +20,7 @@
 
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
+import { getFirestore, initializeFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -45,7 +45,13 @@ if (USE_EMULATOR) {
   // Mode 2 — emulator-backed. Init with just the demo project id; auth stays
   // mocked so we don't need real API keys.
   app = initializeApp({ projectId: EMULATOR_PROJECT_ID })
-  db = getFirestore(app)
+  // Force HTTP long-polling instead of the default WebChannel transport. On some
+  // Windows/localhost setups WebChannel writes are applied server-side by the
+  // emulator but the ack never returns to the client, so setDoc()'s promise
+  // hangs forever (symptom: a save button stuck on "Saving…"). This is a
+  // transport-only setting — it does NOT enable offline persistence/caching, so
+  // ADR-001 (online-only) still holds.
+  db = initializeFirestore(app, { experimentalForceLongPolling: true })
   connectFirestoreEmulator(db, '127.0.0.1', 8080)
 } else if (!USE_MOCK_DATA) {
   // Mode 3 — production.

@@ -48,7 +48,7 @@ const CONFIG = {
   houseConsumption: 0,
   structureTemplateId: null,
   startingStack: 20_000,
-  reentryConfig: { type: 'freezeout', maxReentries: null, maxRebuys: null, hasAddOn: false },
+  reentryConfig: { type: 'freezeout', maxReentries: null, maxRebuys: null, hasAddOn: false, addOnCost: null, addOnChips: null },
   hasUpperDeckMainDeck: false,
   satelliteConfig: null,
   bountyPoolConfig: null,
