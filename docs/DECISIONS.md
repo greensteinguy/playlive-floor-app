@@ -6,6 +6,16 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 29 May 2026 — Tournament create (task 2.1): payout placeholder + mysteryBounty pool derivation
+
+Two implementation calls made while building the create form (`src/pages/td/TournamentNew.jsx` + `createTournament` in `src/lib/tournaments/tournaments.js`). Both are reversible and scoped to create-time defaults.
+
+**1. `payoutStructure` defaults to a winner-takes-all placeholder, not a real editor.** When the create form passes `payoutStructure: null`, `createTournament` substitutes `DEFAULT_PAYOUT` — `{ type: 'byPercent', rounding: 'nearest5', positions: [{ place: 1, payout: 0, percent: 1 }] }`. *Why:* the `Tournament` schema requires a non-null `payoutStructure`, but the real payout editor is **task 2.3**. A single 100%-to-1st position is the minimal schema-valid structure and an honest default (the TD sets real payouts before the tournament finishes). *Trade-off:* a tournament created now and never touched by 2.3 would pay 100% to first — acceptable because no payout actually executes until the payouts screen exists, and 2.3 lands before any tournament is run for money.
+
+**2. Mystery-bounty `totalPool` is derived as the sum of the entered bounty values, not a separate field.** The form collects a list of bounty values; on save it sets `bountyPoolConfig.totalPool = sum(bountyValues)`. *Why:* the `Tournament` schema's `BountyPoolConfig.superRefine` enforces `sum(bountyValues) === totalPool`. Exposing `totalPool` as its own input is a foot-gun (any mismatch is a validation error the manager can't easily diagnose). Deriving it makes the invariant impossible to violate from the UI. *Note:* this invariant lives on `Tournament` only, **not** on `TemplateConfig` — the template editor (2.5) doesn't derive it, so a template carrying bounty values is not required to balance until it's instantiated into a tournament here.
+
+**Decider:** Claude (implementation calls during task 2.1). Flagged here for Guy's awareness; either can be revisited when the payout editor (2.3) and multi-format setup (2.4) are built.
+
 ## 29 May 2026 — Phase 2 UX design calls (form layout, registration flow, clock, seat cards)
 
 Four design questions surfaced at the start of Phase 2 (flagged in HANDOFF's "Things to verify with Guy" block). Guy's answers, to be treated as binding for the relevant Phase 2 tasks:

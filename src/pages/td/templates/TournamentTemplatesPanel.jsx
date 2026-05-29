@@ -18,26 +18,9 @@ import {
   TournamentError,
 } from '../../../lib/tournaments'
 import { downloadCsv, csvFilename } from '../../../lib/csv'
-
-const GAME_TYPES = [
-  { value: 'nlh', label: "No-Limit Hold'em" },
-  { value: 'plo', label: 'Pot-Limit Omaha' },
-  { value: 'plo5', label: 'PLO 5-card' },
-  { value: 'omaha', label: 'Omaha' },
-  { value: 'horse', label: 'HORSE' },
-  { value: 'stud', label: 'Stud' },
-  { value: 'mixed', label: 'Mixed game' },
-  { value: 'mainEvent', label: 'Main Event' },
-  { value: 'mysteryBounty', label: 'Mystery Bounty' },
-  { value: 'satellite', label: 'Satellite' },
-]
-const GAME_TYPE_LABEL = Object.fromEntries(GAME_TYPES.map((g) => [g.value, g.label]))
-
-const REENTRY_TYPES = [
-  { value: 'freezeout', label: 'Freezeout' },
-  { value: 'reentry', label: 'Re-entry' },
-  { value: 'rebuy', label: 'Rebuy' },
-]
+import { formatMoney, centsToStr, dollarsToCents, intOrNull, intOf } from '../../../lib/money'
+import { GAME_TYPES, GAME_TYPE_LABEL, REENTRY_TYPES } from '../../../lib/gameTypes'
+import { Section, Text, Money, Num, Select, Toggle, BountyValues, EmptyState } from '../../../components/FormFields'
 
 const CSV_COLUMNS = [
   { key: 'id', label: 'Template ID' },
@@ -50,26 +33,6 @@ const CSV_COLUMNS = [
   { key: 'isMultiFlight', label: 'Multi-flight' },
   { key: 'createdAt', label: 'Created at' },
 ]
-
-function fmtMoney(cents) {
-  return `$${(cents / 100).toFixed(2)}`
-}
-function centsToStr(cents) {
-  return cents === 0 ? '' : (cents / 100).toString()
-}
-function dollarsToCents(str) {
-  const n = parseFloat(str)
-  return Number.isNaN(n) ? 0 : Math.round(n * 100)
-}
-function intOrNull(str) {
-  if (str === '' || str === null || str === undefined) return null
-  const n = parseInt(str, 10)
-  return Number.isNaN(n) ? null : n
-}
-function intOf(str) {
-  const n = parseInt(str, 10)
-  return Number.isNaN(n) ? 0 : n
-}
 
 export default function TournamentTemplatesPanel() {
   const { templates, loading, error, mockMode, reload } = useTournamentTemplates()
@@ -171,7 +134,7 @@ export default function TournamentTemplatesPanel() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-white/70">{GAME_TYPE_LABEL[t.config.gameType] ?? t.config.gameType}</td>
-                  <td className="px-4 py-3 text-white/70 whitespace-nowrap">{fmtMoney(t.config.buyIn)}</td>
+                  <td className="px-4 py-3 text-white/70 whitespace-nowrap">{formatMoney(t.config.buyIn)}</td>
                   <td className="px-4 py-3 text-xs text-white/50">
                     {t.config.isMultiFlight ? 'Multi-flight' : t.config.isMultiDay ? 'Multi-day' : 'Single day'}
                   </td>
@@ -428,162 +391,6 @@ function TournamentTemplateEditor({ template, onDone, onCancel }) {
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-// ── Field primitives ─────────────────────────────────────────────────────────
-
-function Section({ title, children }) {
-  return (
-    <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">{title}</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-felt-800 border border-white/5 rounded-lg p-4">
-        {children}
-      </div>
-    </section>
-  )
-}
-
-function fieldLabel(label) {
-  return <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{label}</span>
-}
-
-function Text({ label, value, onChange, placeholder, disabled }) {
-  return (
-    <label className="flex flex-col gap-1">
-      {fieldLabel(label)}
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-        className="bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm disabled:opacity-50"
-      />
-    </label>
-  )
-}
-
-function Money({ label, value, onChange, disabled }) {
-  return (
-    <label className="flex flex-col gap-1">
-      {fieldLabel(label)}
-      <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">$</span>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="0.00"
-          disabled={disabled}
-          className="w-full bg-felt-900 border border-white/10 rounded pl-6 pr-3 py-2 text-sm disabled:opacity-50"
-        />
-      </div>
-    </label>
-  )
-}
-
-function Num({ label, value, onChange, disabled, allowEmpty = false }) {
-  return (
-    <label className="flex flex-col gap-1">
-      {fieldLabel(label)}
-      <input
-        type="number"
-        inputMode="numeric"
-        min={0}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={allowEmpty ? 'unlimited' : '0'}
-        disabled={disabled}
-        className="bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm disabled:opacity-50"
-      />
-    </label>
-  )
-}
-
-function Select({ label, value, onChange, options, disabled }) {
-  return (
-    <label className="flex flex-col gap-1">
-      {fieldLabel(label)}
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className="bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm disabled:opacity-50"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
-}
-
-function Toggle({ label, checked, onChange, disabled, hint }) {
-  return (
-    <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} disabled={disabled} className="accent-gold-500" />
-      {label}
-      {hint && <span className="text-[10px] text-white/30">({hint})</span>}
-    </label>
-  )
-}
-
-function BountyValues({ values, onChange, disabled }) {
-  const setAt = (i, v) => onChange(values.map((x, idx) => (idx === i ? v : x)))
-  const add = () => onChange([...values, ''])
-  const removeAt = (i) => onChange(values.filter((_, idx) => idx !== i))
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        {fieldLabel('Bounty values (at least one)')}
-        <button type="button" onClick={add} disabled={disabled} className="px-2 py-1 rounded text-[11px] bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40">
-          + Add value
-        </button>
-      </div>
-      {values.length === 0 ? (
-        <p className="text-xs text-white/40">Add at least one bounty value.</p>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {values.map((v, i) => (
-            <div key={i} className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">$</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={v}
-                onChange={(e) => setAt(i, e.target.value)}
-                placeholder="0.00"
-                disabled={disabled}
-                className="w-28 bg-felt-900 border border-white/10 rounded pl-5 pr-6 py-1.5 text-sm disabled:opacity-50"
-              />
-              <button
-                type="button"
-                onClick={() => removeAt(i)}
-                disabled={disabled}
-                aria-label="Remove value"
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-white/30 hover:text-red-300 text-sm"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function EmptyState({ title, body, tone = 'neutral' }) {
-  const border = tone === 'error' ? 'border-red-500/30' : 'border-white/5'
-  return (
-    <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
-      <div className="font-display text-lg text-white mb-1">{title}</div>
-      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
     </div>
   )
 }

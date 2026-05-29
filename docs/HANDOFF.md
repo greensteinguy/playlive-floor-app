@@ -2,13 +2,13 @@
 
 > This is the living "where we left off" doc. **Update it at the end of every Claude Code session and every Cowork planning session.** Commit alongside whatever else changed. It is how context survives between sessions and across tool switches.
 
-Last updated: **29 May 2026** by Claude — Phase 2 **task 2.5 (templates) DONE**. Full vertical slice: tournaments domain module (6 template CRUD ops + typed errors), 13 tier-1 tests, list hooks, reusable `StructureEditor`, structure- + tournament-template UIs at `/td/templates`, nav + manager-only route, `seed:templates` script. Verified: `npm test` 257 pass, `npm run lint` clean, `npm run build` clean, **emulator round-trip confirmed** (6 docs seed + read back with the correct `Structure` shape). Guy's 4 Phase 2 design calls logged in DECISIONS.md. **Next: task 2.1 (tournament create) — reuses `StructureEditor` + loads template defaults.** Three Phase 1 leftovers still carried (iPad smoke test, deploy indexes, drop legacy `tournaments`).
+Last updated: **29 May 2026** by Claude — Phase 2 **task 2.1 (tournament create) DONE**. Sectioned single-page create form at `/td/tournaments/new` (manager-only): `createTournament` domain op (Date→`Timestamp` at boundary, full-doc `validatedSet`, best-effort audit), 15 tier-1 tests incl. schema-conformance for nlh/satellite/mysteryBounty/multi-flight, reuses `StructureEditor`, optionally seeds from a tournament template (`fromTemplateId`). Shared form primitives extracted to `src/components/FormFields.jsx`; option lists to `src/lib/gameTypes.js`. Verified: `npm test` **281 pass** (25 files), `npm run lint` clean, `npm run build` clean, **emulator round-trip confirmed end-to-end** (selected the Friday template → form populated → created → read the doc back: correct `name`/`gameType`/`status`, `scheduledStartTime` `19:00` AEST → `09:00Z`, 7-entry structure, counters 0, winner-takes-all `payoutStructure`, `createdBy: mock-user`, both provenance ids). Two implementation calls logged in DECISIONS.md (payout placeholder + mysteryBounty pool derivation). **Next: task 2.2 (tournament list) — replaces the placeholder at `/td/tournaments`, adds the "+ New tournament" entry point, needs a `useTournaments` hook.** Three Phase 1 leftovers still carried (iPad smoke test, deploy indexes, drop legacy `tournaments`).
 
 ---
 
 ## Project phase
 
-**Phase 2 — Tournament Setup & Clock: IN PROGRESS, week 3+ of 12.** Task 2.5 (templates) complete; 2.1 next. (Phase 1 closed end of week 2.)
+**Phase 2 — Tournament Setup & Clock: IN PROGRESS, week 3+ of 12.** Tasks 2.5 (templates) and 2.1 (tournament create) complete; 2.2 (list) next. (Phase 1 closed end of week 2.)
 
 ## Phase 2 starting notes — READ FIRST IF YOU ARE THE NEXT AGENT
 
@@ -41,8 +41,8 @@ Phase 1 left a working foundation: typed data layer, validated schemas, atomic w
 Roughly the order tasks unblock each other:
 
 1. **Task 2.5 — Templates. ✅ DONE (29 May 2026).** Structure templates + tournament templates, both manager-only at `/td/templates`. Domain module `src/lib/tournaments/` (6 ops: create/update/archive × structure/tournament), `useStructureTemplates`/`useTournamentTemplates` hooks, reusable `src/components/StructureEditor.jsx`, panels under `src/pages/td/templates/`, `seed:templates`. **2.1 should reuse `StructureEditor` and load a tournament template's `config` as form defaults.**
-2. **Task 2.1 — Tournament create. ← NEXT.** Single-day NLH first; multi-day / multi-flight / satellite are 2.4. Sectioned single-page form per Guy's design call (see DECISIONS 29 May) — mirror the section layout already built in `TournamentTemplatesPanel.jsx`, and reuse `StructureEditor` for non-template structures. Optionally seed defaults from a chosen tournament template. Manager-only (rule: UI-layer gate, since Firestore rules permit TD+manager writes).
-3. **Task 2.2 — Tournament list.** Replaces the placeholder at `/td/tournaments`. Will need a list hook (`useTournaments`) following `useAuditLog`'s pattern. CSV export.
+2. **Task 2.1 — Tournament create. ✅ DONE (29 May 2026).** Sectioned single-page form at `/td/tournaments/new` (manager-only UI gate). `createTournament` op in `src/lib/tournaments/tournaments.js`; reuses `StructureEditor`; optionally seeds from a tournament template. Shared form primitives in `src/components/FormFields.jsx`, option lists in `src/lib/gameTypes.js`. **Edit mode + the remaining core fields (fee/guarantee/add-on toggle) + multi-day/multi-flight/satellite setup are deferred to 2.4.**
+3. **Task 2.2 — Tournament list. ← NEXT.** Replaces the placeholder at `/td/tournaments`. Will need a list hook (`useTournaments`) following `useAuditLog`'s pattern. CSV export. **This is where the created tournament becomes visible, and it owns the "+ New tournament" entry point linking to `/td/tournaments/new`** (the create form currently has no in-app link to it — you reach it by URL).
 4. **Task 2.4 — Multi-format wizards.** The sessions model is the trickiest part of the project so far. Re-read canonical-schema.md §5.1 carefully. Sessions have a routing graph (`convergesIntoSessionId` is the only routing field — `dayNumber` / `flightLabel` are display-only). Use `runValidatedBatch` to create all sessions atomically at tournament-setup time (pre-known IDs via `generateId()`).
 5. **Task 2.3 — Live clock.** Use Firestore real-time subscriptions (`subscribeToTournament`) for the clock. The venue display will subscribe to the same doc. Pause/resume sets `pausedAt`. Advancing levels updates `currentStructureIndex`. Server-time discipline: never trust client clock for "what time is it now" — use `Timestamp.now()` from the SDK consistently.
 6. **Task 2.6 — Seating.** Tables + entries. Bulk operations (open all tables, balance) are batched. Seat-card / alternate-ticket printing is later in Phase 5 — for now, just produce the data.
@@ -66,7 +66,7 @@ Roughly the order tasks unblock each other:
 - `npm run dev` (with `VITE_USE_MOCK_DATA=true` + `VITE_FIRESTORE_EMULATOR=false` in `.env.local`) → pure mock mode, no Firestore.
 - `npm run dev` (with `VITE_FIRESTORE_EMULATOR=true`) → talks to the local Firestore emulator. Requires `npm run emulator` to be running in another terminal. Auth stays mocked.
 - `npm run seed:*` → seed scripts. Phase 2 will want a `seed:tournaments` script following the same pattern (push permissive dev rules + write via `withSecurityRulesDisabled`).
-- `npm test` → 257 tier-1 unit tests, ~4.5s.
+- `npm test` → 281 tier-1 unit tests, ~2.4s.
 - `npm run test:rules` → 174 emulator-backed rules tests, ~7s. Requires Java on PATH (Eclipse Temurin 21 installed; `export PATH="/c/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin:$PATH"` if a shell doesn't see `java`).
 - `npm run lint && npm run build` → must be clean before each commit.
 
@@ -77,7 +77,20 @@ Roughly the order tasks unblock each other:
 - **Don't bypass the wallet module** for ticket / walletTransaction / withdrawal writes. The data layer's per-collection wrappers intentionally don't expose write helpers for those collections. Phase 2 task 2.6 should call `payViaWallet` / `payViaTicket` / etc. when registering players into tournaments.
 - **Don't drop the legacy `tournaments` collection in production without Guy's explicit, in-session "yes drop it now" confirmation.** Destructive. Backup paths: Casinoware itself, manual CSV exports, local audit dump at `scripts/firestore-audit/output/tournaments.dump.json`.
 
-## This session (29 May 2026)
+## This session (29 May 2026) — task 2.1 (Tournament create)
+
+**Phase 2 task 2.1 (Tournament create) — DONE.** Sectioned single-page form at `/td/tournaments/new`, manager-only (route already gated `requiredRoles={['manager']}`; the create button is additionally disabled in pure mock mode). Builds directly on the 2.5 template work.
+
+- **`createTournament` domain op — `src/lib/tournaments/tournaments.js`** (re-exported from `index.js`). Pure async, takes `{actorId, actorRole}` like every domain op. Assembles a full `Tournament` doc, converts `Date → Timestamp` at the boundary (`toTimestamp` / `toNullableTimestamp`), writes via `validatedSet` (which re-parses the WHOLE doc through the Zod `Tournament` schema incl. every `superRefine` — so a written doc is a proven-valid doc), then a best-effort `tournament.created` audit row after the write. Initializes all live-state/counter fields (`status`, `isOnBreak: false`, `currentStructureIndex: null`, `entryCount`/`uniquePlayerCount`/`remainingPlayerCount`/`totalPrizePool: 0`, `createdBy: actorId`). Rejects a blank `actorId` with `TournamentError` before any write.
+- **`DEFAULT_PAYOUT` placeholder + mysteryBounty `totalPool` derivation** — see the dedicated DECISIONS.md entry (29 May). Short version: `payoutStructure: null` → winner-takes-all default (real editor is 2.3); mysteryBounty `bountyPoolConfig.totalPool` is derived as `sum(bountyValues)` so the schema's `sum === totalPool` invariant can't be violated from the UI.
+- **15 tier-1 tests — `tournaments.test.js`.** `vi.mock`s `../firestore` (validatedSet echoes the doc back, generateId fixed), imports the REAL `Tournament` schema. Suites: document assembly (path, live-state/counter fields, defaults), payout default (winner-takes-all when null, passthrough when explicit), time conversion (Date→Timestamp, null lateReg preserved), **schema conformance** (`Tournament.safeParse(capturedDoc())` for nlh / satellite / mysteryBounty / multi-flight fixtures), audit metadata, and rejections (blank actorId, non-Date / NaN scheduledStartTime).
+- **Shared form primitives extracted — `src/components/FormFields.jsx`.** `Section`, `Text`, `Money`, `Num`, `Select`, `Toggle`, `BountyValues`, `EmptyState`, plus a new dark-themed `DateTime` (datetime-local). `TournamentTemplatesPanel.jsx` was refactored to import these (≈150 lines of local primitives/helpers/constants deleted, behaviour unchanged) so the template editor and the create form share one set.
+- **Option lists consolidated — `src/lib/gameTypes.js`.** `GAME_TYPES`, `GAME_TYPE_LABEL`, `REENTRY_TYPES`. Single source of truth used by the template panel, the create form, and the upcoming list/detail.
+- **The form — `src/pages/td/TournamentNew.jsx`** (was a placeholder). Money/numeric fields held as **strings** (so decimal entry isn't fought by re-renders), converted via `src/lib/money.js` (`dollarsToCents`/`intOf`/`intOrNull`) at save. `StructureEditor` holds the structure as a real array. A "Start from template" select calls `applyTemplate(id)` to map a tournament template's `config` onto every form field and load its `config.structureTemplateId` levels; a separate structure-template loader sets the embedded structure + records `structureTemplateId` provenance. `validate()` checks name, ≥1 valid `Structure` level, a valid `scheduledStartTime`, optional-but-valid lateReg, and ≥1 bounty value for mysteryBounty. Coupled multi-day/multi-flight setters keep `isMultiFlight ⇒ isMultiDay`. Conditional Satellite / Mystery-bounty sections by `gameType`. On success: toast + `navigate('/td/tournaments')`; `TournamentError` is caught → error toast.
+- **Verification.** `npm test` → **281 pass** (25 files, was 257/23 — added `money.test.js` + `tournaments.test.js`'s createTournament suite). `npm run lint` clean. `npm run build` clean (pre-existing 500 kB chunk warning only). **Emulator round-trip, full UI path:** booted the Firestore emulator + dev server in Mode 2 (mock manager + emulator), seeded templates, drove the browser via the preview tool — navigated to `/td/tournaments/new`, picked the "Friday $100 NLH" template (populated name + loaded 5 levels + 2 breaks), set start `2026-06-06T19:00`, clicked Create. Read the doc back from the emulator REST API: `name` "$100 NLH", `gameType` nlh, `status` scheduled, `scheduledStartTime` `2026-06-06T09:00:00Z` (= 19:00 AEST, conversion correct), `structure` 7 entries, counters 0, `payoutStructure` winner-takes-all, `createdBy` mock-user, `buyIn` 10000c, `startingStack` 30000, `structureTemplateId` st-deepstack, `fromTemplateId` tt-friday-nlh. End-to-end confirmed.
+- **Known gap for 2.2:** the create form has **no in-app entry point yet** — you reach `/td/tournaments/new` by URL. The "+ New tournament" button belongs on the tournament list (task 2.2). Also `.claude/launch.json` (preview-tool dev-server config) was added this session; it's a local dev convenience — committing it is harmless but optional.
+
+## Previous session (29 May 2026) — task 2.5 (Templates)
 
 **Phase 2 task 2.5 (Templates) — DONE.** Full vertical slice, manager-only, live at `/td/templates`. New `src/lib/tournaments/` domain module follows the wallet-module conventions exactly.
 
@@ -96,7 +109,7 @@ Roughly the order tasks unblock each other:
 - **`canonical-schema.md` fixes:** §3.4 `structureTemplates.levels` rewritten — it reuses the `Structure` discriminated union (level | break entries), **not** the stale flat array with per-level `breakAfterMinutes`/`isColorUp` that was documented. §3.6 well-known actionType table gained the six template rows.
 - **Verification:** `npm test` → 257 pass (23 files). `npm run lint` → clean. `npm run build` → clean (pre-existing 500 kB chunk warning only). **Emulator round-trip:** booted Firestore emulator, ran `seed:templates`, read both collections back over the REST API — all 6 docs present, `levels` round-tripped as the discriminated-union shape. (`npm run test:rules` was NOT re-run this session — no rules changes; the access matrix already covers `structureTemplates`/`tournamentTemplates`.)
 
-## Previous session (28 May 2026)
+## Earlier session (28 May 2026)
 
 - **Task 1.10 (iPad layout pass) — code-review pass DONE; on-device smoke test pending.** Reviewed every authenticated screen with iPad usability in mind.
   - `index.html` already has the right viewport meta (`width=device-width, initial-scale=1.0, viewport-fit=cover`) + `apple-mobile-web-app-capable=yes` + `apple-mobile-web-app-status-bar-style=black-translucent`. User-scaling intentionally NOT disabled (accessibility).
@@ -249,7 +262,7 @@ The audit was the biggest source of new information in this session. Headline fi
 
 The agenda for the next session is laid out fully in the **"Phase 2 starting notes"** block at the top of this doc. The short version:
 
-1. **Continue Phase 2: ~~2.5 (templates) ✅~~ → 2.1 (tournament create, NEXT) → 2.2 (list) → 2.4 (multi-format wizards) → 2.3 (clock) → 2.6 (seating) → 2.7 (status transitions).** Task 2.1 reuses `StructureEditor` and the sectioned-form layout from `TournamentTemplatesPanel.jsx`, and can seed defaults from a chosen tournament template.
+1. **Continue Phase 2: ~~2.5 (templates) ✅~~ → ~~2.1 (tournament create) ✅~~ → 2.2 (list, NEXT) → 2.4 (multi-format wizards) → 2.3 (clock) → 2.6 (seating) → 2.7 (status transitions).** Task 2.2 replaces the `/td/tournaments` placeholder with a real list (needs a `useTournaments` hook following `useAuditLog`'s pattern + CSV export), and owns the "+ New tournament" link to the 2.1 create form. Edit mode + the remaining 2.1 core fields (fee/guarantee/add-on toggle) + multi-day/multi-flight/satellite setup roll into 2.4.
 2. Three Phase 1 leftovers carried forward — none block starting Phase 2:
    - iPad on-device smoke test (Guy, with an iPad).
    - Deploy `firestore.indexes.json` (waits on Guy's go; touches production).
@@ -272,7 +285,7 @@ The four Phase 2 design questions (form layout, clock visual design, seat-card p
 For future sessions and future devs.
 
 ```
-npm test               # tier 1: validators + wallet + tournaments (257 tests, ~4.5s)
+npm test               # tier 1: validators + wallet + tournaments (281 tests, ~2.4s)
 npm run test:watch     # vitest watch mode
 npm run test:rules     # tier 2: emulator + firestore.rules (174 tests, ~7s)
                        #         requires Java on PATH — see "Dev prereqs" below
