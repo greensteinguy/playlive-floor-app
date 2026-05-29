@@ -12,6 +12,6 @@ export {
   archiveTournamentTemplate,
 } from './templates'
 
-export { createTournament } from './tournaments'
+export { createTournament, updateTournament } from './tournaments'
 
 export { TournamentError } from './errors'

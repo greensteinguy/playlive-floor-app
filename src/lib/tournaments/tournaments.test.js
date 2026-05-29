@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Timestamp } from 'firebase/firestore'
+import { makeMockStore } from '../wallet/_test-helpers'
 
 // Only the data layer is mocked — the real Tournament schema is imported below
 // so we can assert the op assembles a document that actually validates. The
-// mocked validatedSet does NOT validate, so without that check a malformed doc
-// would sail through the unit test.
+// mocked validatedSet / mock tx.set do NOT validate, so the schema-conformance
+// tests below run Tournament.safeParse on the captured document explicitly.
 vi.mock('../firestore', () => ({
   validatedSet: vi.fn(),
+  runValidatedTransaction: vi.fn(),
   auditLog: { writeAuditLogSafe: vi.fn().mockResolvedValue(undefined) },
   generateId: vi.fn(),
   paths: {
@@ -14,10 +16,12 @@ vi.mock('../firestore', () => ({
   },
 }))
 
-import { validatedSet, auditLog, generateId } from '../firestore'
+import { validatedSet, runValidatedTransaction, auditLog, generateId } from '../firestore'
 import { Tournament } from '../schema'
-import { createTournament } from './tournaments'
+import { createTournament, updateTournament } from './tournaments'
 import { TournamentError } from './errors'
+
+let mockState
 
 const LEVELS = [
   { type: 'level', blindNumber: 1, smallBlind: 100, bigBlind: 200, ante: 0, bringIn: 0, durationMinutes: 20 },
@@ -47,8 +51,60 @@ function capturedDoc() {
   return validatedSet.mock.calls[0][2]
 }
 
+// A full, schema-valid Tournament doc to seed as the "current" row updateTournament
+// reads. Mirrors createTournament's assembly (the create schema-conformance tests
+// prove this exact nlh-freezeout shape validates); tests override the bits they
+// exercise.
+function makeTournament(overrides = {}) {
+  return {
+    id: 'tour-1',
+    legacyId: null,
+    name: 'Friday $100 NLH',
+    shortDescription: '',
+    isMultiDay: false,
+    isMultiFlight: false,
+    gameType: 'nlh',
+    buyIn: 100_00,
+    hospitalityCost: 0,
+    guarantee: 0,
+    houseConsumption: 0,
+    structureTemplateId: null,
+    startingStack: 20_000,
+    structure: LEVELS,
+    payoutStructure: { type: 'byPercent', rounding: 'nearest5', positions: [{ place: 1, payout: 0, percent: 1 }] },
+    scheduledStartTime: Timestamp.fromDate(new Date('2026-06-01T09:00:00Z')),
+    lateRegCutoffTime: null,
+    status: 'scheduled',
+    isOnBreak: false,
+    pausedAt: null,
+    reentryConfig: { type: 'freezeout', maxReentries: null, maxRebuys: null, hasAddOn: false, addOnCost: null, addOnChips: null },
+    hasUpperDeckMainDeck: false,
+    satelliteConfig: null,
+    bountyPoolConfig: null,
+    fromTemplateId: null,
+    currentStructureIndex: null,
+    entryCount: 0,
+    uniquePlayerCount: 0,
+    remainingPlayerCount: 0,
+    totalPrizePool: 0,
+    finishedAt: null,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    createdBy: 'manager-1',
+    archivedAt: null,
+    ...overrides,
+  }
+}
+
+// The document updateTournament handed to the transaction's tx.set, for tour-1.
+function updatedDoc() {
+  return mockState.calls.set.find((c) => c.path[1] === 'tour-1')?.data
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
+  mockState = makeMockStore()
+  runValidatedTransaction.mockImplementation(async (fn) => fn(mockState.tx))
   // Real validatedSet returns the validated doc; the data already carries the
   // id, so echo it back.
   validatedSet.mockImplementation(async (_pathParts, _schema, data) => data)
@@ -258,5 +314,223 @@ describe('createTournament — rejections', () => {
     await expect(
       createTournament(makeArgs({ scheduledStartTime: new Date('not a date') }))
     ).rejects.toThrow(TournamentError)
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// updateTournament — read-modify-write edit from the detail page
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Merge semantics ────────────────────────────────────────────────────────────
+
+describe('updateTournament — merge semantics', () => {
+  it('merges the patch, preserves untouched fields, and bumps updatedAt', async () => {
+    const existing = makeTournament({ id: 'tour-1' })
+    mockState.seed(['tournaments', 'tour-1'], existing)
+
+    const updated = await updateTournament({
+      id: 'tour-1',
+      patch: { name: 'Saturday Deepstack', guarantee: 5_000_00 },
+      actorId: 'td-1',
+      actorRole: 'td',
+    })
+
+    const doc = updatedDoc()
+    expect(doc.name).toBe('Saturday Deepstack')
+    expect(doc.guarantee).toBe(5_000_00)
+    expect(doc.buyIn).toBe(existing.buyIn) // untouched
+    expect(doc.structure).toBe(existing.structure) // untouched
+    expect(doc.createdAt).toBe(existing.createdAt) // untouched
+    expect(doc.updatedAt).not.toBe(existing.updatedAt) // bumped
+    expect(doc.updatedAt).toBeInstanceOf(Timestamp)
+    expect(updated.name).toBe('Saturday Deepstack')
+  })
+
+  it('re-reads inside a transaction so the full shape is re-validated', async () => {
+    mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1' }))
+    await updateTournament({
+      id: 'tour-1',
+      patch: { name: 'x' },
+      actorId: 'td-1',
+      actorRole: 'td',
+    })
+    expect(runValidatedTransaction).toHaveBeenCalledTimes(1)
+    expect(mockState.calls.get.find((c) => c.path[1] === 'tour-1')).toBeDefined()
+  })
+
+  it('does not touch live-state or counters the patch omits', async () => {
+    const existing = makeTournament({
+      id: 'tour-1',
+      status: 'lateRegOpen',
+      entryCount: 42,
+      currentStructureIndex: 3,
+    })
+    mockState.seed(['tournaments', 'tour-1'], existing)
+
+    await updateTournament({
+      id: 'tour-1',
+      patch: { name: 'Renamed mid-flight' },
+      actorId: 'td-1',
+      actorRole: 'td',
+    })
+
+    const doc = updatedDoc()
+    expect(doc.status).toBe('lateRegOpen')
+    expect(doc.entryCount).toBe(42)
+    expect(doc.currentStructureIndex).toBe(3)
+  })
+})
+
+// ── Time conversion (Date in patch → Firestore Timestamp) ──────────────────────
+
+describe('updateTournament — time conversion', () => {
+  it('converts Date scheduledStartTime / lateRegCutoffTime in the patch to Timestamps', async () => {
+    mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1' }))
+    const start = new Date('2026-07-01T18:00:00Z')
+    const cutoff = new Date('2026-07-01T20:00:00Z')
+
+    await updateTournament({
+      id: 'tour-1',
+      patch: { scheduledStartTime: start, lateRegCutoffTime: cutoff },
+      actorId: 'td-1',
+      actorRole: 'td',
+    })
+
+    const doc = updatedDoc()
+    expect(doc.scheduledStartTime).toBeInstanceOf(Timestamp)
+    expect(doc.scheduledStartTime.toMillis()).toBe(start.getTime())
+    expect(doc.lateRegCutoffTime).toBeInstanceOf(Timestamp)
+    expect(doc.lateRegCutoffTime.toMillis()).toBe(cutoff.getTime())
+  })
+
+  it('preserves a null lateRegCutoffTime passed in the patch', async () => {
+    mockState.seed(
+      ['tournaments', 'tour-1'],
+      makeTournament({ id: 'tour-1', lateRegCutoffTime: Timestamp.fromDate(new Date('2026-06-01T11:00:00Z')) })
+    )
+    await updateTournament({
+      id: 'tour-1',
+      patch: { lateRegCutoffTime: null },
+      actorId: 'td-1',
+      actorRole: 'td',
+    })
+    expect(updatedDoc().lateRegCutoffTime).toBeNull()
+  })
+
+  it('leaves the existing schedule Timestamp untouched when the patch omits it', async () => {
+    const existing = makeTournament({ id: 'tour-1' })
+    mockState.seed(['tournaments', 'tour-1'], existing)
+    await updateTournament({
+      id: 'tour-1',
+      patch: { name: 'No schedule change' },
+      actorId: 'td-1',
+      actorRole: 'td',
+    })
+    // Same Timestamp reference carried through — not re-wrapped.
+    expect(updatedDoc().scheduledStartTime).toBe(existing.scheduledStartTime)
+  })
+
+  it('rejects a non-Date scheduledStartTime in the patch before writing', async () => {
+    mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1' }))
+    await expect(
+      updateTournament({
+        id: 'tour-1',
+        patch: { scheduledStartTime: '2026-07-01' },
+        actorId: 'td-1',
+        actorRole: 'td',
+      })
+    ).rejects.toThrow(TournamentError)
+  })
+})
+
+// ── Schema conformance — the MERGED doc must pass the REAL Tournament schema ────
+
+describe('updateTournament — schema conformance', () => {
+  it('produces a merged document that passes the real Tournament schema', async () => {
+    mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1' }))
+    await updateTournament({
+      id: 'tour-1',
+      patch: { name: 'Renamed', buyIn: 250_00, scheduledStartTime: new Date('2026-07-01T18:00:00Z') },
+      actorId: 'td-1',
+      actorRole: 'td',
+    })
+    const result = Tournament.safeParse(updatedDoc())
+    expect(result.success, result.error?.toString()).toBe(true)
+  })
+
+  it('a patch that violates an invariant yields a doc the schema rejects (caught by the real tx.set in prod)', async () => {
+    mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1' }))
+    await updateTournament({
+      id: 'tour-1',
+      // hasAddOn true but no cost/chips — superRefine should reject this.
+      patch: { reentryConfig: { type: 'freezeout', maxReentries: null, maxRebuys: null, hasAddOn: true, addOnCost: null, addOnChips: null } },
+      actorId: 'td-1',
+      actorRole: 'td',
+    })
+    expect(Tournament.safeParse(updatedDoc()).success).toBe(false)
+  })
+})
+
+// ── Audit ──────────────────────────────────────────────────────────────────────
+
+describe('updateTournament — audit', () => {
+  it('writes a tournament.updated row recording the changed fields', async () => {
+    mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1' }))
+    await updateTournament({
+      id: 'tour-1',
+      patch: { name: 'x', guarantee: 1_000_00 },
+      actorId: 'td-1',
+      actorRole: 'td',
+    })
+    expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 'td-1',
+        actorRole: 'td',
+        actionType: 'tournament.updated',
+        targetType: 'tournament',
+        targetId: 'tour-1',
+        metadata: { changedFields: ['name', 'guarantee'] },
+      })
+    )
+  })
+
+  it('passes through a caller-supplied actionType (e.g. the structure tab)', async () => {
+    mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1' }))
+    await updateTournament({
+      id: 'tour-1',
+      patch: { structure: LEVELS },
+      actorId: 'td-1',
+      actorRole: 'td',
+      actionType: 'tournament.structureEdited',
+    })
+    expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: 'tournament.structureEdited', targetId: 'tour-1' })
+    )
+  })
+})
+
+// ── Rejections ───────────────────────────────────────────────────────────────
+
+describe('updateTournament — rejections', () => {
+  it('rejects a missing/blank actorId before running the transaction', async () => {
+    await expect(
+      updateTournament({ id: 'tour-1', patch: { name: 'x' }, actorId: '', actorRole: 'td' })
+    ).rejects.toThrow(TournamentError)
+    expect(runValidatedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects a missing/blank id before running the transaction', async () => {
+    await expect(
+      updateTournament({ id: '   ', patch: { name: 'x' }, actorId: 'td-1', actorRole: 'td' })
+    ).rejects.toThrow(TournamentError)
+    expect(runValidatedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('propagates NotFoundError and skips the audit when the tournament does not exist', async () => {
+    // store empty → mock tx.get throws NotFoundError
+    await expect(
+      updateTournament({ id: 'missing', patch: { name: 'x' }, actorId: 'td-1', actorRole: 'td' })
+    ).rejects.toThrow()
+    expect(auditLog.writeAuditLogSafe).not.toHaveBeenCalled()
   })
 })

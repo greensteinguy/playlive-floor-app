@@ -24,6 +24,7 @@ export const WELL_KNOWN_ACTION_TYPES = /** @type {const} */ ([
   'player.merged',
   // tournament
   'tournament.created',
+  'tournament.updated',
   'tournament.published',
   'tournament.statusChanged',
   'tournament.paused',
