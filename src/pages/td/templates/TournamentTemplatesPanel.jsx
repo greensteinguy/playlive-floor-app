@@ -21,6 +21,7 @@ import { downloadCsv, csvFilename } from '../../../lib/csv'
 import { formatMoney, centsToStr, dollarsToCents, intOrNull, intOf } from '../../../lib/money'
 import { GAME_TYPES, GAME_TYPE_LABEL, REENTRY_TYPES } from '../../../lib/gameTypes'
 import { Section, Text, Money, Num, Select, Toggle, BountyValues, EmptyState } from '../../../components/FormFields'
+import FormWizard from '../../../components/FormWizard'
 
 const CSV_COLUMNS = [
   { key: 'id', label: 'Template ID' },
@@ -212,6 +213,10 @@ function buildConfig(form) {
   }
 }
 
+// Wizard step keys, in order — validation errors are bucketed by these so the
+// stepper can flag the step(s) that need attention.
+const STEP_ORDER = ['general', 'structure', 'rest']
+
 function TournamentTemplateEditor({ template, onDone, onCancel }) {
   const { user, role } = useAuth()
   const toast = useToast()
@@ -221,27 +226,35 @@ function TournamentTemplateEditor({ template, onDone, onCancel }) {
   const [form, setForm] = useState(() => initialForm(template))
   const [submitting, setSubmitting] = useState(false)
   const [confirmArchive, setConfirmArchive] = useState(false)
+  const [step, setStep] = useState(0)
+  const [stepErrors, setStepErrors] = useState({})
   const set = (patch) => setForm((f) => ({ ...f, ...patch }))
 
   // Keep the schema's isMultiFlight ⇒ isMultiDay invariant true by construction.
   const setMultiFlight = (on) => set(on ? { isMultiFlight: true, isMultiDay: true } : { isMultiFlight: false })
   const setMultiDay = (on) => set(on ? { isMultiDay: true } : { isMultiDay: false, isMultiFlight: false })
 
+  // Returns an object keyed by STEP_ORDER; absent key = that step is valid.
   function validate() {
-    if (form.templateName.trim() === '') return 'Template name is required.'
-    if (form.name.trim() === '') return 'Tournament name is required.'
+    const errors = {}
+    if (form.templateName.trim() === '') errors.general = 'Template name is required.'
+    else if (form.name.trim() === '') errors.general = 'Tournament name is required.'
     if (form.gameType === 'mysteryBounty' && form.bountyValues.length < 1) {
-      return 'Mystery bounty needs at least one bounty value.'
+      errors.rest = 'Mystery bounty needs at least one bounty value.'
     }
-    return null
+    return errors
   }
 
   async function handleSave() {
-    const err = validate()
-    if (err) {
-      toast.error(err)
+    const errors = validate()
+    const firstKey = STEP_ORDER.find((k) => errors[k])
+    if (firstKey) {
+      setStepErrors(errors)
+      setStep(STEP_ORDER.indexOf(firstKey))
+      toast.error(errors[firstKey])
       return
     }
+    setStepErrors({})
     setSubmitting(true)
     try {
       const config = buildConfig(form)
@@ -283,6 +296,129 @@ function TournamentTemplateEditor({ template, onDone, onCancel }) {
 
   const d = submitting
 
+  const steps = [
+    {
+      key: 'general',
+      label: 'General Information',
+      content: (
+        <>
+          <Section title="Template details">
+            <Text label="Template name" value={form.templateName} onChange={(v) => set({ templateName: v })} placeholder="e.g. Friday Night Special" disabled={d} />
+            <Text label="Template note (optional)" value={form.templateDescription} onChange={(v) => set({ templateDescription: v })} placeholder="Internal note" disabled={d} />
+          </Section>
+
+          <Section title="Tournament basics">
+            <Text label="Tournament name" value={form.name} onChange={(v) => set({ name: v })} placeholder="e.g. $100 NLH" disabled={d} />
+            <Text label="Short description" value={form.shortDescription} onChange={(v) => set({ shortDescription: v })} placeholder="Shown to players" disabled={d} />
+            <Select label="Game type" value={form.gameType} onChange={(v) => set({ gameType: v })} options={GAME_TYPES} disabled={d} />
+            <Money label="Buy-in" value={form.buyIn} onChange={(v) => set({ buyIn: v })} disabled={d} />
+            <Money label="Hospitality / fee" value={form.hospitalityCost} onChange={(v) => set({ hospitalityCost: v })} disabled={d} />
+            <Money label="Guarantee" value={form.guarantee} onChange={(v) => set({ guarantee: v })} disabled={d} />
+            <Money label="House consumption" value={form.houseConsumption} onChange={(v) => set({ houseConsumption: v })} disabled={d} />
+            <Num label="Starting stack (chips)" value={form.startingStack} onChange={(v) => set({ startingStack: v })} disabled={d} />
+          </Section>
+        </>
+      ),
+    },
+    {
+      key: 'structure',
+      label: 'Structure',
+      content: (
+        <Section title="Format & structure">
+          <Select
+            label="Blind structure"
+            value={form.structureTemplateId}
+            onChange={(v) => set({ structureTemplateId: v })}
+            options={[
+              { value: '', label: structures.loading ? 'Loading…' : '— None (set later) —' },
+              ...structures.templates.map((s) => ({ value: s.id, label: s.name })),
+            ]}
+            disabled={d}
+          />
+          <div className="flex flex-col gap-2 justify-end">
+            <Toggle label="Multi-day" checked={form.isMultiDay} onChange={setMultiDay} disabled={d} />
+            <Toggle label="Multi-flight" checked={form.isMultiFlight} onChange={setMultiFlight} disabled={d} hint="Implies multi-day" />
+            <Toggle label="Upper deck / main deck" checked={form.hasUpperDeckMainDeck} onChange={(v) => set({ hasUpperDeckMainDeck: v })} disabled={d} />
+          </div>
+        </Section>
+      ),
+    },
+    {
+      key: 'rest',
+      label: 'Re-entry & extras',
+      content: (
+        <>
+          <Section title="Re-entry">
+            <Select label="Type" value={form.reentryType} onChange={(v) => set({ reentryType: v })} options={REENTRY_TYPES} disabled={d} />
+            {form.reentryType === 'reentry' && (
+              <Num label="Max re-entries (blank = unlimited)" value={form.maxReentries} onChange={(v) => set({ maxReentries: v })} disabled={d} allowEmpty />
+            )}
+            {form.reentryType === 'rebuy' && (
+              <Num label="Max rebuys (blank = unlimited)" value={form.maxRebuys} onChange={(v) => set({ maxRebuys: v })} disabled={d} allowEmpty />
+            )}
+            <div className="flex flex-col justify-end">
+              <Toggle label="Has add-on" checked={form.hasAddOn} onChange={(v) => set({ hasAddOn: v })} disabled={d} />
+            </div>
+          </Section>
+
+          {form.gameType === 'satellite' && (
+            <Section title="Satellite">
+              <Money label="Ticket reward (per seat)" value={form.ticketReward} onChange={(v) => set({ ticketReward: v })} disabled={d} />
+            </Section>
+          )}
+
+          {form.gameType === 'mysteryBounty' && (
+            <Section title="Mystery bounty">
+              <Money label="Total bounty pool" value={form.bountyTotalPool} onChange={(v) => set({ bountyTotalPool: v })} disabled={d} />
+              <div className="md:col-span-2">
+                <BountyValues values={form.bountyValues} onChange={(vals) => set({ bountyValues: vals })} disabled={d} />
+              </div>
+            </Section>
+          )}
+        </>
+      ),
+    },
+  ]
+
+  const actions = (
+    <>
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={d}
+        className={
+          'px-4 py-2 rounded-lg text-sm font-medium ' +
+          (d ? 'bg-white/5 text-white/30 cursor-not-allowed' : 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30')
+        }
+      >
+        {d ? 'Saving…' : isEdit ? 'Save changes' : 'Create template'}
+      </button>
+      <button type="button" onClick={onCancel} disabled={d} className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5">
+        Cancel
+      </button>
+
+      {isEdit && (
+        <div className="ml-1 sm:ml-3">
+          {confirmArchive ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/60">Archive this template?</span>
+              <button type="button" onClick={handleArchive} disabled={d} className="px-3 py-2 rounded-lg text-xs font-medium bg-red-500/20 text-red-200 hover:bg-red-500/30">
+                Confirm
+              </button>
+              <button type="button" onClick={() => setConfirmArchive(false)} disabled={d} className="px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white">
+                Keep
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirmArchive(true)} disabled={d} className="px-3 py-2 rounded-lg text-xs text-red-300/70 hover:text-red-200 hover:bg-red-500/10">
+              Archive
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  )
+
   return (
     <div className="max-w-4xl">
       <button type="button" onClick={onCancel} className="text-sm text-white/50 hover:text-white mb-4">
@@ -293,104 +429,7 @@ function TournamentTemplateEditor({ template, onDone, onCancel }) {
         {isEdit ? `Edit template — ${template.name}` : 'New tournament template'}
       </h2>
 
-      <Section title="Template details">
-        <Text label="Template name" value={form.templateName} onChange={(v) => set({ templateName: v })} placeholder="e.g. Friday Night Special" disabled={d} />
-        <Text label="Template note (optional)" value={form.templateDescription} onChange={(v) => set({ templateDescription: v })} placeholder="Internal note" disabled={d} />
-      </Section>
-
-      <Section title="Tournament basics">
-        <Text label="Tournament name" value={form.name} onChange={(v) => set({ name: v })} placeholder="e.g. $100 NLH" disabled={d} />
-        <Text label="Short description" value={form.shortDescription} onChange={(v) => set({ shortDescription: v })} placeholder="Shown to players" disabled={d} />
-        <Select label="Game type" value={form.gameType} onChange={(v) => set({ gameType: v })} options={GAME_TYPES} disabled={d} />
-        <Money label="Buy-in" value={form.buyIn} onChange={(v) => set({ buyIn: v })} disabled={d} />
-        <Money label="Hospitality / fee" value={form.hospitalityCost} onChange={(v) => set({ hospitalityCost: v })} disabled={d} />
-        <Money label="Guarantee" value={form.guarantee} onChange={(v) => set({ guarantee: v })} disabled={d} />
-        <Money label="House consumption" value={form.houseConsumption} onChange={(v) => set({ houseConsumption: v })} disabled={d} />
-        <Num label="Starting stack (chips)" value={form.startingStack} onChange={(v) => set({ startingStack: v })} disabled={d} />
-      </Section>
-
-      <Section title="Format & structure">
-        <Select
-          label="Blind structure"
-          value={form.structureTemplateId}
-          onChange={(v) => set({ structureTemplateId: v })}
-          options={[
-            { value: '', label: structures.loading ? 'Loading…' : '— None (set later) —' },
-            ...structures.templates.map((s) => ({ value: s.id, label: s.name })),
-          ]}
-          disabled={d}
-        />
-        <div className="flex flex-col gap-2 justify-end">
-          <Toggle label="Multi-day" checked={form.isMultiDay} onChange={setMultiDay} disabled={d} />
-          <Toggle label="Multi-flight" checked={form.isMultiFlight} onChange={setMultiFlight} disabled={d} hint="Implies multi-day" />
-          <Toggle label="Upper deck / main deck" checked={form.hasUpperDeckMainDeck} onChange={(v) => set({ hasUpperDeckMainDeck: v })} disabled={d} />
-        </div>
-      </Section>
-
-      <Section title="Re-entry">
-        <Select label="Type" value={form.reentryType} onChange={(v) => set({ reentryType: v })} options={REENTRY_TYPES} disabled={d} />
-        {form.reentryType === 'reentry' && (
-          <Num label="Max re-entries (blank = unlimited)" value={form.maxReentries} onChange={(v) => set({ maxReentries: v })} disabled={d} allowEmpty />
-        )}
-        {form.reentryType === 'rebuy' && (
-          <Num label="Max rebuys (blank = unlimited)" value={form.maxRebuys} onChange={(v) => set({ maxRebuys: v })} disabled={d} allowEmpty />
-        )}
-        <div className="flex flex-col justify-end">
-          <Toggle label="Has add-on" checked={form.hasAddOn} onChange={(v) => set({ hasAddOn: v })} disabled={d} />
-        </div>
-      </Section>
-
-      {form.gameType === 'satellite' && (
-        <Section title="Satellite">
-          <Money label="Ticket reward (per seat)" value={form.ticketReward} onChange={(v) => set({ ticketReward: v })} disabled={d} />
-        </Section>
-      )}
-
-      {form.gameType === 'mysteryBounty' && (
-        <Section title="Mystery bounty">
-          <Money label="Total bounty pool" value={form.bountyTotalPool} onChange={(v) => set({ bountyTotalPool: v })} disabled={d} />
-          <div className="md:col-span-2">
-            <BountyValues values={form.bountyValues} onChange={(vals) => set({ bountyValues: vals })} disabled={d} />
-          </div>
-        </Section>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-4 mt-6">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={d}
-          className={
-            'px-4 py-2 rounded-lg text-sm font-medium ' +
-            (d ? 'bg-white/5 text-white/30 cursor-not-allowed' : 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30')
-          }
-        >
-          {d ? 'Saving…' : isEdit ? 'Save changes' : 'Create template'}
-        </button>
-        <button type="button" onClick={onCancel} disabled={d} className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5">
-          Cancel
-        </button>
-
-        {isEdit && (
-          <div className="ml-auto">
-            {confirmArchive ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-white/60">Archive this template?</span>
-                <button type="button" onClick={handleArchive} disabled={d} className="px-3 py-2 rounded-lg text-xs font-medium bg-red-500/20 text-red-200 hover:bg-red-500/30">
-                  Confirm
-                </button>
-                <button type="button" onClick={() => setConfirmArchive(false)} disabled={d} className="px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white">
-                  Keep
-                </button>
-              </div>
-            ) : (
-              <button type="button" onClick={() => setConfirmArchive(true)} disabled={d} className="px-3 py-2 rounded-lg text-xs text-red-300/70 hover:text-red-200 hover:bg-red-500/10">
-                Archive
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <FormWizard steps={steps} current={step} onStepChange={setStep} errorKeys={Object.keys(stepErrors)} actions={actions} />
     </div>
   )
 }

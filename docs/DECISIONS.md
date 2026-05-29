@@ -6,6 +6,23 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 29 May 2026 — Tournament config forms → 3-step wizard (reverses the single-page call)
+
+The tournament **create form** (task 2.1) and the **tournament-template editor** (task 2.5) are now both 3-step wizards — **General Information / Structure / Re-entry & extras** — built on a shared presentational `src/components/FormWizard.jsx`. This **reverses decision #1 of the "Phase 2 UX design calls" entry below** (sectioned single page, not a wizard).
+
+**Why the reversal:** Guy reviewed the rendered single-page form and found it too long to scan once a real blind structure was filled in — the structure editor's rows pushed the re-entry / bounty fields far below the fold. The original anti-wizard reasoning ("a wizard hides fields and adds clicks") is answered by the *navigation model* rather than by avoiding steps:
+
+- **Free navigation, not gated.** Every step header is a clickable button; Back/Next are conveniences, not a forced sequence. No field is more than one click away.
+- **Validate on submit, not per step.** The primary action (Create / Save changes) lives in a persistent right-aligned slot reachable from any step. It validates the *whole* form at once; on failure it flags every offending step with a red "!" in the stepper and jumps to the first one with a toast. The wizard never blocks you on a step or buries a validation error.
+
+**Structure gets its own step** precisely because the long blind structure was what made the single page unscannable — isolating it keeps the other two steps short. The create form's three format toggles (multi-day / multi-flight / upper-deck) moved out of the old Schedule section into the Structure step, so both forms group "shape of the tournament" together.
+
+**One shared component, both forms.** `FormWizard` is presentational — it owns no form state; the parent passes the rendered step content, the current index + `onStepChange`, the set of errored step keys, and an `actions` JSX slot (Create/Save/Cancel/Archive differ between the two forms). Guy's stated reason for converting *both* forms (not just the create form) was cross-form consistency, since they already share `StructureEditor` + the `FormFields` primitives.
+
+**Unchanged:** every field, the `createTournament` / template-save logic, and the divergence logged below (create form derives mysteryBounty `totalPool`; template editor keeps its own unbalanced field). Pure UX refactor — `npm test` still **281 pass**, lint/build clean, and both forms verified against the emulator (create persisted a valid 7-level tournament; a template save round-tripped its name + bounty config).
+
+**Decider:** Guy, 29 May 2026, after reviewing the built single-page form. Supersedes the layout half of the "Phase 2 UX design calls" decision; the other three calls in that entry (registration flow, clock, seat cards) stand.
+
 ## 29 May 2026 — Tournament create (task 2.1): payout placeholder + mysteryBounty pool derivation
 
 Two implementation calls made while building the create form (`src/pages/td/TournamentNew.jsx` + `createTournament` in `src/lib/tournaments/tournaments.js`). Both are reversible and scoped to create-time defaults.
@@ -20,7 +37,7 @@ Two implementation calls made while building the create form (`src/pages/td/Tour
 
 Four design questions surfaced at the start of Phase 2 (flagged in HANDOFF's "Things to verify with Guy" block). Guy's answers, to be treated as binding for the relevant Phase 2 tasks:
 
-**1. Tournament template / create form layout → sectioned single page** (not a multi-step wizard). One scrolling page with labelled sections (Template details, Tournament basics, Format & structure, Re-entry, plus conditional Satellite / Mystery-bounty sections that appear based on `gameType`). *Why:* managers configuring a tournament want to see and tweak everything at once; a wizard hides fields and adds clicks. Applies to task 2.5 (template editor — already built this way) and task 2.1 (create form, which reuses the same section layout + the shared `StructureEditor`).
+**1. Tournament template / create form layout → sectioned single page** (not a multi-step wizard). **⚠️ SUPERSEDED 29 May 2026 — see the "3-step wizard" entry above; both forms were converted to a wizard after the filled-out single page proved too long to scan.** One scrolling page with labelled sections (Template details, Tournament basics, Format & structure, Re-entry, plus conditional Satellite / Mystery-bounty sections that appear based on `gameType`). *Why:* managers configuring a tournament want to see and tweak everything at once; a wizard hides fields and adds clicks. Applies to task 2.5 (template editor — already built this way) and task 2.1 (create form, which reuses the same section layout + the shared `StructureEditor`).
 
 **2. Player registration flow → tournament-first, with a confirm step.** Cashier picks the tournament first, then registers a player into it (route `/td/tournaments/:id/register`), and the registration is explicitly confirmed before the wallet/entry write commits. *Why:* matches how the desk actually works at the venue (a player walks up naming the event); the confirm step guards against mis-registration since the buy-in moves money. Applies to task 2.6 / the desk registration flow.
 
