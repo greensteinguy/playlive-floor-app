@@ -20,7 +20,7 @@
 // converted at the save boundary, mirroring the create form.
 
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { useTournament } from '../../hooks/useTournament'
@@ -460,9 +460,12 @@ function TopBar({ t }) {
             </span>
           )}
         </div>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
-          Phase 2 / 3
-        </span>
+        <Link
+          to={`/td/tournaments/${t.id}/clock`}
+          className="text-xs font-medium text-gold-300 hover:text-gold-200 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"
+        >
+          ▸ Open clock
+        </Link>
       </div>
       <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 flex flex-wrap gap-x-8 gap-y-3">
         <Meta label="Game" value={GAME_TYPE_LABEL[t.gameType] ?? t.gameType} />

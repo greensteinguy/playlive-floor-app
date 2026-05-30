@@ -400,7 +400,10 @@ auditLog/{id}
 | `tournament.created` | Tournament doc created (draft or scheduled). |
 | `tournament.published` | Tournament moved from draft to scheduled. |
 | `tournament.statusChanged` | Status enum changed. `metadata.from` / `metadata.to`. |
-| `tournament.paused` / `tournament.resumed` | Manual pause. |
+| `tournament.clockStarted` | Clock started for a session. `metadata.sessionId` / `startIndex`. |
+| `tournament.paused` / `tournament.resumed` | Manual pause / resume of the clock. `metadata.sessionId`. |
+| `tournament.levelChanged` | Clock re-anchored to a level (manual advance / rewind / jump). `metadata.fromIndex` / `toIndex` / `direction`. |
+| `tournament.clockFinished` | Session clock finished. `metadata.sessionId` / `endIndex`. |
 | `tournament.cancelled` | Manual cancellation. |
 | `tournament.structureEdited` | Embedded structure edited mid-tournament. `metadata.diff`. |
 | `tournament.payoutEdited` | Embedded payout structure edited. |
@@ -599,6 +602,26 @@ tournaments/{tid}/sessions/{id}
                                                 can be a level or break entry; null until session starts)
   remainingPlayerCount:        number | null
 
+  // ── Clock anchor (server-authoritative; see src/lib/clock.js) ────────────
+  // The live blind level + time remaining are DERIVED from these three fields
+  // + the structure durations, NOT stored per-tick — so levels auto-advance at
+  // zero with zero writes and every screen (TD control + venue TVs) stays in
+  // sync. Writes happen only on clock events (start / pause / resume / advance /
+  // jump / finish).
+  //   clockStartIndex — structure index the current running segment is anchored
+  //     at (where counting last (re)started; moves only on manual advance/jump).
+  //   clockStartedAt  — server time that anchor index started counting;
+  //     back-dated on resume so paused time doesn't elapse.
+  //   clockPausedAt   — when set, the clock is frozen at this instant (paused).
+  // Derived state: stopped = clockStartedAt null; paused = clockPausedAt set;
+  // running otherwise. currentStructureIndex above is a denormalized SNAPSHOT
+  // written on clock events (it can lag a level behind between events, since
+  // auto-advance doesn't write) — the value derived from these fields is
+  // authoritative for display.
+  clockStartIndex:             number | null
+  clockStartedAt:              Timestamp | null
+  clockPausedAt:               Timestamp | null
+
   createdAt, updatedAt, createdBy
 ```
 
@@ -612,6 +635,7 @@ tournaments/{tid}/sessions/{id}
 - When set, `actualStartIndex >= 0`
 - When set, `actualEndIndex >= actualStartIndex`; if `maximumEndIndex` is set, also `actualEndIndex <= maximumEndIndex`
 - `currentStructureIndex` when set must be in `[actualStartIndex, actualEndIndex]` (or `[actualStartIndex, structure.length - 1]` if `maximumEndIndex`/`actualEndIndex` is unbounded and play is ongoing)
+- Clock: `clockStartIndex` is set iff `clockStartedAt` is set; `clockPausedAt` requires `clockStartedAt`; when set, `maximumStartIndex <= clockStartIndex <= maximumEndIndex` (or `clockStartIndex >= maximumStartIndex` when `maximumEndIndex` is null)
 
 **Rollback in detail (the multi-flight case)**
 

@@ -16,4 +16,14 @@ export { createTournament, updateTournament } from './tournaments'
 
 export { validateSessionPlan, deriveFormatFlags, SINGLE_DAY_PLAN } from './sessions'
 
+export {
+  startClock,
+  pauseClock,
+  resumeClock,
+  advanceLevel,
+  rewindLevel,
+  gotoLevel,
+  finishClock,
+} from './clock'
+
 export { TournamentError } from './errors'

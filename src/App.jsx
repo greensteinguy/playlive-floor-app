@@ -31,6 +31,7 @@ import TdTemplates from './pages/td/Templates'
 import TdTournamentDetail from './pages/td/TournamentDetail'
 import TdTournamentRegister from './pages/td/TournamentRegister'
 import TdClock from './pages/td/Clock'
+import TdTournamentClock from './pages/td/TournamentClock'
 import TdTables from './pages/td/Tables'
 import TdBounty from './pages/td/Bounty'
 import TdPayouts from './pages/td/Payouts'
@@ -142,6 +143,10 @@ export default function App() {
                     </ProtectedRoute>
                   </ErrorBoundary>
                 }
+              />
+              <Route
+                path="/td/tournaments/:id/clock"
+                element={<ErrorBoundary><TdTournamentClock /></ErrorBoundary>}
               />
               <Route path="/td/clock" element={<ErrorBoundary><TdClock /></ErrorBoundary>} />
               <Route

@@ -60,6 +60,18 @@ export const Session = z
     currentStructureIndex: z.number().int().nonnegative().nullable(),
     remainingPlayerCount: z.number().int().nonnegative().nullable(),
 
+    // Clock anchor (server-authoritative; see src/lib/clock.js). The live blind
+    // level + time remaining are DERIVED from these + the structure durations,
+    // so levels auto-advance with no per-tick writes and every screen stays in
+    // sync. clockStartIndex = the structure index the running segment is anchored
+    // at; clockStartedAt = when that segment started counting (back-dated on
+    // resume so paused time doesn't elapse); clockPausedAt freezes the clock
+    // while set. currentStructureIndex above is a denormalized snapshot of the
+    // derived index, written only on clock events.
+    clockStartIndex: z.number().int().nonnegative().nullable(),
+    clockStartedAt: NullableTimestamp,
+    clockPausedAt: NullableTimestamp,
+
     ...AuditFields,
   })
   .strict()
@@ -125,6 +137,41 @@ export const Session = z
           code: z.ZodIssueCode.custom,
           path: ['currentStructureIndex'],
           message: `currentStructureIndex (${s.currentStructureIndex}) must be <= actualEndIndex (${s.actualEndIndex})`,
+        })
+      }
+    }
+
+    // ── Clock anchor invariants ──────────────────────────────────────────────
+    // The clock is started iff it has an anchor index.
+    if ((s.clockStartedAt === null) !== (s.clockStartIndex === null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['clockStartIndex'],
+        message: 'clockStartIndex must be set iff clockStartedAt is set',
+      })
+    }
+    // Cannot pause a clock that has not started.
+    if (s.clockPausedAt !== null && s.clockStartedAt === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['clockPausedAt'],
+        message: 'clockPausedAt requires clockStartedAt (cannot pause a clock that has not started)',
+      })
+    }
+    // The anchor index must sit within the session's slice.
+    if (s.clockStartIndex !== null) {
+      if (s.clockStartIndex < s.maximumStartIndex) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['clockStartIndex'],
+          message: `clockStartIndex (${s.clockStartIndex}) must be >= maximumStartIndex (${s.maximumStartIndex})`,
+        })
+      }
+      if (s.maximumEndIndex !== null && s.clockStartIndex > s.maximumEndIndex) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['clockStartIndex'],
+          message: `clockStartIndex (${s.clockStartIndex}) must be <= maximumEndIndex (${s.maximumEndIndex})`,
         })
       }
     }
