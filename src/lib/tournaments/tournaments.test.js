@@ -288,9 +288,9 @@ describe('createTournament — schema conformance', () => {
       makeArgs({
         // Day 1 has two flights (slice [0..0]) converging into a play-to-a-winner Day 2.
         sessionPlan: {
-          days: [
-            { flightCount: 2, endStructureIndex: 0, playToPercentRemaining: 15, scheduledStartTime: null },
-            { flightCount: 1, endStructureIndex: null, playToPercentRemaining: null, scheduledStartTime: null },
+          stages: [
+            { endStructureIndex: 0, playToPercentRemaining: 15, flights: [{ scheduledStartTime: null, survivorsFrom: [] }, { scheduledStartTime: null, survivorsFrom: [] }] },
+            { endStructureIndex: null, playToPercentRemaining: null, flights: [{ scheduledStartTime: null, survivorsFrom: [0, 1] }] },
           ],
         },
       })
@@ -354,9 +354,9 @@ describe('createTournament — session graph', () => {
     await createTournament(
       makeArgs({
         sessionPlan: {
-          days: [
-            { flightCount: 2, endStructureIndex: 0, playToPercentRemaining: 15, scheduledStartTime: null },
-            { flightCount: 1, endStructureIndex: null, playToPercentRemaining: null, scheduledStartTime: null },
+          stages: [
+            { endStructureIndex: 0, playToPercentRemaining: 15, flights: [{ scheduledStartTime: null, survivorsFrom: [] }, { scheduledStartTime: null, survivorsFrom: [] }] },
+            { endStructureIndex: null, playToPercentRemaining: null, flights: [{ scheduledStartTime: null, survivorsFrom: [0, 1] }] },
           ],
         },
       })
@@ -388,9 +388,9 @@ describe('createTournament — session graph', () => {
         makeArgs({
           // Day 1 ends at the last index, leaving no room for the final day.
           sessionPlan: {
-            days: [
-              { flightCount: 1, endStructureIndex: 2, playToPercentRemaining: null, scheduledStartTime: null },
-              { flightCount: 1, endStructureIndex: null, playToPercentRemaining: null, scheduledStartTime: null },
+            stages: [
+              { endStructureIndex: 2, playToPercentRemaining: null, flights: [{ scheduledStartTime: null, survivorsFrom: [] }] },
+              { endStructureIndex: null, playToPercentRemaining: null, flights: [{ scheduledStartTime: null, survivorsFrom: [0] }] },
             ],
           },
         })
