@@ -22,7 +22,7 @@ Visit `http://localhost:5173`. The venue display lives at `/display`.
 
 ## Project status
 
-In Phase 1 (Foundations) of a 12-week build phase, followed by a separate Rollout phase (UAT, training, cutover).
+**Phase 2 (Tournament Setup & Clock) — in progress**, within a 12-week build phase followed by a separate Rollout phase (UAT, training, cutover). Phase 1 (Foundations: auth, role-based security rules, schema + Zod validators, wallet ledger, app shell) is complete. Phase 2 has delivered tournament templates, create/list/detail, the payout-structure editor, the multi-day/multi-flight sessions model, the live clock + TD control screen, and floor (status-transition) controls. See `docs/HANDOFF.md` for the live state and `docs/02_Action_Plan.md` for the full plan.
 
 ## Auth
 
