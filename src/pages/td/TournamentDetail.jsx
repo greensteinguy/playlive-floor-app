@@ -4,7 +4,7 @@
 //   Details  — editable config (basics, money, schedule, re-entry, extras)
 //   Structure — format flags + the blind structure editor
 //   Players  — read-only counters for now; registration/seating land in Phase 3
-//   Payouts  — read-only summary for now; the payout editor is task 2.3
+//   Payouts  — payout-structure editor (type, rounding, per-place %/$ + auto-fill)
 //
 // Editing is gated to manager + TD (matches the Firestore write rules); cashier
 // and read-only roles get a disabled, read-only view. Status is NOT edited here —
@@ -14,7 +14,8 @@
 // Saves go through the SAFE updateTournament domain op (read-modify-write +
 // full-schema re-validation), never the partial data-layer update. Each editable
 // tab owns its own save scope: Details saves the config fields, Structure saves
-// the format flags + blind levels (audited as tournament.structureEdited). Form
+// the format flags + blind levels (audited as tournament.structureEdited), and
+// Payouts saves the payout structure (audited as tournament.payoutEdited). Form
 // values are held as strings (so decimal entry isn't fought by re-renders) and
 // converted at the save boundary, mirroring the create form.
 
@@ -27,6 +28,7 @@ import { useStructureTemplates } from '../../hooks/useTemplates'
 import { updateTournament, TournamentError } from '../../lib/tournaments'
 import { Structure } from '../../lib/schema'
 import { centsToStr, dollarsToCents, intOrNull, intOf, formatMoney } from '../../lib/money'
+import { payoutCurve, paidPlaceCount, applyRounding } from '../../lib/payouts'
 import { GAME_TYPES, GAME_TYPE_LABEL, REENTRY_TYPES } from '../../lib/gameTypes'
 import { Section, Text, Money, Num, Select, Toggle, DateTime, BountyValues, EmptyState } from '../../components/FormFields'
 import StructureEditor from '../../components/StructureEditor'
@@ -96,7 +98,30 @@ function formFromTournament(t) {
     addOnChips: t.reentryConfig.addOnChips != null ? String(t.reentryConfig.addOnChips) : '',
     ticketReward: centsToStr(t.satelliteConfig?.ticketReward ?? 0),
     bountyValues: (t.bountyPoolConfig?.bountyValues ?? []).map(centsToStr),
+    // Payout structure (Payouts tab). place is derived from row order, so each
+    // row holds only the editable strings. percentPaid is a transient auto-fill
+    // input — it drives how many places get paid but isn't stored on the doc.
+    payoutType: t.payoutStructure.type,
+    payoutRounding: t.payoutStructure.rounding,
+    payoutPercentPaid: '',
+    payoutPositions: [...t.payoutStructure.positions]
+      .sort((a, b) => a.place - b.place)
+      .map((p) => ({
+        payoutStr: centsToStr(p.payout),
+        percentStr: p.percent != null ? pctToStr(p.percent) : '',
+      })),
   }
+}
+
+// Stored percent fraction (0..1) ↔ editor percent string (e.g. 0.6667 ↔ "66.67").
+// Quantised to 4 dp on the way in so the stored value matches the curve's
+// precision (and round-trips cleanly).
+function pctToStr(fraction) {
+  return String(Math.round(fraction * 10000) / 100)
+}
+function pctStrToFraction(str) {
+  const n = parseFloat(str)
+  return Number.isNaN(n) ? 0 : Math.round((n / 100) * 10000) / 10000
 }
 
 // Config fields the Details tab owns. Excludes structure + format flags (Structure
@@ -155,6 +180,39 @@ function validateDetails(form) {
 function validateStructure(form) {
   if (form.structure.length === 0 || !Structure.safeParse(form.structure).success) {
     return 'Add at least one valid blind level (fix the highlighted rows).'
+  }
+  return null
+}
+
+// Payouts tab → PayoutStructure patch. place is the 1-based row order; byPercent
+// rows store percent (payout 0, cash computed at tournament end), byPlace rows
+// store an absolute payout (percent null). Mirrors the schema's two flavours.
+function buildPayoutPatch(form) {
+  const byPercent = form.payoutType === 'byPercent'
+  return {
+    payoutStructure: {
+      type: form.payoutType,
+      rounding: form.payoutRounding,
+      positions: form.payoutPositions.map((p, i) => ({
+        place: i + 1,
+        payout: byPercent ? 0 : dollarsToCents(p.payoutStr),
+        percent: byPercent ? pctStrToFraction(p.percentStr) : null,
+      })),
+    },
+  }
+}
+
+function validatePayouts(form) {
+  const rows = form.payoutPositions
+  if (rows.length < 1) return 'Add at least one paid place.'
+  if (form.payoutType === 'byPercent') {
+    const sum = rows.reduce((a, p) => a + (parseFloat(p.percentStr) || 0), 0)
+    // The schema doesn't enforce sum===100% (cash conversion at tournament end
+    // handles any remainder), but a structure that's well off 100% is a mistake.
+    // Allow a small tolerance for repeating decimals (e.g. 33.3 × 3 = 99.9).
+    if (Math.abs(sum - 100) > 0.5) return `Percentages must total 100% (currently ${sum.toFixed(1)}%).`
+  } else if (rows.some((p) => dollarsToCents(p.payoutStr) <= 0)) {
+    return 'Every paid place needs a payout greater than $0.'
   }
   return null
 }
@@ -225,6 +283,8 @@ export default function TournamentDetail() {
     save(buildDetailsPatch, validateDetails, undefined, (u) => `Saved "${u.name}".`)
   const saveStructure = () =>
     save(buildStructurePatch, validateStructure, 'tournament.structureEdited', () => 'Structure saved.')
+  const savePayouts = () =>
+    save(buildPayoutPatch, validatePayouts, 'tournament.payoutEdited', () => 'Payout structure saved.')
 
   return (
     <div className="px-6 py-8 md:px-10 md:py-10 max-w-5xl">
@@ -369,7 +429,18 @@ export default function TournamentDetail() {
           )}
 
           {tab === 'players' && <PlayersTab t={tournament} />}
-          {tab === 'payouts' && <PayoutsTab t={tournament} />}
+          {tab === 'payouts' && (
+            <>
+              <PayoutEditor
+                form={form}
+                set={set}
+                disabled={d}
+                entryCount={tournament.entryCount}
+                prizePool={tournament.totalPrizePool}
+              />
+              {canEdit && <SaveBar onSave={savePayouts} saving={saving} label="Save payouts" />}
+            </>
+          )}
         </>
       )}
     </div>
@@ -449,37 +520,244 @@ function PlayersTab({ t }) {
   )
 }
 
-function PayoutsTab({ t }) {
-  const p = t.payoutStructure
-  const byPercent = p.type === 'byPercent'
+const ROUNDING_OPTIONS = [
+  { value: 'nearest5', label: 'Nearest $5' },
+  { value: 'nearest10', label: 'Nearest $10' },
+  { value: 'none', label: 'Exact (to the cent)' },
+]
+
+// Payout-structure editor (task 2.3). Two flavours mirror the schema:
+//   byPercent — each place gets a share of the prize pool; cash is computed at
+//               the end with the rounding rule (the live "Cash (est.)" column is
+//               a preview against the current pool).
+//   byPlace   — each place gets a fixed cash amount, pool-independent.
+// Auto-fill turns "% of field paid" into a paid-place count (entries × pct) and
+// spreads a placeholder descending curve across those places — the venue's CSV
+// algorithm replaces that curve later (see src/lib/payouts.js). place is the
+// 1-based row order, so adding/removing rows just renumbers by position.
+function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
+  const byPercent = form.payoutType === 'byPercent'
+  const rows = form.payoutPositions
+
+  const setType = (type) => {
+    if (type === form.payoutType) return
+    // Switching to by-percent with no percents yet → seed the placeholder curve
+    // so the structure is immediately valid and editable rather than all-blank.
+    if (type === 'byPercent' && rows.every((p) => p.percentStr === '')) {
+      const curve = payoutCurve(rows.length)
+      set({ payoutType: type, payoutPositions: rows.map((p, i) => ({ ...p, percentStr: pctToStr(curve[i]) })) })
+      return
+    }
+    set({ payoutType: type })
+  }
+
+  const setRow = (i, patch) =>
+    set({ payoutPositions: rows.map((p, idx) => (idx === i ? { ...p, ...patch } : p)) })
+  const addRow = () => set({ payoutPositions: [...rows, { payoutStr: '', percentStr: '' }] })
+  const removeRow = (i) => set({ payoutPositions: rows.filter((_, idx) => idx !== i) })
+
+  const derivedPlaces = paidPlaceCount(entryCount, (parseFloat(form.payoutPercentPaid) || 0) / 100)
+  const autoFill = () => {
+    const count = derivedPlaces > 0 ? derivedPlaces : rows.length
+    if (count < 1) return
+    set({
+      payoutType: 'byPercent',
+      payoutPositions: payoutCurve(count).map((frac) => ({ payoutStr: '', percentStr: pctToStr(frac) })),
+    })
+  }
+
+  const pctSum = rows.reduce((a, p) => a + (parseFloat(p.percentStr) || 0), 0)
+  const pctOk = Math.abs(pctSum - 100) <= 0.5
+  const cashFor = (p) => applyRounding(prizePool * ((parseFloat(p.percentStr) || 0) / 100), form.payoutRounding)
+  const distributed = byPercent
+    ? rows.reduce((a, p) => a + cashFor(p), 0)
+    : rows.reduce((a, p) => a + dollarsToCents(p.payoutStr), 0)
+
   return (
-    <div className="space-y-4">
-      <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 flex flex-wrap gap-x-8 gap-y-3">
-        <Meta label="Type" value={byPercent ? 'By percent' : 'By place'} />
-        <Meta label="Rounding" value={p.rounding} />
-        <Meta label="Paid places" value={p.positions.length} />
-      </div>
-      <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
-            <tr>
-              <th className="text-left px-4 py-2">Place</th>
-              <th className="text-right px-4 py-2">{byPercent ? 'Percent' : 'Payout'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {p.positions.map((pos) => (
-              <tr key={pos.place} className="border-t border-white/5">
-                <td className="px-4 py-2 text-white/80 tabular-nums">{pos.place}</td>
-                <td className="px-4 py-2 text-right text-white/80 tabular-nums">
-                  {byPercent ? `${(pos.percent * 100).toFixed(1)}%` : formatMoney(pos.payout)}
-                </td>
+    <div className="space-y-5">
+      <section>
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Payout type</h3>
+        <div className="bg-felt-800 border border-white/5 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Distribute by</span>
+            <div className="flex gap-1">
+              {[
+                { id: 'byPercent', label: 'Percentage' },
+                { id: 'byPlace', label: 'Fixed amount' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setType(opt.id)}
+                  disabled={disabled}
+                  className={
+                    'px-3 py-2 rounded-lg text-xs font-medium disabled:opacity-50 ' +
+                    (form.payoutType === opt.id
+                      ? 'bg-gold-500/20 text-gold-200'
+                      : 'bg-white/5 text-white/60 hover:bg-white/10')
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Select
+            label="Rounding"
+            value={form.payoutRounding}
+            onChange={(v) => set({ payoutRounding: v })}
+            options={ROUNDING_OPTIONS}
+            disabled={disabled}
+          />
+        </div>
+        <p className="text-[11px] text-white/40 mt-2">
+          {byPercent
+            ? 'Each place gets a share of the prize pool; cash is calculated at the end using the rounding rule.'
+            : 'Each place gets a fixed cash amount, regardless of the final prize pool.'}
+        </p>
+      </section>
+
+      <section>
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Auto-fill</h3>
+        <div className="bg-felt-800 border border-white/5 rounded-lg p-4 flex flex-wrap items-end gap-4">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">% of field paid</span>
+            <div className="relative w-32">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.payoutPercentPaid}
+                onChange={(e) => set({ payoutPercentPaid: e.target.value })}
+                placeholder="15"
+                disabled={disabled}
+                className="w-full bg-felt-900 border border-white/10 rounded pl-3 pr-7 py-2 text-sm disabled:opacity-50"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">%</span>
+            </div>
+          </label>
+          <button
+            type="button"
+            onClick={autoFill}
+            disabled={disabled}
+            className="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-white/70 hover:bg-white/10 active:bg-white/15 disabled:opacity-50"
+          >
+            Auto-fill places
+          </button>
+          <p className="text-[11px] text-white/40 flex-1 min-w-[12rem]">
+            {derivedPlaces > 0
+              ? `${entryCount} entries × ${form.payoutPercentPaid || 0}% → ${derivedPlaces} paid place${derivedPlaces === 1 ? '' : 's'}.`
+              : entryCount > 0
+                ? 'Enter a percentage to compute how many places get paid.'
+                : 'No entries yet — auto-fill re-spreads the current places down the curve, or add places manually below.'}
+            <span className="block text-white/25 mt-0.5">Uses a standard descending curve (venue payout CSV will replace this).</span>
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Paid places</h3>
+          <button
+            type="button"
+            onClick={addRow}
+            disabled={disabled}
+            className="px-2 py-1 rounded text-[11px] bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40"
+          >
+            + Add place
+          </button>
+        </div>
+        <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+              <tr>
+                <th className="text-left px-4 py-2 w-16">Place</th>
+                <th className="text-left px-4 py-2">{byPercent ? 'Percent' : 'Payout'}</th>
+                {byPercent && <th className="text-right px-4 py-2 whitespace-nowrap">Cash (est.)</th>}
+                <th className="px-4 py-2 w-10"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <EmptyState title="Payout editor coming in task 2.3." body="For now this is a read-only view of the current payout structure." />
+            </thead>
+            <tbody>
+              {rows.map((p, i) => (
+                <tr key={i} className="border-t border-white/5">
+                  <td className="px-4 py-2 text-white/80 tabular-nums">{i + 1}</td>
+                  <td className="px-4 py-2">
+                    {byPercent ? (
+                      <div className="relative w-28">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={p.percentStr}
+                          onChange={(e) => setRow(i, { percentStr: e.target.value })}
+                          placeholder="0"
+                          disabled={disabled}
+                          className="w-full bg-felt-900 border border-white/10 rounded pl-3 pr-7 py-1.5 text-sm disabled:opacity-50"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">%</span>
+                      </div>
+                    ) : (
+                      <div className="relative w-32">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">$</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={p.payoutStr}
+                          onChange={(e) => setRow(i, { payoutStr: e.target.value })}
+                          placeholder="0.00"
+                          disabled={disabled}
+                          className="w-full bg-felt-900 border border-white/10 rounded pl-6 pr-3 py-1.5 text-sm disabled:opacity-50"
+                        />
+                      </div>
+                    )}
+                  </td>
+                  {byPercent && (
+                    <td className="px-4 py-2 text-right text-white/60 tabular-nums whitespace-nowrap">
+                      {formatMoney(cashFor(p))}
+                    </td>
+                  )}
+                  <td className="px-4 py-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => removeRow(i)}
+                      disabled={disabled || rows.length <= 1}
+                      aria-label={`Remove place ${i + 1}`}
+                      className="text-white/30 hover:text-red-300 disabled:opacity-30 disabled:hover:text-white/30"
+                    >
+                      ×
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t border-white/10">
+              <tr className="text-[11px]">
+                <td className="px-4 py-2 font-mono uppercase tracking-widest text-white/40">Total</td>
+                <td className="px-4 py-2">
+                  {byPercent ? (
+                    <span className={'tabular-nums ' + (pctOk ? 'text-emerald-300' : 'text-amber-300')}>
+                      {pctSum.toFixed(1)}% / 100%
+                    </span>
+                  ) : (
+                    <span className="tabular-nums text-white/70">{formatMoney(distributed)}</span>
+                  )}
+                </td>
+                {byPercent && (
+                  <td className="px-4 py-2 text-right tabular-nums text-white/70 whitespace-nowrap">
+                    {formatMoney(distributed)}
+                  </td>
+                )}
+                <td className="px-4 py-2"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <p className="text-[11px] text-white/40 mt-2">
+          {byPercent
+            ? prizePool > 0
+              ? `Distributing ${formatMoney(distributed)} of the ${formatMoney(prizePool)} prize pool (estimate — rounding is applied per place).`
+              : 'Prize pool is $0.00 until players register; percentages are stored now and converted to cash at the end.'
+            : `${formatMoney(distributed)} across ${rows.length} place${rows.length === 1 ? '' : 's'}.`}
+        </p>
+      </section>
     </div>
   )
 }
