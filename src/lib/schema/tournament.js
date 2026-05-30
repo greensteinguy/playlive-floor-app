@@ -141,7 +141,11 @@ export const Tournament = z
 
     // Scheduling
     scheduledStartTime: FirestoreTimestamp,
-    lateRegCutoffTime: NullableTimestamp,
+    // Late registration closes at the END of this blind level (a blindNumber in
+    // `structure`), NOT a wall-clock time — a tournament can start late or pause,
+    // so a fixed time would be wrong. null = no preset cutoff (a manager closes
+    // late reg manually via the status flow). superRefine bounds it to a real level.
+    lateRegCutoffLevel: z.number().int().positive().nullable(),
 
     // Status (status + isOnBreak + pausedAt are independent)
     status: Status,
@@ -227,5 +231,18 @@ export const Tournament = z
         path: ['currentStructureIndex'],
         message: `currentStructureIndex (${t.currentStructureIndex}) is out of bounds for structure (length ${t.structure.length})`,
       })
+    }
+
+    // Invariant: lateRegCutoffLevel (when set) must name a real blind level.
+    // blindNumbers run 1..N across the level entries in the structure.
+    if (t.lateRegCutoffLevel !== null) {
+      const levelCount = t.structure.filter((e) => e.type === 'level').length
+      if (t.lateRegCutoffLevel > levelCount) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lateRegCutoffLevel'],
+          message: `lateRegCutoffLevel (${t.lateRegCutoffLevel}) exceeds the number of levels in the structure (${levelCount})`,
+        })
+      }
     }
   })

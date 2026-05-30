@@ -65,8 +65,8 @@ function toNullableTimestamp(value, field) {
 /**
  * Create a new tournament from the create-form inputs.
  *
- * Money fields are integer cents; scheduledStartTime / lateRegCutoffTime are JS
- * Date objects (lateReg may be null). The op fills the fields the form doesn't
+ * Money fields are integer cents; scheduledStartTime is a JS Date (lateRegCutoffLevel
+ * is a plain blindNumber, or null). The op fills the fields the form doesn't
  * own — counters, live state, audit — builds the session graph from sessionPlan,
  * and writes the tournament doc + every session in one atomic batch (each
  * whole-document validated). isMultiDay / isMultiFlight are DERIVED from the plan
@@ -87,7 +87,7 @@ function toNullableTimestamp(value, field) {
  * @param {import('../schema').Structure} args.structure
  * @param {object|null} [args.payoutStructure]  — null → winner-takes-all default
  * @param {Date} args.scheduledStartTime
- * @param {Date|null} [args.lateRegCutoffTime]
+ * @param {number|null} [args.lateRegCutoffLevel]  — blindNumber late reg runs through (null = none)
  * @param {object} args.reentryConfig
  * @param {boolean} [args.hasUpperDeckMainDeck]
  * @param {object|null} [args.satelliteConfig]
@@ -112,7 +112,7 @@ export async function createTournament({
   structure,
   payoutStructure = null,
   scheduledStartTime,
-  lateRegCutoffTime = null,
+  lateRegCutoffLevel = null,
   reentryConfig,
   hasUpperDeckMainDeck = false,
   satelliteConfig = null,
@@ -130,7 +130,6 @@ export async function createTournament({
   // Convert the schedule once (throws TournamentError on a bad value before any
   // write); Day 1's session reuses the tournament start.
   const scheduledStartTs = toTimestamp(scheduledStartTime, 'scheduledStartTime')
-  const lateRegCutoffTs = toNullableTimestamp(lateRegCutoffTime, 'lateRegCutoffTime')
 
   // Normalize the session plan (defaulting to single-day) and convert each day's
   // optional start time to a Timestamp. isMultiDay / isMultiFlight follow.
@@ -177,7 +176,7 @@ export async function createTournament({
     payoutStructure: payoutStructure ?? DEFAULT_PAYOUT,
 
     scheduledStartTime: scheduledStartTs,
-    lateRegCutoffTime: lateRegCutoffTs,
+    lateRegCutoffLevel,
 
     status,
     isOnBreak: false,
@@ -239,9 +238,6 @@ function normalizeTournamentPatch(patch) {
   if ('scheduledStartTime' in next) {
     next.scheduledStartTime = toTimestamp(next.scheduledStartTime, 'scheduledStartTime')
   }
-  if ('lateRegCutoffTime' in next) {
-    next.lateRegCutoffTime = toNullableTimestamp(next.lateRegCutoffTime, 'lateRegCutoffTime')
-  }
   return next
 }
 
@@ -256,8 +252,8 @@ function normalizeTournamentPatch(patch) {
  * owned elsewhere (the clock and status-transition ops) and shouldn't appear
  * in a detail-form patch.
  *
- * Money fields are integer cents; scheduledStartTime / lateRegCutoffTime are JS
- * Date objects (lateReg may be null) and are converted to Timestamps here.
+ * Money fields are integer cents; scheduledStartTime is a JS Date converted to a
+ * Timestamp here; lateRegCutoffLevel is a plain blindNumber that passes through.
  * updatedAt is always stamped server-side at write time.
  *
  * @param {object} args

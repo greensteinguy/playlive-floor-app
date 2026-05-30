@@ -84,7 +84,7 @@ function makeTournament(overrides = {}) {
     structure: LEVELS,
     payoutStructure: { type: 'byPercent', rounding: 'nearest5', positions: [{ place: 1, payout: 0, percent: 1 }] },
     scheduledStartTime: Timestamp.fromDate(new Date('2026-06-01T09:00:00Z')),
-    lateRegCutoffTime: null,
+    lateRegCutoffLevel: null,
     status: 'scheduled',
     isOnBreak: false,
     pausedAt: null,
@@ -235,17 +235,23 @@ describe('createTournament — time conversion', () => {
     expect(ts.toMillis()).toBe(when.getTime())
   })
 
-  it('converts a Date lateRegCutoffTime and preserves null', async () => {
-    const cutoff = new Date('2026-06-01T11:00:00Z')
-    await createTournament(makeArgs({ lateRegCutoffTime: cutoff }))
-    const ts = capturedDoc().lateRegCutoffTime
-    expect(ts).toBeInstanceOf(Timestamp)
-    expect(ts.toMillis()).toBe(cutoff.getTime())
+  it('passes lateRegCutoffLevel through unchanged (a plain blindNumber, or null)', async () => {
+    await createTournament(makeArgs({ lateRegCutoffLevel: 1 }))
+    expect(capturedDoc().lateRegCutoffLevel).toBe(1)
 
     // A second create with no cutoff — the batch mock resets its record per
     // call, so capturedDoc() now reflects this create.
-    await createTournament(makeArgs({ lateRegCutoffTime: null }))
-    expect(capturedDoc().lateRegCutoffTime).toBeNull()
+    await createTournament(makeArgs({ lateRegCutoffLevel: null }))
+    expect(capturedDoc().lateRegCutoffLevel).toBeNull()
+  })
+})
+
+describe('createTournament — lateRegCutoffLevel schema invariant', () => {
+  it('the real schema accepts an in-range cutoff level', () => {
+    expect(Tournament.safeParse(makeTournament({ lateRegCutoffLevel: 1 })).success).toBe(true)
+  })
+  it('the real schema rejects a cutoff level beyond the structure', () => {
+    expect(Tournament.safeParse(makeTournament({ lateRegCutoffLevel: 99 })).success).toBe(false)
   })
 })
 
@@ -501,14 +507,13 @@ describe('updateTournament — merge semantics', () => {
 // ── Time conversion (Date in patch → Firestore Timestamp) ──────────────────────
 
 describe('updateTournament — time conversion', () => {
-  it('converts Date scheduledStartTime / lateRegCutoffTime in the patch to Timestamps', async () => {
+  it('converts a Date scheduledStartTime in the patch to a Timestamp', async () => {
     mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1' }))
     const start = new Date('2026-07-01T18:00:00Z')
-    const cutoff = new Date('2026-07-01T20:00:00Z')
 
     await updateTournament({
       id: 'tour-1',
-      patch: { scheduledStartTime: start, lateRegCutoffTime: cutoff },
+      patch: { scheduledStartTime: start },
       actorId: 'td-1',
       actorRole: 'td',
     })
@@ -516,22 +521,17 @@ describe('updateTournament — time conversion', () => {
     const doc = updatedDoc()
     expect(doc.scheduledStartTime).toBeInstanceOf(Timestamp)
     expect(doc.scheduledStartTime.toMillis()).toBe(start.getTime())
-    expect(doc.lateRegCutoffTime).toBeInstanceOf(Timestamp)
-    expect(doc.lateRegCutoffTime.toMillis()).toBe(cutoff.getTime())
   })
 
-  it('preserves a null lateRegCutoffTime passed in the patch', async () => {
-    mockState.seed(
-      ['tournaments', 'tour-1'],
-      makeTournament({ id: 'tour-1', lateRegCutoffTime: Timestamp.fromDate(new Date('2026-06-01T11:00:00Z')) })
-    )
+  it('passes a lateRegCutoffLevel in the patch straight through (no date conversion)', async () => {
+    mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1', lateRegCutoffLevel: 1 }))
     await updateTournament({
       id: 'tour-1',
-      patch: { lateRegCutoffTime: null },
+      patch: { lateRegCutoffLevel: null },
       actorId: 'td-1',
       actorRole: 'td',
     })
-    expect(updatedDoc().lateRegCutoffTime).toBeNull()
+    expect(updatedDoc().lateRegCutoffLevel).toBeNull()
   })
 
   it('leaves the existing schedule Timestamp untouched when the patch omits it', async () => {

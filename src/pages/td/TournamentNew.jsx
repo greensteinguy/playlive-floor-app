@@ -47,7 +47,7 @@ function initialForm() {
     structureTemplateId: '',
     structure: [],
     scheduledStartTime: '',
-    lateRegCutoffTime: '',
+    lateRegCutoffLevel: '',
     status: 'scheduled',
     reentryType: 'freezeout',
     maxReentries: '',
@@ -75,6 +75,17 @@ const STATUS_OPTIONS = [
 // Wizard step keys, in order. Validation errors are bucketed by these so the
 // stepper can flag the step(s) that need attention.
 const STEP_ORDER = ['general', 'structure', 'sessions', 'rest']
+
+// Late-reg cutoff options: "no cutoff" + one per blind level in the structure
+// (value = blindNumber). Late reg closes at the END of the chosen level.
+function lateRegLevelOptions(structure) {
+  return [
+    { value: '', label: 'No cutoff (close manually)' },
+    ...(structure ?? [])
+      .filter((e) => e.type === 'level')
+      .map((e) => ({ value: String(e.blindNumber), label: `Through Level ${e.blindNumber} (${e.smallBlind}/${e.bigBlind})` })),
+  ]
+}
 
 export default function TournamentNew() {
   const { user, role } = useAuth()
@@ -177,7 +188,8 @@ export default function TournamentNew() {
     const errors = {}
     if (form.name.trim() === '') errors.general = 'Tournament name is required.'
     else if (!localToDate(form.scheduledStartTime)) errors.general = 'A valid scheduled start time is required.'
-    else if (form.lateRegCutoffTime && !localToDate(form.lateRegCutoffTime)) errors.general = 'The late-reg cutoff time is invalid.'
+    else if (form.lateRegCutoffLevel !== '' && Number(form.lateRegCutoffLevel) > form.structure.filter((e) => e.type === 'level').length)
+      errors.general = 'The late-reg cutoff level is beyond the blind structure.'
     if (form.structure.length === 0 || !Structure.safeParse(form.structure).success) {
       errors.structure = 'Add at least one valid blind level (fix the highlighted rows).'
     }
@@ -215,7 +227,7 @@ export default function TournamentNew() {
       structure: form.structure,
       payoutStructure: null,
       scheduledStartTime: localToDate(form.scheduledStartTime),
-      lateRegCutoffTime: localToDate(form.lateRegCutoffTime),
+      lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : intOf(form.lateRegCutoffLevel),
       reentryConfig: {
         type: t,
         maxReentries: t === 'reentry' ? intOrNull(form.maxReentries) : null,
@@ -294,7 +306,7 @@ export default function TournamentNew() {
 
           <Section title="Schedule">
             <DateTime label="Scheduled start" value={form.scheduledStartTime} onChange={(v) => set({ scheduledStartTime: v })} disabled={d} />
-            <DateTime label="Late-reg cutoff (optional)" value={form.lateRegCutoffTime} onChange={(v) => set({ lateRegCutoffTime: v })} disabled={d} />
+            <Select label="Late-reg cutoff (optional)" value={form.lateRegCutoffLevel} onChange={(v) => set({ lateRegCutoffLevel: v })} options={lateRegLevelOptions(form.structure)} disabled={d} />
             <Select label="Status" value={form.status} onChange={(v) => set({ status: v })} options={STATUS_OPTIONS} disabled={d} />
           </Section>
         </>

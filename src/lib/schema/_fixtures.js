@@ -72,7 +72,7 @@ export function buildTournament(overrides = {}) {
     structure: buildStructure(),
     payoutStructure: buildPayoutStructure(),
     scheduledStartTime: ts(),
-    lateRegCutoffTime: null,
+    lateRegCutoffLevel: null,
     status: 'scheduled',
     isOnBreak: false,
     pausedAt: null,

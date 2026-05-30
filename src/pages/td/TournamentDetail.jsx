@@ -90,7 +90,7 @@ function formFromTournament(t) {
     structureTemplateId: t.structureTemplateId ?? '',
     structure: t.structure,
     scheduledStartTime: tsToLocalInput(t.scheduledStartTime),
-    lateRegCutoffTime: tsToLocalInput(t.lateRegCutoffTime),
+    lateRegCutoffLevel: t.lateRegCutoffLevel != null ? String(t.lateRegCutoffLevel) : '',
     reentryType: t.reentryConfig.type,
     maxReentries: t.reentryConfig.maxReentries != null ? String(t.reentryConfig.maxReentries) : '',
     maxRebuys: t.reentryConfig.maxRebuys != null ? String(t.reentryConfig.maxRebuys) : '',
@@ -141,7 +141,7 @@ function buildDetailsPatch(form) {
     houseConsumption: dollarsToCents(form.houseConsumption),
     startingStack: intOf(form.startingStack),
     scheduledStartTime: localToDate(form.scheduledStartTime),
-    lateRegCutoffTime: localToDate(form.lateRegCutoffTime),
+    lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : intOf(form.lateRegCutoffLevel),
     reentryConfig: {
       type: t,
       maxReentries: t === 'reentry' ? intOrNull(form.maxReentries) : null,
@@ -172,7 +172,8 @@ function buildStructurePatch(form) {
 function validateDetails(form) {
   if (form.name.trim() === '') return 'Tournament name is required.'
   if (!localToDate(form.scheduledStartTime)) return 'A valid scheduled start time is required.'
-  if (form.lateRegCutoffTime && !localToDate(form.lateRegCutoffTime)) return 'The late-reg cutoff time is invalid.'
+  if (form.lateRegCutoffLevel !== '' && Number(form.lateRegCutoffLevel) > form.structure.filter((e) => e.type === 'level').length)
+    return 'The late-reg cutoff level is beyond the blind structure.'
   if (form.gameType === 'mysteryBounty' && form.bountyValues.length < 1) return 'Mystery bounty needs at least one bounty value.'
   if (form.hasAddOn && intOf(form.addOnChips) <= 0) return 'An add-on must grant a positive number of chips.'
   return null
@@ -216,6 +217,17 @@ function validatePayouts(form) {
     return 'Every paid place needs a payout greater than $0.'
   }
   return null
+}
+
+// Late-reg cutoff options: "no cutoff" + one per blind level in the structure
+// (value = blindNumber). Late reg closes at the END of the chosen level.
+function lateRegLevelOptions(structure) {
+  return [
+    { value: '', label: 'No cutoff (close manually)' },
+    ...(structure ?? [])
+      .filter((e) => e.type === 'level')
+      .map((e) => ({ value: String(e.blindNumber), label: `Through Level ${e.blindNumber} (${e.smallBlind}/${e.bigBlind})` })),
+  ]
 }
 
 export default function TournamentDetail() {
@@ -375,7 +387,7 @@ export default function TournamentDetail() {
 
               <Section title="Schedule">
                 <DateTime label="Scheduled start" value={form.scheduledStartTime} onChange={(v) => set({ scheduledStartTime: v })} disabled={d} />
-                <DateTime label="Late-reg cutoff (optional)" value={form.lateRegCutoffTime} onChange={(v) => set({ lateRegCutoffTime: v })} disabled={d} />
+                <Select label="Late-reg cutoff (optional)" value={form.lateRegCutoffLevel} onChange={(v) => set({ lateRegCutoffLevel: v })} options={lateRegLevelOptions(form.structure)} disabled={d} />
               </Section>
 
               <Section title="Re-entry">

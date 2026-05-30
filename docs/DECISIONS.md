@@ -6,6 +6,22 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 30 May 2026 — Late registration cutoff is a blind LEVEL, not a wall-clock time
+
+Changed `Tournament.lateRegCutoffTime` (a `Timestamp`) to `lateRegCutoffLevel` (a nullable positive int = the blindNumber late reg runs through). Late registration now closes at the **end of a designated blind level**, not at a fixed clock time.
+
+**Why:** a tournament can start late, pause, or run levels long/short, so a wall-clock cutoff is wrong in practice — the venue (and every poker room) defines late reg as "through the end of level N." Tying it to the structure level makes it correct regardless of real-world timing, and it's edit-stable (level 6 stays level 6 even if you retime levels).
+
+**Shape:** `lateRegCutoffLevel: z.number().int().positive().nullable()`. null = no preset cutoff (a manager closes late reg manually via the task-2.7 status flow: lateRegOpen → lateRegClosed). A `superRefine` on `Tournament` bounds it — when set it must be ≤ the number of level entries in `structure` (blindNumbers run 1..N across levels; breaks are skipped).
+
+**Surface:** both the create form (2.1) and the detail Details tab (2.2) now render a **level dropdown** ("Through Level N (sb/bb)", value = blindNumber) via a shared `lateRegLevelOptions(structure)` helper, replacing the datetime picker. `createTournament` / `updateTournament` drop the Date→Timestamp conversion for this field. Templates were unaffected (TemplateConfig never carried a late-reg field).
+
+**Relationship to status (2.7):** this is the *planned* cutoff (display + future auto-close); the *actual* close is still the manual lateRegOpen → lateRegClosed transition. Auto-closing late reg when the clock passes the cutoff level is a natural Phase-3 enhancement, not built here.
+
+**Verification:** `npm test` **400 pass** (+2 net: a passthrough test replaced the old Date-conversion test; added schema-invariant tests for in-range + out-of-range cutoff levels), lint + build clean. Not browser-smoke-tested by Claude this round — Guy had his emulator + dev server live (ports 8080 + 5173 in use for 2.8-walkthrough prep), so the change hot-reloaded into his running app for live verification.
+
+**Decider:** Guy ("late reg cutoff shouldn't be a designated time but instead at the end of a designated level"). Storing the blindNumber (vs a structure array index) was Claude's implementation call — it matches the TD's mental model and survives structure edits.
+
 ## 30 May 2026 — Clock (task 2.6): server-authoritative + auto-advance; TD screen now, TV display (registered-displays model) deferred to Phase 5
 
 Scoping calls for the upcoming **task 2.6 (live clock)**, made with Guy during requirements before any code. Recorded now (not after build) so the design survives — this session itself began by recovering a prior session that lost its context mid-task.

@@ -111,7 +111,7 @@ tournaments/{id}
 
   // Scheduling
   scheduledStartTime:          Timestamp
-  lateRegCutoffTime:           Timestamp | null  (null = late reg open until manually closed)
+  lateRegCutoffLevel:          number | null     (blindNumber; late reg closes at the END of this level, not a wall-clock time. null = no preset cutoff, closed manually)
 
   // Status (orthogonal: status + isOnBreak + pausedAt are independent)
   status:                      'draft' | 'scheduled' | 'lateRegOpen' | 'lateRegClosed' | 'finished' | 'cancelled'
