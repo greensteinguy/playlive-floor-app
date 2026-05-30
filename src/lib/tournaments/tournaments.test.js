@@ -4,24 +4,30 @@ import { makeMockStore } from '../wallet/_test-helpers'
 
 // Only the data layer is mocked — the real Tournament schema is imported below
 // so we can assert the op assembles a document that actually validates. The
-// mocked validatedSet / mock tx.set do NOT validate, so the schema-conformance
+// mocked batch set / mock tx.set do NOT validate, so the schema-conformance
 // tests below run Tournament.safeParse on the captured document explicitly.
+// createTournament writes the tournament doc + its sessions in one
+// runValidatedBatch; the mock records every set() so we can pull the tournament
+// (2-segment path) and sessions (4-segment path) back out.
 vi.mock('../firestore', () => ({
-  validatedSet: vi.fn(),
+  runValidatedBatch: vi.fn(),
   runValidatedTransaction: vi.fn(),
   auditLog: { writeAuditLogSafe: vi.fn().mockResolvedValue(undefined) },
   generateId: vi.fn(),
   paths: {
     tournamentPath: (id) => ['tournaments', id],
+    sessionPath: (tid, sid) => ['tournaments', tid, 'sessions', sid],
   },
 }))
 
-import { validatedSet, runValidatedTransaction, auditLog, generateId } from '../firestore'
-import { Tournament } from '../schema'
+import { runValidatedBatch, runValidatedTransaction, auditLog, generateId } from '../firestore'
+import { Tournament, Session } from '../schema'
 import { createTournament, updateTournament } from './tournaments'
 import { TournamentError } from './errors'
 
 let mockState
+// set() calls recorded by the runValidatedBatch mock, in order.
+let batchSets
 
 const LEVELS = [
   { type: 'level', blindNumber: 1, smallBlind: 100, bigBlind: 200, ante: 0, bringIn: 0, durationMinutes: 20 },
@@ -46,9 +52,14 @@ function makeArgs(overrides = {}) {
   }
 }
 
-// The document the op handed to validatedSet (3rd positional arg).
+// The tournament document the op set in the batch (2-segment path).
 function capturedDoc() {
-  return validatedSet.mock.calls[0][2]
+  return batchSets.find((c) => c.path.length === 2)?.data
+}
+
+// The session documents the op set in the batch (4-segment path), in order.
+function capturedSessions() {
+  return batchSets.filter((c) => c.path.length === 4).map((c) => c.data)
 }
 
 // A full, schema-valid Tournament doc to seed as the "current" row updateTournament
@@ -105,22 +116,42 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockState = makeMockStore()
   runValidatedTransaction.mockImplementation(async (fn) => fn(mockState.tx))
-  // Real validatedSet returns the validated doc; the data already carries the
-  // id, so echo it back.
-  validatedSet.mockImplementation(async (_pathParts, _schema, data) => data)
-  generateId.mockReturnValue('tour-generated')
+  // Record each batch set() and echo the doc back (id attached), mirroring the
+  // real helper's return — the data already carries the id.
+  batchSets = []
+  runValidatedBatch.mockImplementation(async (fn) => {
+    batchSets = [] // fresh record per create, so capturedDoc() reflects the latest call
+    const b = {
+      set: (pathParts, _schema, data) => {
+        const id = pathParts[pathParts.length - 1]
+        const doc = { ...data, id }
+        batchSets.push({ path: pathParts, data: doc })
+        return doc
+      },
+      update: () => {},
+      delete: () => {},
+    }
+    await fn(b)
+  })
+  // Unique ids in call order: the tournament id is generated first ('tour-generated'),
+  // then one per session ('sess-1', 'sess-2', …).
+  let n = 0
+  generateId.mockImplementation(() => {
+    n += 1
+    return n === 1 ? 'tour-generated' : `sess-${n - 1}`
+  })
 })
 
 // ── Document assembly ─────────────────────────────────────────────────────────
 
 describe('createTournament — document assembly', () => {
-  it('persists at the generated id and echoes the assembled document back', async () => {
+  it('persists at the generated id (in one batch) and echoes the assembled document back', async () => {
     const created = await createTournament(makeArgs())
 
-    expect(validatedSet).toHaveBeenCalledTimes(1)
-    const [pathParts, , doc] = validatedSet.mock.calls[0]
-    expect(pathParts).toEqual(['tournaments', 'tour-generated'])
-    expect(doc).toMatchObject({
+    expect(runValidatedBatch).toHaveBeenCalledTimes(1)
+    const tourSet = batchSets.find((c) => c.path.length === 2)
+    expect(tourSet.path).toEqual(['tournaments', 'tour-generated'])
+    expect(tourSet.data).toMatchObject({
       id: 'tour-generated',
       name: 'Friday $100 NLH',
       gameType: 'nlh',
@@ -129,7 +160,7 @@ describe('createTournament — document assembly', () => {
       structure: LEVELS,
       createdBy: 'manager-1',
     })
-    expect(created).toEqual(doc)
+    expect(created).toEqual(tourSet.data)
   })
 
   it('fills the live-state, counters, and audit fields the form does not own', async () => {
@@ -211,9 +242,8 @@ describe('createTournament — time conversion', () => {
     expect(ts).toBeInstanceOf(Timestamp)
     expect(ts.toMillis()).toBe(cutoff.getTime())
 
-    vi.clearAllMocks()
-    validatedSet.mockImplementation(async (_p, _s, data) => data)
-    generateId.mockReturnValue('tour-generated')
+    // A second create with no cutoff — the batch mock resets its record per
+    // call, so capturedDoc() now reflects this create.
     await createTournament(makeArgs({ lateRegCutoffTime: null }))
     expect(capturedDoc().lateRegCutoffTime).toBeNull()
   })
@@ -247,9 +277,23 @@ describe('createTournament — schema conformance', () => {
     expect(result.success, result.error?.toString()).toBe(true)
   })
 
-  it('assembles a valid multi-flight tournament', async () => {
-    await createTournament(makeArgs({ isMultiDay: true, isMultiFlight: true }))
-    const result = Tournament.safeParse(capturedDoc())
+  it('assembles a valid multi-flight tournament and derives the format flags from the plan', async () => {
+    await createTournament(
+      makeArgs({
+        // Day 1 has two flights (slice [0..0]) converging into a play-to-a-winner Day 2.
+        sessionPlan: {
+          days: [
+            { flightCount: 2, endStructureIndex: 0, playToPercentRemaining: 15, scheduledStartTime: null },
+            { flightCount: 1, endStructureIndex: null, playToPercentRemaining: null, scheduledStartTime: null },
+          ],
+        },
+      })
+    )
+    const doc = capturedDoc()
+    // Flags are DERIVED from the plan (not passed by the caller).
+    expect(doc.isMultiDay).toBe(true)
+    expect(doc.isMultiFlight).toBe(true)
+    const result = Tournament.safeParse(doc)
     expect(result.success, result.error?.toString()).toBe(true)
   })
 
@@ -277,6 +321,79 @@ describe('createTournament — schema conformance', () => {
   })
 })
 
+// ── Session graph (atomic batch: tournament + sessions) ────────────────────────
+
+describe('createTournament — session graph', () => {
+  it('creates one play-to-a-winner session for a single-day tournament (default plan)', async () => {
+    await createTournament(makeArgs())
+    const sessions = capturedSessions()
+    expect(sessions).toHaveLength(1)
+    const s = sessions[0]
+    expect(s).toMatchObject({
+      tournamentId: 'tour-generated',
+      convergesIntoSessionId: null,
+      dayNumber: 1,
+      flightLabel: null,
+      maximumStartIndex: 0,
+      maximumEndIndex: null,
+      status: 'scheduled',
+    })
+    // Written under the tournament's sessions subcollection, and schema-valid.
+    const sessionSet = batchSets.find((c) => c.path.length === 4)
+    expect(sessionSet.path.slice(0, 3)).toEqual(['tournaments', 'tour-generated', 'sessions'])
+    expect(Session.safeParse(s).success, Session.safeParse(s).error?.toString()).toBe(true)
+  })
+
+  it('writes the tournament and every session in a single batch', async () => {
+    await createTournament(
+      makeArgs({
+        sessionPlan: {
+          days: [
+            { flightCount: 2, endStructureIndex: 0, playToPercentRemaining: 15, scheduledStartTime: null },
+            { flightCount: 1, endStructureIndex: null, playToPercentRemaining: null, scheduledStartTime: null },
+          ],
+        },
+      })
+    )
+    // One batch, four writes (1 tournament + 3 sessions).
+    expect(runValidatedBatch).toHaveBeenCalledTimes(1)
+    expect(batchSets).toHaveLength(4)
+
+    const sessions = capturedSessions()
+    expect(sessions).toHaveLength(3)
+    const final = sessions.find((s) => s.convergesIntoSessionId === null)
+    expect(final).toBeDefined()
+    // Exactly one final session.
+    expect(sessions.filter((s) => s.convergesIntoSessionId === null)).toHaveLength(1)
+    // Both Day 1 flights converge into that single final session.
+    const flights = sessions.filter((s) => s.dayNumber === 1)
+    expect(flights).toHaveLength(2)
+    expect(flights.map((f) => f.flightLabel).sort()).toEqual(['A', 'B'])
+    for (const f of flights) expect(f.convergesIntoSessionId).toBe(final.id)
+    // Every session validates against the real schema.
+    for (const s of sessions) {
+      expect(Session.safeParse(s).success, Session.safeParse(s).error?.toString()).toBe(true)
+    }
+  })
+
+  it('rejects an unsound session plan before writing', async () => {
+    await expect(
+      createTournament(
+        makeArgs({
+          // Day 1 ends at the last index, leaving no room for the final day.
+          sessionPlan: {
+            days: [
+              { flightCount: 1, endStructureIndex: 2, playToPercentRemaining: null, scheduledStartTime: null },
+              { flightCount: 1, endStructureIndex: null, playToPercentRemaining: null, scheduledStartTime: null },
+            ],
+          },
+        })
+      )
+    ).rejects.toThrow(TournamentError)
+    expect(runValidatedBatch).not.toHaveBeenCalled()
+  })
+})
+
 // ── Audit ──────────────────────────────────────────────────────────────────────
 
 describe('createTournament — audit', () => {
@@ -300,14 +417,14 @@ describe('createTournament — audit', () => {
 describe('createTournament — rejections', () => {
   it('rejects a missing/blank actorId before writing', async () => {
     await expect(createTournament(makeArgs({ actorId: '' }))).rejects.toThrow(TournamentError)
-    expect(validatedSet).not.toHaveBeenCalled()
+    expect(runValidatedBatch).not.toHaveBeenCalled()
   })
 
   it('rejects a non-Date scheduledStartTime', async () => {
     await expect(
       createTournament(makeArgs({ scheduledStartTime: '2026-06-01' }))
     ).rejects.toThrow(TournamentError)
-    expect(validatedSet).not.toHaveBeenCalled()
+    expect(runValidatedBatch).not.toHaveBeenCalled()
   })
 
   it('rejects an invalid (NaN) Date scheduledStartTime', async () => {

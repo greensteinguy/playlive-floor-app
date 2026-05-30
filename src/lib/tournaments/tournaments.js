@@ -1,24 +1,30 @@
 // Tournament create + update operations. createTournament assembles a full
 // Tournament document from the create form's inputs, filling the fields the form
-// doesn't own — live state, derived counters, audit — then persists it with
-// whole-document validation (validatedSet re-runs the schema's superRefine
-// invariants before the write). updateTournament edits an existing tournament
-// from the detail page via a read-modify-write transaction so the merged document
-// is re-validated in full (a partial validatedUpdate would skip superRefine — see
+// doesn't own — live state, derived counters, audit — AND builds the tournament's
+// session graph (the tournaments/{tid}/sessions subcollection — see §5.1), then
+// persists the tournament doc and every session in ONE atomic batched write so a
+// half-created tournament with dangling convergence pointers is impossible. Each
+// write is whole-document validated (the batch re-runs the schema's superRefine
+// invariants before commit). updateTournament edits an existing tournament from
+// the detail page via a read-modify-write transaction so the merged document is
+// re-validated in full (a partial validatedUpdate would skip superRefine — see
 // its WARNING; this mirrors templates.js reviseTemplate).
 //
 // Money arrives as integer cents and times as JS Date objects (the form's
 // boundary); this module converts Date → Firestore Timestamp so the firebase
-// dependency stays in the data layer. Role enforcement lives at the UI and
-// Firestore-rules layers (manager + TD); this module assembles, validates, and
-// writes a best-effort audit row — matching templates.js and the wallet/players
-// domain modules.
+// dependency stays in the data layer. The session graph itself (UUID
+// pre-generation, convergesIntoSessionId wiring, slice tiling, cross-session
+// invariants) lives in ./sessions; this module just converts times and drives
+// the atomic write. Role enforcement lives at the UI and Firestore-rules layers
+// (manager + TD); this module assembles, validates, and writes a best-effort
+// audit row — matching templates.js and the wallet/players domain modules.
 
 import { Timestamp } from 'firebase/firestore'
-import { validatedSet, runValidatedTransaction, auditLog, paths, generateId } from '../firestore'
-import { Tournament } from '../schema'
+import { runValidatedTransaction, runValidatedBatch, auditLog, paths, generateId } from '../firestore'
+import { Tournament, Session } from '../schema'
 import { now } from '../wallet/_shared'
 import { TournamentError } from './errors'
+import { buildSessionDocs, deriveFormatFlags, SINGLE_DAY_PLAN } from './sessions'
 
 // Winner-takes-all placeholder. The create form doesn't edit payouts yet (that's
 // the payout editor, task 2.3); the schema requires a non-null PayoutStructure
@@ -60,14 +66,16 @@ function toNullableTimestamp(value, field) {
  *
  * Money fields are integer cents; scheduledStartTime / lateRegCutoffTime are JS
  * Date objects (lateReg may be null). The op fills the fields the form doesn't
- * own — counters, live state, audit — and validates the whole document before
- * the write. Pass payoutStructure=null to seed the winner-takes-all default.
+ * own — counters, live state, audit — builds the session graph from sessionPlan,
+ * and writes the tournament doc + every session in one atomic batch (each
+ * whole-document validated). isMultiDay / isMultiFlight are DERIVED from the plan
+ * so the denormalized booleans can never drift from the subcollection. Pass
+ * payoutStructure=null to seed the winner-takes-all default, and omit sessionPlan
+ * for a plain single-day (single play-to-a-winner session) tournament.
  *
  * @param {object} args
  * @param {string} args.name
  * @param {string} [args.shortDescription]
- * @param {boolean} [args.isMultiDay]
- * @param {boolean} [args.isMultiFlight]
  * @param {string} args.gameType
  * @param {number} args.buyIn               — cents
  * @param {number} [args.hospitalityCost]   — cents
@@ -85,14 +93,14 @@ function toNullableTimestamp(value, field) {
  * @param {object|null} [args.bountyPoolConfig]
  * @param {string|null} [args.fromTemplateId]
  * @param {'draft'|'scheduled'} [args.status]
+ * @param {{days: Array<{flightCount:number, endStructureIndex:number|null, playToPercentRemaining:number|null, scheduledStartTime:(Date|null)}>}|null} [args.sessionPlan]
+ *        — null → single play-to-a-winner session (see ./sessions SINGLE_DAY_PLAN)
  * @param {string} args.actorId
  * @param {'manager'} args.actorRole
  */
 export async function createTournament({
   name,
   shortDescription = '',
-  isMultiDay = false,
-  isMultiFlight = false,
   gameType,
   buyIn,
   hospitalityCost = 0,
@@ -110,6 +118,7 @@ export async function createTournament({
   bountyPoolConfig = null,
   fromTemplateId = null,
   status = 'scheduled',
+  sessionPlan = null,
   actorId,
   actorRole,
 }) {
@@ -117,7 +126,33 @@ export async function createTournament({
   const timestamp = now()
   const id = generateId()
 
-  const created = await validatedSet(paths.tournamentPath(id), Tournament, {
+  // Convert the schedule once (throws TournamentError on a bad value before any
+  // write); Day 1's session reuses the tournament start.
+  const scheduledStartTs = toTimestamp(scheduledStartTime, 'scheduledStartTime')
+  const lateRegCutoffTs = toNullableTimestamp(lateRegCutoffTime, 'lateRegCutoffTime')
+
+  // Normalize the session plan (defaulting to single-day) and convert each day's
+  // optional start time to a Timestamp. isMultiDay / isMultiFlight follow.
+  const planDays = (sessionPlan?.days ?? SINGLE_DAY_PLAN.days).map((day) => ({
+    flightCount: day.flightCount ?? 1,
+    endStructureIndex: day.endStructureIndex ?? null,
+    playToPercentRemaining: day.playToPercentRemaining ?? null,
+    scheduledStartTime: toNullableTimestamp(day.scheduledStartTime ?? null, 'session.scheduledStartTime'),
+  }))
+  const { isMultiDay, isMultiFlight } = deriveFormatFlags(planDays)
+
+  // Throws TournamentError on an unsound plan (overlapping/missing slices,
+  // flighted final day, out-of-bounds level) before any write.
+  const sessionDocs = buildSessionDocs({
+    days: planDays,
+    tournamentId: id,
+    structureLength: Array.isArray(structure) ? structure.length : 0,
+    defaultScheduledStartTime: scheduledStartTs,
+    actorId,
+    timestamp,
+  })
+
+  const tournamentDoc = {
     id,
     legacyId: null,
 
@@ -140,8 +175,8 @@ export async function createTournament({
 
     payoutStructure: payoutStructure ?? DEFAULT_PAYOUT,
 
-    scheduledStartTime: toTimestamp(scheduledStartTime, 'scheduledStartTime'),
-    lateRegCutoffTime: toNullableTimestamp(lateRegCutoffTime, 'lateRegCutoffTime'),
+    scheduledStartTime: scheduledStartTs,
+    lateRegCutoffTime: lateRegCutoffTs,
 
     status,
     isOnBreak: false,
@@ -169,6 +204,16 @@ export async function createTournament({
     updatedAt: timestamp,
     createdBy: actorId,
     archivedAt: null,
+  }
+
+  // Tournament + every session land together, or nothing does — no dangling
+  // convergence pointers (§5.1). Each write is whole-document validated.
+  let created
+  await runValidatedBatch(async (b) => {
+    created = b.set(paths.tournamentPath(id), Tournament, tournamentDoc)
+    for (const session of sessionDocs) {
+      b.set(paths.sessionPath(id, session.id), Session, session)
+    }
   })
 
   await auditLog.writeAuditLogSafe({

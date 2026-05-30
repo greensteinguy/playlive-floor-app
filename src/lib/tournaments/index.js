@@ -14,4 +14,6 @@ export {
 
 export { createTournament, updateTournament } from './tournaments'
 
+export { validateSessionPlan, deriveFormatFlags, SINGLE_DAY_PLAN } from './sessions'
+
 export { TournamentError } from './errors'

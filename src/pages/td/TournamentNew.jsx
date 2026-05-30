@@ -18,12 +18,13 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { useTournamentTemplates, useStructureTemplates } from '../../hooks/useTemplates'
-import { createTournament, TournamentError } from '../../lib/tournaments'
+import { createTournament, validateSessionPlan, TournamentError } from '../../lib/tournaments'
 import { Structure } from '../../lib/schema'
 import { centsToStr, dollarsToCents, intOrNull, intOf } from '../../lib/money'
 import { GAME_TYPES, REENTRY_TYPES } from '../../lib/gameTypes'
 import { Section, Text, Money, Num, Select, Toggle, DateTime, BountyValues } from '../../components/FormFields'
 import StructureEditor from '../../components/StructureEditor'
+import SessionPlanBuilder from '../../components/SessionPlanBuilder'
 import FormWizard from '../../components/FormWizard'
 
 function initialForm() {
@@ -37,8 +38,11 @@ function initialForm() {
     guarantee: '',
     houseConsumption: '',
     startingStack: '20000',
-    isMultiDay: false,
-    isMultiFlight: false,
+    // Session plan (task 2.4) — guided shape + per-day inputs. isMultiDay /
+    // isMultiFlight are DERIVED from this at create time, never stored here.
+    sessionShape: 'singleDay',
+    sessionDays: [{ endIndex: '', playPct: '', startTime: '' }],
+    sessionFlightCount: 2,
     hasUpperDeckMainDeck: false,
     structureTemplateId: '',
     structure: [],
@@ -70,7 +74,7 @@ const STATUS_OPTIONS = [
 
 // Wizard step keys, in order. Validation errors are bucketed by these so the
 // stepper can flag the step(s) that need attention.
-const STEP_ORDER = ['general', 'structure', 'rest']
+const STEP_ORDER = ['general', 'structure', 'sessions', 'rest']
 
 export default function TournamentNew() {
   const { user, role } = useAuth()
@@ -84,10 +88,6 @@ export default function TournamentNew() {
   const [step, setStep] = useState(0)
   const [stepErrors, setStepErrors] = useState({})
   const set = (patch) => setForm((f) => ({ ...f, ...patch }))
-
-  // Keep the schema's isMultiFlight ⇒ isMultiDay invariant true by construction.
-  const setMultiFlight = (on) => set(on ? { isMultiFlight: true, isMultiDay: true } : { isMultiFlight: false })
-  const setMultiDay = (on) => set(on ? { isMultiDay: true } : { isMultiDay: false, isMultiFlight: false })
 
   const mockMode = tplList.mockMode || structures.mockMode
   const d = submitting
@@ -114,6 +114,10 @@ export default function TournamentNew() {
     const tpl = tplList.templates.find((t) => t.id === id)
     if (!tpl) return
     const c = tpl.config
+    // Templates carry only the format booleans (they predate the session graph),
+    // so seed a matching guided shape with placeholder days the TD fills in on
+    // the Days & flights step. The default two-day skeleton is a starting point.
+    const sessionShape = c.isMultiFlight ? 'multiFlight' : c.isMultiDay ? 'multiDay' : 'singleDay'
     set({
       fromTemplateId: tpl.id,
       name: c.name,
@@ -124,8 +128,15 @@ export default function TournamentNew() {
       guarantee: centsToStr(c.guarantee),
       houseConsumption: centsToStr(c.houseConsumption),
       startingStack: String(c.startingStack),
-      isMultiDay: c.isMultiDay,
-      isMultiFlight: c.isMultiFlight,
+      sessionShape,
+      sessionDays:
+        sessionShape === 'singleDay'
+          ? [{ endIndex: '', playPct: '', startTime: '' }]
+          : [
+              { endIndex: '', playPct: '', startTime: '' },
+              { endIndex: '', playPct: '', startTime: '' },
+            ],
+      sessionFlightCount: 2,
       hasUpperDeckMainDeck: c.hasUpperDeckMainDeck,
       structureTemplateId: c.structureTemplateId ?? '',
       structure: c.structureTemplateId ? levelsOf(c.structureTemplateId) : [],
@@ -140,6 +151,27 @@ export default function TournamentNew() {
     })
   }
 
+  // Guided session state → the domain plan buildSessionDocs consumes, or null
+  // for a single-day tournament (createTournament falls back to SINGLE_DAY_PLAN).
+  // Only Day 1 is flighted in the guided shapes; the final day always plays to a
+  // winner (endStructureIndex null) and Day 1 always opens at the tournament's
+  // scheduled start (startTime null → the op fills it in).
+  function buildSessionPlan() {
+    if (form.sessionShape === 'singleDay') return null
+    const lastIndex = form.sessionDays.length - 1
+    const days = form.sessionDays.map((day, i) => {
+      const isFirst = i === 0
+      const isFinal = i === lastIndex
+      return {
+        flightCount: form.sessionShape === 'multiFlight' && isFirst ? intOf(form.sessionFlightCount) : 1,
+        endStructureIndex: isFinal ? null : intOrNull(day.endIndex),
+        playToPercentRemaining: day.playPct === '' ? null : Number(day.playPct),
+        scheduledStartTime: isFirst ? null : localToDate(day.startTime),
+      }
+    })
+    return { days }
+  }
+
   // Returns an object keyed by STEP_ORDER; absent key = that step is valid.
   function validate() {
     const errors = {}
@@ -148,6 +180,13 @@ export default function TournamentNew() {
     else if (form.lateRegCutoffTime && !localToDate(form.lateRegCutoffTime)) errors.general = 'The late-reg cutoff time is invalid.'
     if (form.structure.length === 0 || !Structure.safeParse(form.structure).success) {
       errors.structure = 'Add at least one valid blind level (fix the highlighted rows).'
+    }
+    // Cross-session soundness (slices tile the structure, one final session) —
+    // only when the structure itself is valid, so a structure error isn't
+    // double-reported here, and only for multi-session shapes.
+    if (!errors.structure && form.sessionShape !== 'singleDay') {
+      const planError = validateSessionPlan(buildSessionPlan(), form.structure.length)
+      if (planError) errors.sessions = planError
     }
     if (form.gameType === 'mysteryBounty' && form.bountyValues.length < 1) {
       errors.rest = 'Mystery bounty needs at least one bounty value.'
@@ -164,8 +203,8 @@ export default function TournamentNew() {
     return {
       name: form.name.trim(),
       shortDescription: form.shortDescription,
-      isMultiDay: form.isMultiDay,
-      isMultiFlight: form.isMultiFlight,
+      // isMultiDay / isMultiFlight are derived from the session plan inside
+      // createTournament, so they're intentionally not passed here.
       gameType: form.gameType,
       buyIn: dollarsToCents(form.buyIn),
       hospitalityCost: dollarsToCents(form.hospitalityCost),
@@ -193,6 +232,7 @@ export default function TournamentNew() {
         form.gameType === 'mysteryBounty'
           ? { totalPool: bountyCents.reduce((a, b) => a + b, 0), bountyValues: bountyCents }
           : null,
+      sessionPlan: buildSessionPlan(),
       fromTemplateId: form.fromTemplateId === '' ? null : form.fromTemplateId,
       status: form.status,
       actorId: user.uid,
@@ -268,9 +308,8 @@ export default function TournamentNew() {
           <section className="mb-5">
             <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Format</h3>
             <div className="bg-felt-800 border border-white/5 rounded-lg p-4 flex flex-col gap-2">
-              <Toggle label="Multi-day" checked={form.isMultiDay} onChange={setMultiDay} disabled={d} />
-              <Toggle label="Multi-flight" checked={form.isMultiFlight} onChange={setMultiFlight} disabled={d} hint="Implies multi-day" />
               <Toggle label="Upper deck / main deck" checked={form.hasUpperDeckMainDeck} onChange={(v) => set({ hasUpperDeckMainDeck: v })} disabled={d} />
+              <p className="text-[11px] text-white/40">Multi-day and multi-flight are configured on the Days &amp; flights step.</p>
             </div>
           </section>
 
@@ -293,6 +332,24 @@ export default function TournamentNew() {
             </div>
           </section>
         </>
+      ),
+    },
+    {
+      key: 'sessions',
+      label: 'Days & flights',
+      content: (
+        <SessionPlanBuilder
+          value={{ shape: form.sessionShape, days: form.sessionDays, flightCount: form.sessionFlightCount }}
+          onChange={(patch) => {
+            const next = {}
+            if ('shape' in patch) next.sessionShape = patch.shape
+            if ('days' in patch) next.sessionDays = patch.days
+            if ('flightCount' in patch) next.sessionFlightCount = patch.flightCount
+            set(next)
+          }}
+          structure={form.structure}
+          disabled={d}
+        />
       ),
     },
     {
