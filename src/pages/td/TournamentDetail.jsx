@@ -25,7 +25,7 @@ import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { useTournament } from '../../hooks/useTournament'
 import { useStructureTemplates } from '../../hooks/useTemplates'
-import { updateTournament, TournamentError } from '../../lib/tournaments'
+import { updateTournament, setTournamentStatus, TournamentError } from '../../lib/tournaments'
 import { Structure } from '../../lib/schema'
 import { centsToStr, dollarsToCents, intOrNull, intOf, formatMoney } from '../../lib/money'
 import { payoutCurve, paidPlaceCount, applyRounding } from '../../lib/payouts'
@@ -33,6 +33,7 @@ import { GAME_TYPES, GAME_TYPE_LABEL, REENTRY_TYPES } from '../../lib/gameTypes'
 import { Section, Text, Money, Num, Select, Toggle, DateTime, BountyValues, EmptyState } from '../../components/FormFields'
 import StructureEditor from '../../components/StructureEditor'
 import StatusBadge from '../../components/StatusBadge'
+import { ALL_STATUSES, defaultNextStatuses, statusLabel } from '../../lib/tournamentStatus'
 
 const TABS = [
   { id: 'details', label: 'Details' },
@@ -286,6 +287,23 @@ export default function TournamentDetail() {
   const savePayouts = () =>
     save(buildPayoutPatch, validatePayouts, 'tournament.payoutEdited', () => 'Payout structure saved.')
 
+  // Floor controls (task 2.7) — change the tournament's lifecycle status. The op
+  // enforces the standard sequence + manager-override path; on success we reload
+  // so the top bar badge reflects the new status.
+  const [statusBusy, setStatusBusy] = useState(false)
+  async function changeStatus(toStatus, override = null) {
+    setStatusBusy(true)
+    try {
+      await setTournamentStatus({ id, toStatus, actorId: user.uid, actorRole: role, managerOverride: override })
+      toast.success(`Status changed to ${statusLabel(toStatus)}.`)
+      reload()
+    } catch (e) {
+      toast.error(e instanceof TournamentError ? e.message : `Status change failed: ${e.message}`)
+    } finally {
+      setStatusBusy(false)
+    }
+  }
+
   return (
     <div className="px-6 py-8 md:px-10 md:py-10 max-w-5xl">
       <button
@@ -318,6 +336,10 @@ export default function TournamentDetail() {
             <div className="bg-felt-800 border border-white/10 rounded-lg px-4 py-2 mb-5 text-xs text-white/50">
               Read-only access — ask a manager or TD to make changes.
             </div>
+          )}
+
+          {canEdit && (
+            <StatusControls status={tournament.status} role={role} busy={statusBusy} onChange={changeStatus} />
           )}
 
           <div className="flex gap-1 border-b border-white/10 mb-6 overflow-x-auto">
@@ -444,6 +466,137 @@ export default function TournamentDetail() {
         </>
       )}
     </div>
+  )
+}
+
+// Floor controls (task 2.7): the standard next-status buttons (manager + TD),
+// with a confirm for the significant finish/cancel steps, plus a manager-only
+// override panel for non-standard transitions (reopen late reg, correct a
+// mistake) that requires a reason. Presentational — calls onChange(toStatus,
+// override?) which the page maps to setTournamentStatus.
+function StatusControls({ status, role, busy, onChange }) {
+  const isManager = role === 'manager'
+  const nextStatuses = defaultNextStatuses(status)
+  const [confirm, setConfirm] = useState(null)
+  const [overrideOpen, setOverrideOpen] = useState(false)
+  const [overrideTo, setOverrideTo] = useState('')
+  const [reason, setReason] = useState('')
+
+  const significant = (s) => s === 'finished' || s === 'cancelled'
+  const stepBtn =
+    'text-xs px-3 py-1.5 rounded-lg border bg-white/5 text-white/80 hover:bg-white/10 border-white/10 disabled:opacity-40'
+  const dangerBtn =
+    'text-xs px-3 py-1.5 rounded-lg border bg-red-500/15 text-red-200 hover:bg-red-500/25 border-red-500/30 disabled:opacity-40'
+
+  // Override targets exclude the current status and the standard next steps
+  // (those have their own buttons).
+  const overrideTargets = ALL_STATUSES.filter((s) => s !== status && !nextStatuses.includes(s))
+
+  return (
+    <section className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 mb-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 mr-1">Floor controls</span>
+          {nextStatuses.length === 0 ? (
+            <span className="text-xs text-white/40">
+              No standard next step — tournament is {statusLabel(status).toLowerCase()}.
+            </span>
+          ) : (
+            nextStatuses.map((s) => (
+              <button
+                key={s}
+                type="button"
+                disabled={busy}
+                onClick={() => (significant(s) ? setConfirm(s) : onChange(s))}
+                className={significant(s) ? dangerBtn : stepBtn}
+              >
+                → {statusLabel(s)}
+              </button>
+            ))
+          )}
+        </div>
+        {isManager && overrideTargets.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOverrideOpen((o) => !o)}
+            className="text-xs text-white/50 hover:text-white"
+          >
+            {overrideOpen ? 'Close override' : 'Override status…'}
+          </button>
+        )}
+      </div>
+
+      {confirm && (
+        <div className="mt-3 flex items-center gap-3 text-sm flex-wrap">
+          <span className="text-white/70">
+            Set status to <strong>{statusLabel(confirm)}</strong>?
+          </span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const s = confirm
+              setConfirm(null)
+              onChange(s)
+            }}
+            className={dangerBtn}
+          >
+            Yes — {statusLabel(confirm)}
+          </button>
+          <button type="button" disabled={busy} onClick={() => setConfirm(null)} className={stepBtn}>
+            No
+          </button>
+        </div>
+      )}
+
+      {isManager && overrideOpen && (
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <p className="text-[11px] text-amber-300/80 mb-2">
+            Override the standard sequence (e.g. reopen late reg, correct a mistake). Recorded in the audit log with
+            your reason.
+          </p>
+          <div className="flex flex-wrap gap-2 items-end">
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Set status to</span>
+              <select
+                value={overrideTo}
+                onChange={(e) => setOverrideTo(e.target.value)}
+                className="bg-felt-900 border border-white/10 rounded px-2 py-1.5 text-sm"
+              >
+                <option value="">— choose —</option>
+                {overrideTargets.map((s) => (
+                  <option key={s} value={s}>
+                    {statusLabel(s)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 flex-1 min-w-[12rem]">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Reason</span>
+              <input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Why bypass the standard sequence?"
+                className="bg-felt-900 border border-white/10 rounded px-2 py-1.5 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={busy || !overrideTo || !reason.trim()}
+              onClick={() => {
+                onChange(overrideTo, { reason: reason.trim() })
+                setOverrideOpen(false)
+                setOverrideTo('')
+                setReason('')
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg border bg-gold-500/20 text-gold-100 hover:bg-gold-500/30 border-gold-500/40 disabled:opacity-40"
+            >
+              Apply override
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 

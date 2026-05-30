@@ -22,7 +22,7 @@ vi.mock('../firestore', () => ({
 
 import { runValidatedBatch, runValidatedTransaction, auditLog, generateId } from '../firestore'
 import { Tournament, Session } from '../schema'
-import { createTournament, updateTournament } from './tournaments'
+import { createTournament, updateTournament, setTournamentStatus } from './tournaments'
 import { TournamentError } from './errors'
 
 let mockState
@@ -649,5 +649,138 @@ describe('updateTournament — rejections', () => {
       updateTournament({ id: 'missing', patch: { name: 'x' }, actorId: 'td-1', actorRole: 'td' })
     ).rejects.toThrow()
     expect(auditLog.writeAuditLogSafe).not.toHaveBeenCalled()
+  })
+})
+
+// ── setTournamentStatus (floor controls — task 2.7) ────────────────────────────
+
+describe('setTournamentStatus — default transitions', () => {
+  const seed = (status) => mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1', status }))
+
+  it('advances along the standard sequence (TD), re-validating the merged doc', async () => {
+    seed('scheduled')
+    const updated = await setTournamentStatus({ id: 'tour-1', toStatus: 'lateRegOpen', actorId: 'td-1', actorRole: 'td' })
+    expect(updated.status).toBe('lateRegOpen')
+    expect(Tournament.safeParse(updated).success, Tournament.safeParse(updated).error?.toString()).toBe(true)
+    // Just the statusChanged audit — no override row.
+    expect(auditLog.writeAuditLogSafe).toHaveBeenCalledTimes(1)
+    expect(auditLog.writeAuditLogSafe.mock.calls[0][0]).toMatchObject({
+      actionType: 'tournament.statusChanged',
+      targetId: 'tour-1',
+      metadata: { from: 'scheduled', to: 'lateRegOpen', override: false },
+    })
+  })
+
+  it('stamps finishedAt on entering finished', async () => {
+    seed('lateRegClosed')
+    const updated = await setTournamentStatus({ id: 'tour-1', toStatus: 'finished', actorId: 'td-1', actorRole: 'td' })
+    expect(updated.status).toBe('finished')
+    expect(updated.finishedAt).toBeInstanceOf(Timestamp)
+  })
+
+  it('allows cancel from a non-terminal status without an override', async () => {
+    seed('scheduled')
+    const updated = await setTournamentStatus({ id: 'tour-1', toStatus: 'cancelled', actorId: 'td-1', actorRole: 'td' })
+    expect(updated.status).toBe('cancelled')
+    expect(auditLog.writeAuditLogSafe).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('setTournamentStatus — manager override', () => {
+  const seed = (status, extra = {}) => mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1', status, ...extra }))
+
+  it('refuses a non-standard transition without an override', async () => {
+    seed('lateRegClosed')
+    await expect(
+      setTournamentStatus({ id: 'tour-1', toStatus: 'lateRegOpen', actorId: 'td-1', actorRole: 'td' }),
+    ).rejects.toThrow(TournamentError)
+    expect(mockState.calls.set).toHaveLength(0)
+    expect(auditLog.writeAuditLogSafe).not.toHaveBeenCalled()
+  })
+
+  it('refuses a non-standard transition by a non-manager even with a reason', async () => {
+    seed('lateRegClosed')
+    await expect(
+      setTournamentStatus({
+        id: 'tour-1',
+        toStatus: 'lateRegOpen',
+        actorId: 'td-1',
+        actorRole: 'td',
+        managerOverride: { reason: 'reopen' },
+      }),
+    ).rejects.toThrow(TournamentError)
+  })
+
+  it('reopens late reg with a manager override + reason, emitting a manager.override row', async () => {
+    seed('lateRegClosed')
+    const updated = await setTournamentStatus({
+      id: 'tour-1',
+      toStatus: 'lateRegOpen',
+      actorId: 'mgr-1',
+      actorRole: 'manager',
+      managerOverride: { reason: 'late bus of players arrived' },
+    })
+    expect(updated.status).toBe('lateRegOpen')
+    expect(auditLog.writeAuditLogSafe).toHaveBeenCalledTimes(2)
+    const types = auditLog.writeAuditLogSafe.mock.calls.map((c) => c[0].actionType)
+    expect(types).toContain('tournament.statusChanged')
+    expect(types).toContain('manager.override')
+    const override = auditLog.writeAuditLogSafe.mock.calls.find((c) => c[0].actionType === 'manager.override')[0]
+    expect(override.metadata).toMatchObject({
+      overrideType: 'tournamentStatusTransition',
+      reason: 'late bus of players arrived',
+      from: 'lateRegClosed',
+      to: 'lateRegOpen',
+    })
+  })
+
+  it('requires a non-empty reason for an override transition', async () => {
+    seed('finished')
+    await expect(
+      setTournamentStatus({
+        id: 'tour-1',
+        toStatus: 'lateRegOpen',
+        actorId: 'mgr-1',
+        actorRole: 'manager',
+        managerOverride: { reason: '   ' },
+      }),
+    ).rejects.toThrow(TournamentError)
+  })
+
+  it('clears finishedAt when an override reverts out of finished', async () => {
+    seed('finished', { finishedAt: Timestamp.fromDate(new Date('2026-06-01T10:00:00Z')) })
+    const updated = await setTournamentStatus({
+      id: 'tour-1',
+      toStatus: 'lateRegOpen',
+      actorId: 'mgr-1',
+      actorRole: 'manager',
+      managerOverride: { reason: 'resumed after a stoppage' },
+    })
+    expect(updated.status).toBe('lateRegOpen')
+    expect(updated.finishedAt).toBeNull()
+  })
+})
+
+describe('setTournamentStatus — rejections', () => {
+  it('rejects a no-op transition to the same status', async () => {
+    mockState.seed(['tournaments', 'tour-1'], makeTournament({ id: 'tour-1', status: 'scheduled' }))
+    await expect(
+      setTournamentStatus({ id: 'tour-1', toStatus: 'scheduled', actorId: 'td-1', actorRole: 'td' }),
+    ).rejects.toThrow(TournamentError)
+    expect(mockState.calls.set).toHaveLength(0)
+  })
+
+  it('rejects an unknown status before running the transaction', async () => {
+    await expect(
+      setTournamentStatus({ id: 'tour-1', toStatus: 'paused', actorId: 'td-1', actorRole: 'td' }),
+    ).rejects.toThrow(TournamentError)
+    expect(runValidatedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects a blank actorId before running the transaction', async () => {
+    await expect(
+      setTournamentStatus({ id: 'tour-1', toStatus: 'lateRegOpen', actorId: '', actorRole: 'td' }),
+    ).rejects.toThrow(TournamentError)
+    expect(runValidatedTransaction).not.toHaveBeenCalled()
   })
 })

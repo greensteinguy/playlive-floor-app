@@ -25,6 +25,7 @@ import { Tournament, Session } from '../schema'
 import { now } from '../wallet/_shared'
 import { TournamentError } from './errors'
 import { buildSessionDocs, deriveFormatFlags, SINGLE_DAY_PLAN } from './sessions'
+import { ALL_STATUSES, isDefaultTransition } from '../tournamentStatus'
 
 // Winner-takes-all placeholder. The create form doesn't edit payouts yet (that's
 // the payout editor, task 2.3); the schema requires a non-null PayoutStructure
@@ -294,6 +295,90 @@ export async function updateTournament({
     timestamp,
     metadata: { changedFields: Object.keys(patch ?? {}) },
   })
+
+  return updated
+}
+
+/**
+ * Change a tournament's lifecycle status (the floor-controls flow, task 2.7).
+ *
+ * The standard sequence (draft → scheduled → lateRegOpen → lateRegClosed →
+ * finished, plus cancel from any non-terminal status) is open to manager + TD.
+ * A NON-STANDARD transition (reopening late reg, un-finishing, un-publishing,
+ * skipping the field) requires actorRole 'manager' AND a managerOverride
+ * `{reason}`; it emits an extra `manager.override` audit row alongside the
+ * `tournament.statusChanged` one. `finishedAt` is stamped on entering 'finished'
+ * and cleared if an override leaves it. Read-modify-write so the whole document
+ * re-validates (a partial update would skip superRefine). The session clock
+ * (task 2.6) owns session status separately; this is the tournament-level axis.
+ *
+ * @param {object} args
+ * @param {string} args.id
+ * @param {'draft'|'scheduled'|'lateRegOpen'|'lateRegClosed'|'finished'|'cancelled'} args.toStatus
+ * @param {string} args.actorId
+ * @param {'manager'|'td'} args.actorRole
+ * @param {{reason: string}|null} [args.managerOverride]  — required for non-standard transitions
+ */
+export async function setTournamentStatus({ id, toStatus, actorId, actorRole, managerOverride = null }) {
+  requireActor(actorId)
+  requireId(id)
+  if (!ALL_STATUSES.includes(toStatus)) {
+    throw new TournamentError(`unknown status "${toStatus}"`)
+  }
+  const timestamp = now()
+  let fromStatus
+  let usedOverride = false
+
+  const updated = await runValidatedTransaction(async (tx) => {
+    const current = await tx.get(paths.tournamentPath(id), Tournament)
+    fromStatus = current.status
+    if (fromStatus === toStatus) {
+      throw new TournamentError(`tournament is already ${toStatus}`)
+    }
+    if (!isDefaultTransition(fromStatus, toStatus)) {
+      // Non-standard transition: manager-only, with a reason.
+      if (actorRole !== 'manager') {
+        throw new TournamentError(
+          `${fromStatus} → ${toStatus} is not a standard step; a manager override is required`,
+        )
+      }
+      if (!managerOverride || typeof managerOverride.reason !== 'string' || managerOverride.reason.trim() === '') {
+        throw new TournamentError('a manager override reason is required for this transition')
+      }
+      usedOverride = true
+    }
+    const next = { ...current, status: toStatus, updatedAt: timestamp }
+    if (toStatus === 'finished') next.finishedAt = timestamp
+    else if (fromStatus === 'finished') next.finishedAt = null
+    tx.set(paths.tournamentPath(id), Tournament, next)
+    return next
+  })
+
+  await auditLog.writeAuditLogSafe({
+    actorId,
+    actorRole,
+    actionType: 'tournament.statusChanged',
+    targetType: 'tournament',
+    targetId: id,
+    timestamp,
+    metadata: { from: fromStatus, to: toStatus, override: usedOverride },
+  })
+  if (usedOverride) {
+    await auditLog.writeAuditLogSafe({
+      actorId,
+      actorRole: 'manager',
+      actionType: 'manager.override',
+      targetType: 'tournament',
+      targetId: id,
+      timestamp,
+      metadata: {
+        overrideType: 'tournamentStatusTransition',
+        reason: managerOverride.reason,
+        from: fromStatus,
+        to: toStatus,
+      },
+    })
+  }
 
   return updated
 }

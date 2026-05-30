@@ -12,7 +12,7 @@ export {
   archiveTournamentTemplate,
 } from './templates'
 
-export { createTournament, updateTournament } from './tournaments'
+export { createTournament, updateTournament, setTournamentStatus } from './tournaments'
 
 export { validateSessionPlan, deriveFormatFlags, SINGLE_DAY_PLAN } from './sessions'
 
