@@ -1,12 +1,477 @@
-import Placeholder from '../../shell/Placeholder'
+// Tables & seating (task 3.7: seat assignment — random draw, manual override,
+// seat list). Tables are per-session, so the page picks a tournament then a
+// session and manages that session's room.
+//
+// Flow: pick tournament (deep-linkable via ?tournamentId=) → pick session (auto
+// for single-session) → Draw seats (random draw over evenly-filled tables) or,
+// once drawn, manually move players (pick an unseated player or a seated one,
+// then click an empty seat) / unseat / Clear & redraw. A Seat list view exports
+// the seat-card data (player · table · seat · starting stack) to CSV; the thermal
+// print job itself is Phase 5. TD + manager (route-gated).
+
+import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useAuth } from '../../auth/useAuth'
+import { useToast } from '../../shell/useToast'
+import { useTournaments } from '../../hooks/useTournaments'
+import { useSeating } from '../../hooks/useSeating'
+import { usePlayers } from '../../hooks/usePlayers'
+import {
+  drawSeats,
+  clearSeating,
+  seatEntry,
+  unseatEntry,
+  seatableEntries,
+  occupiedSeatCount,
+  buildSeatList,
+  DEFAULT_SEAT_COUNT,
+  SeatingError,
+} from '../../lib/tournaments'
+import { ValidationError, WriteTimeoutError } from '../../lib/firestore'
+import { playerDisplayName } from '../../lib/players'
+import { downloadCsv, csvFilename } from '../../lib/csv'
+import { Select, EmptyState } from '../../components/FormFields'
+import StatusBadge from '../../components/StatusBadge'
+
+function friendlyError(e) {
+  if (e instanceof SeatingError || e instanceof ValidationError || e instanceof WriteTimeoutError) {
+    return e.message
+  }
+  return `Something went wrong: ${e.message}`
+}
+
+const fmtChips = (n) => (typeof n === 'number' ? n.toLocaleString('en-AU') : '—')
+
+const SEAT_LIST_COLUMNS = [
+  { key: 'tableNumber', label: 'Table' },
+  { key: 'seatNumber', label: 'Seat' },
+  { key: 'playerName', label: 'Player' },
+  { key: 'startingStack', label: 'Starting stack' },
+  { key: 'tournamentName', label: 'Tournament' },
+]
+
+function Panel({ title, right, children }) {
+  return (
+    <section className="mb-5">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">{title}</h3>
+        {right}
+      </div>
+      <div className="bg-felt-800 border border-white/5 rounded-lg p-4">{children}</div>
+    </section>
+  )
+}
 
 export default function Tables() {
+  const { user, role } = useAuth()
+  const toast = useToast()
+  const [searchParams] = useSearchParams()
+  const tournamentsList = useTournaments()
+  const players = usePlayers()
+
+  // Tournament + session selection. Both initialise from the URL / first option
+  // synchronously (no set-state-in-effect): the tournament from ?tournamentId=,
+  // the session derived as `sessionId || first`. Switching tournament resets the
+  // session pick in the handler.
+  const [tournamentId, setTournamentId] = useState(searchParams.get('tournamentId') ?? '')
+  const [sessionId, setSessionId] = useState('')
+  const [seatCountStr, setSeatCountStr] = useState(String(DEFAULT_SEAT_COUNT))
+  const [selectedEntryId, setSelectedEntryId] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [showSeatList, setShowSeatList] = useState(false)
+
+  const seating = useSeating(tournamentId)
+  const { tournament, sessions, tables, entries } = seating
+
+  const canEdit = role === 'manager' || role === 'td'
+  const activeSessionId = sessionId || sessions[0]?.id || ''
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null
+
+  const playersById = useMemo(
+    () => Object.fromEntries(players.players.map((p) => [p.id, p])),
+    [players.players]
+  )
+  const entriesById = useMemo(() => Object.fromEntries(entries.map((e) => [e.id, e])), [entries])
+
+  const sessionTables = useMemo(
+    () => tables.filter((t) => t.sessionId === activeSessionId).sort((a, b) => a.tableNumber - b.tableNumber),
+    [tables, activeSessionId]
+  )
+  const pool = useMemo(() => seatableEntries(entries, activeSessionId), [entries, activeSessionId])
+  const seatedIds = useMemo(
+    () => new Set(sessionTables.flatMap((t) => t.seats.map((s) => s.entryId).filter(Boolean))),
+    [sessionTables]
+  )
+  const unseated = pool.filter((e) => !seatedIds.has(e.id))
+  const selectedEntry = selectedEntryId ? entriesById[selectedEntryId] ?? null : null
+
+  const nameForEntry = (entry) => {
+    const p = entry ? playersById[entry.playerId] : null
+    return p ? playerDisplayName(p) : '—'
+  }
+
+  function pickTournament(id) {
+    setTournamentId(id)
+    setSessionId('')
+    setSelectedEntryId(null)
+    setConfirmClear(false)
+    setShowSeatList(false)
+  }
+  function pickSession(id) {
+    setSessionId(id)
+    setSelectedEntryId(null)
+    setConfirmClear(false)
+  }
+
+  async function run(fn) {
+    setBusy(true)
+    try {
+      await fn()
+    } catch (e) {
+      toast.error(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDraw() {
+    const seatCount = parseInt(seatCountStr, 10)
+    if (!Number.isInteger(seatCount) || seatCount < 2) {
+      toast.error('Seats per table must be a whole number of 2 or more.')
+      return
+    }
+    await run(async () => {
+      const res = await drawSeats({
+        tournament,
+        sessionId: activeSessionId,
+        entries,
+        seatCount,
+        actorId: user.uid,
+        actorRole: role,
+      })
+      toast.success(`Drew ${res.seatedCount} players across ${res.tableCount} table${res.tableCount === 1 ? '' : 's'}.`)
+      seating.reload()
+    })
+  }
+
+  async function handleClear() {
+    await run(async () => {
+      const res = await clearSeating({ tournament, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
+      toast.success(`Cleared ${res.tablesRemoved} table${res.tablesRemoved === 1 ? '' : 's'}.`)
+      setConfirmClear(false)
+      setSelectedEntryId(null)
+      seating.reload()
+    })
+  }
+
+  async function handleSeatClick(table, seat) {
+    if (seat.entryId) {
+      // Occupied — pick this player up to move (toggle).
+      setSelectedEntryId((cur) => (cur === seat.entryId ? null : seat.entryId))
+      return
+    }
+    // Empty seat — place the selected player here.
+    if (!selectedEntry) {
+      toast.error('Pick a player first (from the unseated list or another seat).')
+      return
+    }
+    await run(async () => {
+      await seatEntry({
+        tournament,
+        entry: selectedEntry,
+        targetTableId: table.id,
+        targetSeatNumber: seat.seatNumber,
+        actorId: user.uid,
+        actorRole: role,
+      })
+      toast.success(`Seated ${nameForEntry(selectedEntry)} at table ${table.tableNumber}, seat ${seat.seatNumber}.`)
+      setSelectedEntryId(null)
+      seating.reload()
+    })
+  }
+
+  async function handleUnseat(entry) {
+    await run(async () => {
+      await unseatEntry({ tournament, entry, actorId: user.uid, actorRole: role })
+      toast.success(`Unseated ${nameForEntry(entry)}.`)
+      setSelectedEntryId(null)
+      seating.reload()
+    })
+  }
+
+  function exportSeatList() {
+    const rows = buildSeatList({ tables: sessionTables, entriesById, playersById, tournament })
+    if (rows.length === 0) {
+      toast.error('No seated players to export yet.')
+      return
+    }
+    downloadCsv(
+      rows.map((r) => ({ ...r, startingStack: r.startingStack ?? '' })),
+      SEAT_LIST_COLUMNS,
+      csvFilename(`seat-list-${tournament?.name ?? 'tournament'}`)
+    )
+    toast.success(`Exported ${rows.length} seat${rows.length === 1 ? '' : 's'} to CSV.`)
+  }
+
+  const tournamentOptions = [
+    { value: '', label: 'Choose a tournament…' },
+    ...tournamentsList.tournaments.map((t) => ({ value: t.id, label: t.name })),
+  ]
+
   return (
-    <Placeholder
-      title="Tables & seating"
-      phase="2"
-      task="2.6"
-      description="Open and close tables; assign and reassign seats; balance and break. Triggers seat-card / alternate-ticket printing to the venue's thermal printer."
-    />
+    <div className="px-6 py-8 md:px-10 md:py-10 max-w-5xl">
+      <div className="mb-5">
+        <div className="flex items-baseline justify-between gap-3">
+          <h1 className="font-display text-3xl md:text-4xl text-gold-400">Tables &amp; seating</h1>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+            Phase 3 — task 3.7
+          </span>
+        </div>
+        <p className="mt-2 text-sm text-white/50">
+          Draw seats randomly, move players by hand, and export the seat list. Tables are per-session.
+        </p>
+      </div>
+
+      {/* Tournament + session pickers */}
+      <Panel title="Tournament">
+        {tournamentsList.mockMode ? (
+          <p className="text-sm text-white/50">Mock mode — seating needs the emulator or production.</p>
+        ) : (
+          <div className="flex flex-wrap gap-4">
+            <div className="min-w-[16rem]">
+              <Select label="Tournament" value={tournamentId} onChange={pickTournament} options={tournamentOptions} />
+            </div>
+            {tournament && sessions.length > 1 && (
+              <div className="min-w-[12rem]">
+                <Select
+                  label="Session"
+                  value={activeSessionId}
+                  onChange={pickSession}
+                  options={sessions
+                    .slice()
+                    .sort((a, b) => (a.dayNumber ?? 0) - (b.dayNumber ?? 0) || a.sessionLabel.localeCompare(b.sessionLabel))
+                    .map((s) => ({ value: s.id, label: s.sessionLabel }))}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </Panel>
+
+      {!tournamentId ? (
+        <EmptyState title="Pick a tournament to manage its seating." />
+      ) : seating.mockMode ? (
+        <EmptyState title="Mock mode — seating needs the emulator." body="Run the emulator + seed/create a tournament, then reload." />
+      ) : seating.error ? (
+        <EmptyState title="Couldn't load this tournament." body={seating.error.message} tone="error" />
+      ) : seating.notFound ? (
+        <EmptyState title="Tournament not found." />
+      ) : seating.loading || !tournament ? (
+        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+      ) : (
+        <>
+          <div className="mb-5 text-sm text-white/60 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-white/90 font-medium">{tournament.name}</span>
+            <StatusBadge status={tournament.status} />
+            {activeSession && <span>{activeSession.sessionLabel}</span>}
+            <span>Starting stack {fmtChips(tournament.startingStack)}</span>
+            <span className="text-gold-300">
+              {pool.length} seatable · {seatedIds.size} seated · {unseated.length} unseated
+            </span>
+          </div>
+
+          {/* Draw / clear / export controls */}
+          <Panel
+            title="Seating"
+            right={
+              sessionTables.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowSeatList((v) => !v)}
+                  className="text-[11px] text-white/50 hover:text-white"
+                >
+                  {showSeatList ? 'Hide seat list' : 'Seat list'}
+                </button>
+              )
+            }
+          >
+            {sessionTables.length === 0 ? (
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Seats per table</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={10}
+                    value={seatCountStr}
+                    onChange={(e) => setSeatCountStr(e.target.value)}
+                    disabled={!canEdit || busy}
+                    className="w-24 bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm disabled:opacity-50"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleDraw}
+                  disabled={!canEdit || busy || pool.length === 0}
+                  className="px-5 py-2 rounded-lg text-sm font-medium bg-gold-500/20 text-gold-200 hover:bg-gold-500/30 active:bg-gold-500/40 disabled:opacity-40"
+                >
+                  {busy ? 'Drawing…' : `Draw seats (${pool.length})`}
+                </button>
+                {pool.length === 0 && <span className="text-xs text-white/40">No seatable players in this session yet.</span>}
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                {unseated.length > 0 && (
+                  <span className="text-xs text-amber-300">{unseated.length} player(s) still need a seat — pick them below.</span>
+                )}
+                {!confirmClear ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClear(true)}
+                    disabled={!canEdit || busy}
+                    className="px-4 py-2 rounded-lg text-sm text-red-300/90 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40"
+                  >
+                    Clear &amp; redraw…
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-white/70">Clear all tables for this session?</span>
+                    <button type="button" onClick={handleClear} disabled={busy} className="px-3 py-1.5 rounded text-xs bg-red-500/20 text-red-200 hover:bg-red-500/30 disabled:opacity-40">
+                      {busy ? 'Clearing…' : 'Yes, clear'}
+                    </button>
+                    <button type="button" onClick={() => setConfirmClear(false)} disabled={busy} className="px-3 py-1.5 rounded text-xs text-white/60 hover:bg-white/5">
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </Panel>
+
+          {/* Selection hint */}
+          {selectedEntry && (
+            <div className="mb-4 bg-gold-500/10 border border-gold-500/30 rounded-lg px-4 py-2 text-sm text-gold-200 flex items-center justify-between gap-3">
+              <span>
+                Placing <span className="font-medium">{nameForEntry(selectedEntry)}</span> — click an empty seat, or{' '}
+                <button type="button" onClick={() => handleUnseat(selectedEntry)} disabled={busy || !selectedEntry.currentTableId} className="underline disabled:no-underline disabled:opacity-40">
+                  unseat
+                </button>
+                .
+              </span>
+              <button type="button" onClick={() => setSelectedEntryId(null)} className="text-gold-300/70 hover:text-gold-200 text-xs">
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {/* Unseated pool */}
+          {sessionTables.length > 0 && unseated.length > 0 && (
+            <Panel title={`Unseated (${unseated.length})`}>
+              <div className="flex flex-wrap gap-2">
+                {unseated.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => canEdit && setSelectedEntryId((cur) => (cur === e.id ? null : e.id))}
+                    disabled={!canEdit || busy}
+                    className={
+                      'px-3 py-1.5 rounded-lg text-sm disabled:opacity-50 ' +
+                      (selectedEntryId === e.id ? 'bg-gold-500/30 text-gold-100' : 'bg-white/5 text-white/80 hover:bg-white/10')
+                    }
+                  >
+                    {nameForEntry(e)}
+                  </button>
+                ))}
+              </div>
+            </Panel>
+          )}
+
+          {/* Tables grid */}
+          {sessionTables.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+              {sessionTables.map((table) => (
+                <div key={table.id} className="bg-felt-800 border border-white/5 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-display text-lg text-gold-300">Table {table.tableNumber}</div>
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                      {occupiedSeatCount(table)}/{table.seatCount}
+                    </div>
+                  </div>
+                  <ul className="space-y-1">
+                    {table.seats
+                      .slice()
+                      .sort((a, b) => a.seatNumber - b.seatNumber)
+                      .map((seat) => {
+                        const occupied = !!seat.entryId
+                        const isSel = occupied && seat.entryId === selectedEntryId
+                        return (
+                          <li key={seat.seatNumber}>
+                            <button
+                              type="button"
+                              onClick={() => canEdit && handleSeatClick(table, seat)}
+                              disabled={!canEdit || busy}
+                              className={
+                                'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left disabled:opacity-60 ' +
+                                (occupied
+                                  ? isSel
+                                    ? 'bg-gold-500/30 text-gold-100'
+                                    : 'bg-felt-900/60 text-white/90 hover:bg-white/10'
+                                  : selectedEntry
+                                    ? 'bg-emerald-500/10 text-emerald-200/90 hover:bg-emerald-500/20'
+                                    : 'bg-felt-900/40 text-white/30 hover:bg-white/5')
+                              }
+                            >
+                              <span className="text-[10px] font-mono text-white/40 w-4 shrink-0">{seat.seatNumber}</span>
+                              <span className="truncate flex-1">
+                                {occupied ? nameForEntry(entriesById[seat.entryId]) : selectedEntry ? 'seat here' : 'empty'}
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Seat list (printable data) */}
+          {showSeatList && sessionTables.length > 0 && (
+            <Panel
+              title="Seat list"
+              right={
+                <button type="button" onClick={exportSeatList} className="text-[11px] text-gold-300 hover:text-gold-200">
+                  Export CSV
+                </button>
+              }
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                    <tr>
+                      <th className="text-left px-2 py-1.5">Table</th>
+                      <th className="text-left px-2 py-1.5">Seat</th>
+                      <th className="text-left px-2 py-1.5">Player</th>
+                      <th className="text-right px-2 py-1.5">Starting stack</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {buildSeatList({ tables: sessionTables, entriesById, playersById, tournament }).map((r) => (
+                      <tr key={`${r.tableNumber}-${r.seatNumber}`} className="border-t border-white/5">
+                        <td className="px-2 py-1.5 text-white/70">{r.tableNumber}</td>
+                        <td className="px-2 py-1.5 text-white/70">{r.seatNumber}</td>
+                        <td className="px-2 py-1.5 text-white/90">{r.playerName}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-white/70">{fmtChips(r.startingStack)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          )}
+        </>
+      )}
+    </div>
   )
 }
