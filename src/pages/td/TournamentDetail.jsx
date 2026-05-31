@@ -19,13 +19,13 @@
 // values are held as strings (so decimal entry isn't fought by re-renders) and
 // converted at the save boundary, mirroring the create form.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { useTournament } from '../../hooks/useTournament'
 import { useStructureTemplates } from '../../hooks/useTemplates'
-import { updateTournament, setTournamentStatus, TournamentError } from '../../lib/tournaments'
+import { updateTournament, setTournamentStatus, registrationOpen, TournamentError } from '../../lib/tournaments'
 import { Structure } from '../../lib/schema'
 import { centsToStr, dollarsToCents, intOrNull, intOf, formatMoney } from '../../lib/money'
 import { payoutCurve, paidPlaceCount, applyRounding } from '../../lib/payouts'
@@ -34,6 +34,11 @@ import { Section, Text, Money, Num, Select, Toggle, DateTime, BountyValues, Empt
 import StructureEditor from '../../components/StructureEditor'
 import StatusBadge from '../../components/StatusBadge'
 import { ALL_STATUSES, defaultNextStatuses, statusLabel } from '../../lib/tournamentStatus'
+import { useEntries } from '../../hooks/useEntries'
+import { usePlayers } from '../../hooks/usePlayers'
+import { playerDisplayName } from '../../lib/players'
+import { paymentMethodLabel, entryTypeLabel, entryResultLabel } from '../../lib/entryDisplay'
+import { downloadCsv, csvFilename } from '../../lib/csv'
 
 const TABS = [
   { id: 'details', label: 'Details' },
@@ -342,7 +347,7 @@ export default function TournamentDetail() {
         <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
       ) : (
         <>
-          <TopBar t={tournament} />
+          <TopBar t={tournament} role={role} />
 
           {!canEdit && (
             <div className="bg-felt-800 border border-white/10 rounded-lg px-4 py-2 mb-5 text-xs text-white/50">
@@ -612,7 +617,8 @@ function StatusControls({ status, role, busy, onChange }) {
   )
 }
 
-function TopBar({ t }) {
+function TopBar({ t, role }) {
+  const canRegister = role === 'manager' || role === 'cashier'
   return (
     <div className="mb-6">
       <div className="flex items-baseline justify-between gap-4 mb-2">
@@ -625,12 +631,22 @@ function TopBar({ t }) {
             </span>
           )}
         </div>
-        <Link
-          to={`/td/tournaments/${t.id}/clock`}
-          className="text-xs font-medium text-gold-300 hover:text-gold-200 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"
-        >
-          ▸ Open clock
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          {canRegister && registrationOpen(t) && (
+            <Link
+              to={`/td/tournaments/${t.id}/register`}
+              className="text-xs font-medium text-emerald-200 hover:text-emerald-100 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"
+            >
+              ＋ Register players
+            </Link>
+          )}
+          <Link
+            to={`/td/tournaments/${t.id}/clock`}
+            className="text-xs font-medium text-gold-300 hover:text-gold-200 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"
+          >
+            ▸ Open clock
+          </Link>
+        </div>
       </div>
       <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 flex flex-wrap gap-x-8 gap-y-3">
         <Meta label="Game" value={GAME_TYPE_LABEL[t.gameType] ?? t.gameType} />
@@ -673,6 +689,43 @@ function SaveBar({ onSave, saving, label }) {
 }
 
 function PlayersTab({ t }) {
+  const { entries, loading, error, mockMode } = useEntries(t.id)
+  const players = usePlayers()
+  const nameById = useMemo(() => {
+    const m = {}
+    for (const p of players.players) m[p.id] = playerDisplayName(p)
+    return m
+  }, [players.players])
+  const rows = useMemo(
+    () =>
+      entries
+        .filter((e) => e.voidedAt === null)
+        .sort((a, b) => (a.registeredAt?.toMillis?.() ?? 0) - (b.registeredAt?.toMillis?.() ?? 0)),
+    [entries]
+  )
+  const nameOf = (e) => nameById[e.playerId] ?? `${e.playerId.slice(0, 8)}…`
+
+  function handleExport() {
+    const data = rows.map((e) => ({
+      player: nameOf(e),
+      entry: `${entryTypeLabel(e.entryType)} #${e.entryNumber}`,
+      paymentMethod: paymentMethodLabel(e.paymentMethod),
+      paymentAmount: formatMoney(e.paymentAmount),
+      status: entryResultLabel(e),
+    }))
+    downloadCsv(
+      data,
+      [
+        { key: 'player', label: 'Player' },
+        { key: 'entry', label: 'Entry' },
+        { key: 'paymentMethod', label: 'Payment' },
+        { key: 'paymentAmount', label: 'Amount' },
+        { key: 'status', label: 'Status' },
+      ],
+      csvFilename(`entries-${t.name}`)
+    )
+  }
+
   return (
     <div className="space-y-4">
       <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 flex flex-wrap gap-x-8 gap-y-3">
@@ -680,10 +733,59 @@ function PlayersTab({ t }) {
         <Meta label="Unique players" value={t.uniquePlayerCount} />
         <Meta label="Remaining" value={t.remainingPlayerCount} />
       </div>
-      <EmptyState
-        title="Player list coming in Phase 3."
-        body="Registration, the entries list, seating, and the cashier's Register player action attach to this tab in Phase 3."
-      />
+
+      {mockMode ? (
+        <EmptyState title="Mock mode — no entries available." body="Register players against the emulator to see the roster." />
+      ) : error ? (
+        <EmptyState title="Couldn't load the roster." body={error.message} tone="error" />
+      ) : loading ? (
+        <div className="py-8 text-center text-white/40 text-sm">Loading…</div>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          title="No players registered yet."
+          body={'Use "+ Register players" at the top to take the first buy-in.'}
+        />
+      ) : (
+        <>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleExport}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-white/70 hover:bg-white/10 active:bg-white/15"
+            >
+              Export CSV
+            </button>
+          </div>
+          <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+                <tr>
+                  <th className="text-left px-4 py-2">Player</th>
+                  <th className="text-left px-4 py-2 whitespace-nowrap">Entry</th>
+                  <th className="text-left px-4 py-2 whitespace-nowrap">Payment</th>
+                  <th className="text-right px-4 py-2 whitespace-nowrap">Amount</th>
+                  <th className="text-left px-4 py-2 whitespace-nowrap">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((e) => (
+                  <tr key={e.id} className="border-t border-white/5">
+                    <td className="px-4 py-2.5 text-white/90">{nameOf(e)}</td>
+                    <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">
+                      {entryTypeLabel(e.entryType)} #{e.entryNumber}
+                    </td>
+                    <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">{paymentMethodLabel(e.paymentMethod)}</td>
+                    <td className="px-4 py-2.5 text-right text-white/70 tabular-nums whitespace-nowrap">
+                      {formatMoney(e.paymentAmount)}
+                    </td>
+                    <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">{entryResultLabel(e)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   )
 }

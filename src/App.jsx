@@ -19,6 +19,8 @@ import Forbidden from './pages/Forbidden'
 // Desk persona
 import DeskLanding from './pages/desk/DeskLanding'
 import DeskPlayers from './pages/desk/Players'
+import DeskPlayerNew from './pages/desk/PlayerNew'
+import DeskPlayerDetail from './pages/desk/PlayerDetail'
 import DeskDeposit from './pages/desk/Deposit'
 import DeskWithdrawals from './pages/desk/Withdrawals'
 import DeskTickets from './pages/desk/Tickets'
@@ -76,6 +78,17 @@ export default function App() {
               {/* Registration desk */}
               <Route path="/desk" element={<ErrorBoundary><DeskLanding /></ErrorBoundary>} />
               <Route path="/desk/players" element={<ErrorBoundary><DeskPlayers /></ErrorBoundary>} />
+              <Route
+                path="/desk/players/new"
+                element={
+                  <ErrorBoundary>
+                    <ProtectedRoute requiredRoles={['cashier', 'manager']}>
+                      <DeskPlayerNew />
+                    </ProtectedRoute>
+                  </ErrorBoundary>
+                }
+              />
+              <Route path="/desk/players/:id" element={<ErrorBoundary><DeskPlayerDetail /></ErrorBoundary>} />
               <Route
                 path="/desk/deposit"
                 element={
