@@ -157,9 +157,16 @@ describe('resumeClock', () => {
     expect(session.clockPausedAt).toBeNull()
     expect(session.clockStartedAt).toBeInstanceOf(Timestamp)
     // Re-derive at "now": 5 min were elapsed at pause, so 15 min remain in the 20-min level 0.
+    // Two now() reads bracket the op (resumeClock's internal Timestamp.now() and the
+    // Date.now() below), so remaining is 15 min minus that sub-millisecond-to-millisecond
+    // gap. Assert a tight tolerance, not exact equality — the gospel is "no jump on
+    // resume", which a ms-scale drift on a 20-min level doesn't violate (and the
+    // exact-ms assertion flaked under full-suite load). Deterministic gospel coverage
+    // lives in clock-sync.test.js.
     const derived = deriveClock(session, buildTournament().structure, Date.now())
     expect(derived.currentIndex).toBe(0)
-    expect(derived.remainingMs).toBe(15 * MIN)
+    expect(derived.remainingMs).toBeLessThanOrEqual(15 * MIN)
+    expect(derived.remainingMs).toBeGreaterThan(15 * MIN - 1000)
     expect(Session.safeParse(sessionSet()).success).toBe(true)
     expect(auditLog.writeAuditLogSafe.mock.calls[0][0].actionType).toBe('tournament.resumed')
   })
