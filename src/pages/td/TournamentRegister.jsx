@@ -19,7 +19,7 @@ import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { useRegistration } from '../../hooks/useRegistration'
 import { usePlayers } from '../../hooks/usePlayers'
-import { tickets as ticketsApi, ValidationError } from '../../lib/firestore'
+import { tickets as ticketsApi, ValidationError, WriteTimeoutError } from '../../lib/firestore'
 import { createPlayer, searchPlayers, playerDisplayName, PlayerError } from '../../lib/players'
 import {
   registerEntry,
@@ -52,7 +52,8 @@ function friendlyError(e) {
     e instanceof TournamentError ||
     e instanceof WalletError ||
     e instanceof PlayerError ||
-    e instanceof ValidationError
+    e instanceof ValidationError ||
+    e instanceof WriteTimeoutError
   ) {
     return e.message.replace(/^\[wallet\.[^\]]+\]\s*/, '')
   }

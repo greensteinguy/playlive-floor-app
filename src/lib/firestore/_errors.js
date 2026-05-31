@@ -44,3 +44,22 @@ export class MockModeError extends DataLayerError {
     this.name = 'MockModeError'
   }
 }
+
+export class WriteTimeoutError extends DataLayerError {
+  /**
+   * Thrown when a Firestore write doesn't settle within the deadline — almost
+   * always because the backend is unreachable. The Floor App is online-only
+   * (ADR-001), so the SDK would otherwise retry forever and the write promise
+   * would never resolve, leaving a button stuck on "Saving…". The `message` is
+   * user-facing (shown in a toast); `opLabel` is internal context for debugging.
+   *
+   * @param {string|string[]} [opLabel]  doc path or op kind (not shown to users)
+   */
+  constructor(opLabel) {
+    super(
+      "The server isn't responding. Please try again — if this problem persists, contact your system administrator."
+    )
+    this.name = 'WriteTimeoutError'
+    this.opLabel = Array.isArray(opLabel) ? opLabel.join('/') : opLabel ?? null
+  }
+}

@@ -21,7 +21,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { usePlayers } from '../../hooks/usePlayers'
-import { players as playersApi, ValidationError } from '../../lib/firestore'
+import { players as playersApi, ValidationError, WriteTimeoutError } from '../../lib/firestore'
 import { createPlayer, searchPlayers, playerDisplayName, PlayerError } from '../../lib/players'
 import { recordDeposit, WalletError } from '../../lib/wallet'
 import { formatMoney, dollarsToCents } from '../../lib/money'
@@ -40,7 +40,12 @@ const methodLabel = (m) => METHODS.find((x) => x.id === m)?.label ?? m
 // Surface the typed domain/wallet errors verbatim (they're written for staff);
 // strip the wallet wrapper's "[wallet.opName]" prefix; generic fallback otherwise.
 function friendlyError(e) {
-  if (e instanceof WalletError || e instanceof PlayerError || e instanceof ValidationError) {
+  if (
+    e instanceof WalletError ||
+    e instanceof PlayerError ||
+    e instanceof ValidationError ||
+    e instanceof WriteTimeoutError
+  ) {
     return e.message.replace(/^\[wallet\.[^\]]+\]\s*/, '')
   }
   return `Something went wrong: ${e.message}`

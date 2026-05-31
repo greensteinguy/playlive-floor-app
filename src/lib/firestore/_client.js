@@ -24,6 +24,7 @@ import {
 } from 'firebase/firestore'
 import { db, USE_MOCK_DATA, USE_EMULATOR } from '../../firebase/config'
 import { NotFoundError, ValidationError, MockModeError } from './_errors'
+import { withWriteTimeout } from './_timeout'
 
 function ensureLive() {
   // Emulator mode keeps `USE_MOCK_DATA=true` for the convenience of mocked auth,
@@ -108,7 +109,7 @@ export async function validatedSet(pathParts, schema, data) {
   ensureLive()
   const id = pathParts[pathParts.length - 1]
   const validated = validateOrThrow(pathParts, schema, { ...data, id }, 'write')
-  await setDoc(doc(db, ...pathParts), stripId(validated))
+  await withWriteTimeout(setDoc(doc(db, ...pathParts), stripId(validated)), pathParts)
   return validated
 }
 
@@ -124,7 +125,7 @@ export async function validatedSet(pathParts, schema, data) {
  */
 export async function validatedUpdate(pathParts, partialData) {
   ensureLive()
-  await updateDoc(doc(db, ...pathParts), partialData)
+  await withWriteTimeout(updateDoc(doc(db, ...pathParts), partialData), pathParts)
 }
 
 /**
@@ -134,7 +135,7 @@ export async function validatedUpdate(pathParts, partialData) {
  */
 export async function validatedDelete(pathParts) {
   ensureLive()
-  await deleteDoc(doc(db, ...pathParts))
+  await withWriteTimeout(deleteDoc(doc(db, ...pathParts)), pathParts)
 }
 
 // ── Subscriptions (real-time listeners) ────────────────────────────────────
@@ -216,7 +217,7 @@ export function subscribeToCollection(pathParts, schema, onUpdate, queryFn, onEr
  */
 export async function runValidatedTransaction(fn) {
   ensureLive()
-  return runTransaction(db, async (firestoreTx) => {
+  return withWriteTimeout(runTransaction(db, async (firestoreTx) => {
     const tx = {
       get: async (pathParts, schema) => {
         const ref = doc(db, ...pathParts)
@@ -240,7 +241,7 @@ export async function runValidatedTransaction(fn) {
       },
     }
     return fn(tx)
-  })
+  }), 'transaction')
 }
 
 /**
@@ -267,5 +268,5 @@ export async function runValidatedBatch(fn) {
     },
   }
   await fn(batchHelpers)
-  await batch.commit()
+  await withWriteTimeout(batch.commit(), 'batch')
 }

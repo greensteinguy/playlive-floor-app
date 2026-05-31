@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { createPlayer, playerDisplayName, PlayerError } from '../../lib/players'
-import { ValidationError } from '../../lib/firestore'
+import { ValidationError, WriteTimeoutError } from '../../lib/firestore'
 import { emptyPlayerForm, validatePlayerForm, buildPlayerArgs } from '../../lib/playerForm'
 import PlayerProfileFields from '../../components/PlayerProfileFields'
 import { USE_MOCK_DATA, USE_EMULATOR } from '../../firebase/config'
@@ -46,7 +46,9 @@ export default function PlayerNew() {
       navigate(`/desk/players/${created.id}`)
     } catch (e) {
       toast.error(
-        e instanceof PlayerError || e instanceof ValidationError ? e.message : `Create failed: ${e.message}`
+        e instanceof PlayerError || e instanceof ValidationError || e instanceof WriteTimeoutError
+          ? e.message
+          : `Create failed: ${e.message}`
       )
     } finally {
       setSaving(false)

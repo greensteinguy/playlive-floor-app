@@ -22,7 +22,11 @@ export {
   NotFoundError,
   ValidationError,
   MockModeError,
+  WriteTimeoutError,
 } from './_errors'
+
+// Write-timeout deadline (exported for tests / call sites that race their own writes)
+export { WRITE_TIMEOUT_MS, withWriteTimeout } from './_timeout'
 
 // ID generator (for creating docs with client-side IDs, e.g., atomic batches of related docs)
 export { generateId } from './_ids'
