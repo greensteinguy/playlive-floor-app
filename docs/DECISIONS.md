@@ -6,6 +6,24 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 31 May 2026 — Wallet deposit + PayID wizard (task 3.6): player-first flow, receipt-gated PayID, venue PayID via env
+
+Built the wallet-deposit screen (`/desk/deposit`) and its PayID wizard. The deposit op (`recordDeposit`) was already built/tested in Phase 1, so this was UI + the wizard + surfacing — **no new wallet/domain code**. Several implementation calls, all reversible:
+
+**1. Player-first with a confirm step.** The deposit screen finds/quick-creates the player, takes amount + method, then **reviews before committing** — the same shape as registration (Guy's Phase-2 "confirm before the money write" UX call), applied here because a deposit also moves money. Deep-linkable from the player profile via `?playerId=` (a "+ Record a deposit" CTA on the Wallet tab), matching wallet-design §2.1 ("cashier opens the deposit screen on the player's profile").
+
+**2. PayID stays deposit-only and the wizard gates on an explicit receipt confirmation.** Reaffirms the [27 May PayID-is-deposit-only decision](#27-may-2026--payid-is-deposit-only-never-a-direct-tournament-pay-method). The wizard shows the venue's receiving PayID for the cashier to read out, instructs the player to transfer the **full** amount, and **disables the Review/record action until a "I've confirmed $X was received in the venue account" checkbox is ticked** (the checkbox clears if the amount changes, so a confirmed receipt is always for the displayed amount). *Why a hard gate:* the app is record-keeping, not a payment processor — it must not record a PayID deposit the venue hasn't actually received. The full received amount is captured (a PayID can exceed any entry cost; the player then pays from wallet — two clean ledger rows).
+
+**3. Venue PayID details are deployment config (env), not code.** New `VITE_VENUE_PAYID` / `VITE_VENUE_PAYID_NAME`, surfaced through a pure, unit-tested `resolveVenuePayId(env)` in `src/lib/venuePayId.js` (the impure `getVenuePayId()` reads `import.meta.env`). *Why env:* the PayID is venue-specific and changes per deployment, exactly like the Firebase config — keeping it out of code means no commit churn when it changes and no fictional value baked in. **Unconfigured is non-blocking:** the wizard shows a "not configured" note but still lets the cashier record the deposit (they may know the PayID by heart; the deposit record is what matters). It's display-only — the app never transmits it anywhere.
+
+**4. Deposits surfaced now; the full ledger stays task 3.11.** The profile **Wallet & tickets** tab gains a **deposits-only** table (via a new one-shot `useWalletTransactions` hook — `timestamp` desc, a single-field orderBy so **no composite index** is needed). The hook already fetches *every* transaction type, so 3.11 (the full per-player ledger: spends, win credits, withdrawals, adjustments, with per-type sign + running balance) is a render change, not a new query. *Why split:* 3.6's remit is deposits; showing only deposits keeps the tab honest about what's been built without faking the rest of the ledger.
+
+**Process note (caught by the smoke-test):** the deep-link preselect first used a `useRef` "once" guard + a fetch-cancellation flag. Under React StrictMode (dev) the mount→unmount→remount cancels the first `getPlayer` and the remount skips (ref already set), so the preselect silently never landed. Fixed with a race-safe `setSelectedPlayer((prev) => prev ?? p)` and no ref — correct under StrictMode and it won't clobber a selection the cashier already made. (It would have worked in a prod build, where StrictMode renders once, but the pattern was fragile; the functional-set version is the right one regardless.)
+
+**Verification:** `npm test` **544 pass** (+4 in `venuePayId.test.js`), lint + build clean. Full emulator browser smoke-test: a cash deposit (Bob $25→$75) and a PayID deposit (Charlie $100→$220) both REST-verified (player `walletBalance` + `totalDeposited` up, `ticketBalance` untouched, a `deposit` walletTransaction with the right method/amount/reference), the PayID receipt gate held, the profile Wallet tab showed the deposit, the deep-link preselected the player, zero console errors.
+
+**Decider:** Guy's standing UX calls (confirm-before-money-write, PayID-deposit-only). The receipt-gate, the env-config approach, the deposits-now-vs-full-ledger-3.11 split, and the StrictMode fix were Claude's implementation calls — flagged here. The local `.env.local` smoke-test PayID is a placeholder; Guy sets the real one before production.
+
 ## 31 May 2026 — Clock pause/resume smoothness: optimistic local-anchor countdown (render layer)
 
 Fixed a bug in the task-2.6 clock: the TD screen's big countdown **jumped on pause→resume**. The fix is a render-layer redesign; `src/lib/clock.js`, the clock domain ops, and the schema are untouched.

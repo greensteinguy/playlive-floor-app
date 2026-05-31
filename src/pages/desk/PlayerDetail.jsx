@@ -23,6 +23,7 @@ import { formatMoney } from '../../lib/money'
 import { playerFormFromDoc, validatePlayerForm, buildPlayerPatch } from '../../lib/playerForm'
 import PlayerProfileFields from '../../components/PlayerProfileFields'
 import { usePlayerActivity } from '../../hooks/usePlayerActivity'
+import { useWalletTransactions } from '../../hooks/useWalletTransactions'
 import { summarizeEntries, entryWinnings, entryResultLabel, entryTypeLabel } from '../../lib/entryDisplay'
 
 const TABS = [
@@ -31,10 +32,24 @@ const TABS = [
   { id: 'wallet', label: 'Wallet & tickets' },
 ]
 
+const DEPOSIT_METHOD_LABELS = { cash: 'Cash', eftpos: 'EFTPOS', payid: 'PayID' }
+const depositMethodLabel = (m) => DEPOSIT_METHOD_LABELS[m] ?? m ?? '—'
+
 function fmtDate(ts) {
   if (!ts) return '—'
   const d = typeof ts.toDate === 'function' ? ts.toDate() : ts
   return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function fmtDateTime(ts) {
+  if (!ts) return '—'
+  const d = typeof ts.toDate === 'function' ? ts.toDate() : ts
+  return d.toLocaleString('en-AU', {
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
 
 export default function PlayerDetail() {
@@ -292,6 +307,9 @@ function ActivityTab({ playerId }) {
 }
 
 function WalletTab({ player, canRegister }) {
+  const { transactions, loading, error, mockMode } = useWalletTransactions(player.id)
+  const deposits = useMemo(() => transactions.filter((t) => t.type === 'deposit'), [transactions])
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
@@ -299,26 +317,68 @@ function WalletTab({ player, canRegister }) {
         <BalanceCard label="Ticket balance" value={formatMoney(player.ticketBalance)} />
         <BalanceCard label="Total deposited" value={formatMoney(player.totalDeposited)} />
       </div>
-      <div className="bg-felt-800 border border-white/5 rounded-lg p-5 text-sm text-white/50">
-        <p className="mb-3">
-          These balances are derived from the player's wallet ledger and update atomically as money
-          moves. The screens that record those movements arrive across Phase 3 and 4:
-        </p>
-        <ul className="space-y-1 text-white/40 text-xs">
-          <li>• Wallet deposits (cash / EFTPOS / PayID) — task 3.6</li>
-          <li>• Tournament registration &amp; payment — task 3.4</li>
-          <li>• The full per-player transaction ledger — task 3.11</li>
-          <li>• Withdrawals &amp; win credits — Phase 4</li>
-        </ul>
+
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Deposits</h3>
         {canRegister && (
           <Link
-            to="/td/tournaments"
-            className="inline-block mt-4 px-4 py-2 rounded-lg text-sm font-medium bg-gold-500/15 text-gold-300 hover:bg-gold-500/25"
+            to={`/desk/deposit?playerId=${player.id}`}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35"
           >
-            Register into a tournament →
+            + Record a deposit
           </Link>
         )}
       </div>
+
+      {mockMode ? (
+        <EmptyState
+          title="Mock mode — no wallet activity available."
+          body="Record a deposit against the emulator to see it here."
+        />
+      ) : error ? (
+        <EmptyState title="Couldn't load wallet activity." body={error.message} tone="error" />
+      ) : loading ? (
+        <div className="py-8 text-center text-white/40 text-sm">Loading…</div>
+      ) : deposits.length === 0 ? (
+        <EmptyState
+          title="No deposits yet."
+          body={
+            canRegister
+              ? 'Use “+ Record a deposit” to add cash, EFTPOS, or PayID to this wallet.'
+              : 'Deposits to this wallet will appear here.'
+          }
+        />
+      ) : (
+        <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+              <tr>
+                <th className="text-left px-4 py-2 whitespace-nowrap">Date</th>
+                <th className="text-left px-4 py-2">Method</th>
+                <th className="text-left px-4 py-2">Reference</th>
+                <th className="text-right px-4 py-2 whitespace-nowrap">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deposits.map((t) => (
+                <tr key={t.id} className="border-t border-white/5">
+                  <td className="px-4 py-2.5 text-white/50 whitespace-nowrap">{fmtDateTime(t.timestamp)}</td>
+                  <td className="px-4 py-2.5 text-white/80">{depositMethodLabel(t.method)}</td>
+                  <td className="px-4 py-2.5 text-white/50 break-all">{t.reference || '—'}</td>
+                  <td className="px-4 py-2.5 text-right text-emerald-300 tabular-nums whitespace-nowrap">
+                    {formatMoney(t.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="text-xs text-white/30 mt-4">
+        The full per-player ledger (every spend, win credit, withdrawal) arrives with task 3.11; the
+        withdrawal queue is Phase 4.
+      </p>
     </>
   )
 }
