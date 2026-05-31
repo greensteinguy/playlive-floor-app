@@ -94,7 +94,7 @@ function toNullableTimestamp(value, field) {
  * @param {object|null} [args.bountyPoolConfig]
  * @param {string|null} [args.fromTemplateId]
  * @param {'draft'|'scheduled'} [args.status]
- * @param {{days: Array<{flightCount:number, endStructureIndex:number|null, playToPercentRemaining:number|null, scheduledStartTime:(Date|null)}>}|null} [args.sessionPlan]
+ * @param {{stages: Array<{endStructureIndex:number|null, playToPercentRemaining:number|null, flights:Array<{scheduledStartTime:(Date|null), survivorsFrom:number[]}>}>}|null} [args.sessionPlan]
  *        — null → single play-to-a-winner session (see ./sessions SINGLE_DAY_PLAN)
  * @param {string} args.actorId
  * @param {'manager'} args.actorRole
@@ -131,20 +131,22 @@ export async function createTournament({
   // write); Day 1's session reuses the tournament start.
   const scheduledStartTs = toTimestamp(scheduledStartTime, 'scheduledStartTime')
 
-  // Normalize the session plan (defaulting to single-day) and convert each day's
-  // optional start time to a Timestamp. isMultiDay / isMultiFlight follow.
-  const planDays = (sessionPlan?.days ?? SINGLE_DAY_PLAN.days).map((day) => ({
-    flightCount: day.flightCount ?? 1,
-    endStructureIndex: day.endStructureIndex ?? null,
-    playToPercentRemaining: day.playToPercentRemaining ?? null,
-    scheduledStartTime: toNullableTimestamp(day.scheduledStartTime ?? null, 'session.scheduledStartTime'),
+  // Normalize the session plan (defaulting to single-day) and convert each
+  // flight's optional start time to a Timestamp. isMultiDay / isMultiFlight follow.
+  const planStages = (sessionPlan?.stages ?? SINGLE_DAY_PLAN.stages).map((stage) => ({
+    endStructureIndex: stage.endStructureIndex ?? null,
+    playToPercentRemaining: stage.playToPercentRemaining ?? null,
+    flights: (stage.flights ?? []).map((flight) => ({
+      scheduledStartTime: toNullableTimestamp(flight.scheduledStartTime ?? null, 'session.scheduledStartTime'),
+      survivorsFrom: flight.survivorsFrom ?? [],
+    })),
   }))
-  const { isMultiDay, isMultiFlight } = deriveFormatFlags(planDays)
+  const { isMultiDay, isMultiFlight } = deriveFormatFlags(planStages)
 
-  // Throws TournamentError on an unsound plan (overlapping/missing slices,
-  // flighted final day, out-of-bounds level) before any write.
+  // Throws TournamentError on an unsound plan (non-tiling slices, bad routing
+  // partition, flighted final day, out-of-bounds level) before any write.
   const sessionDocs = buildSessionDocs({
-    days: planDays,
+    stages: planStages,
     tournamentId: id,
     structureLength: Array.isArray(structure) ? structure.length : 0,
     defaultScheduledStartTime: scheduledStartTs,

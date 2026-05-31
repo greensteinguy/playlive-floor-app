@@ -1,103 +1,137 @@
-// Guided session-plan builder for the tournament create wizard (task 2.4).
+// Session-plan builder for the tournament create wizard (task 2.4 / multi-flight).
 //
 // A tournament's play is split into one or more *sessions* (the sessions
-// subcollection — canonical-schema.md §5.1). Rather than expose the raw graph
-// (UUIDs, convergesIntoSessionId pointers, tiled index slices), this offers
-// three guided *shapes* and asks only the questions each shape needs:
+// subcollection — canonical-schema.md §5.1), organised into ordered STAGES (days),
+// each running one or more parallel FLIGHTS. Routing is a fan-in funnel: each
+// flight feeds exactly ONE flight in the next stage, and a stage's flights
+// partition the previous stage's flights ("survivors from").
 //
-//   • Single day   — one session, plays to a winner. No further input.
-//   • Multi-day    — N days, one session each, resuming on later days. Each
-//                    non-final day caps at a structure level; the final day
-//                    plays to a winner.
-//   • Multi-flight — several parallel Day 1 flights that converge into Day 2.
-//                    Day 1's flights share a slice; the final day is single.
+// Three quick-start presets seed the grid (single day / multi-day / multi-flight);
+// the routing grid below is then fully editable for arbitrary N→N→1 funnels.
 //
-// Controlled component: the parent (TournamentNew) holds the form-shaped value
-// { shape, days, flightCount } and this emits patches. The mapping to the domain
-// plan that buildSessionDocs consumes lives in TournamentNew.buildSessionPlan;
-// cross-session soundness (slices tiling the structure, one final session) is
-// checked by validateSessionPlan at submit. This file only collects inputs and
-// renders inline guidance.
+// Controlled component: the parent (TournamentNew) holds { shape, stages } and
+// this emits patches. The mapping to the domain plan buildSessionDocs consumes
+// lives in TournamentNew.buildSessionPlan; the same validateSessionPlan runs here
+// for live feedback and at submit. Stage shape:
+//   stages[i] = { endIndex: string, playPct: string,
+//                 flights: [{ startTime: string, survivorsFrom: number[] }] }
+// survivorsFrom holds indices into the PREVIOUS stage's flights ([] for stage 0).
 
 import { Select, DateTime } from './FormFields'
+import { validateSessionPlan } from '../lib/tournaments'
 
 const SHAPES = [
   { value: 'singleDay', label: 'Single day', hint: 'One session · plays to a winner' },
   { value: 'multiDay', label: 'Multi-day', hint: 'Resumes on later days' },
-  { value: 'multiFlight', label: 'Multi-flight', hint: 'Day 1 flights converge' },
+  { value: 'multiFlight', label: 'Multi-flight', hint: 'Flights funnel into later days' },
 ]
 
-const EMPTY_DAY = { endIndex: '', playPct: '', startTime: '' }
+const letter = (n) => String.fromCharCode(65 + n)
+const range = (n) => Array.from({ length: n }, (_, i) => i)
+const emptyFlight = (survivorsFrom = []) => ({ startTime: '', survivorsFrom })
+const emptyStage = (flights) => ({ endIndex: '', playPct: '', flights })
 
-// Flight-label range for a flighted day: 1 → 'A', 3 → 'A–C'.
-function flightRange(n) {
-  if (n <= 1) return 'A'
-  return `A–${String.fromCharCode(65 + n - 1)}`
+// Quick-start seeds. Each preset produces a valid starting funnel the TD refines.
+function seedStages(shape) {
+  if (shape === 'singleDay') return [emptyStage([emptyFlight()])]
+  if (shape === 'multiDay') return [emptyStage([emptyFlight()]), emptyStage([emptyFlight([0])])]
+  // multiFlight: two Day-1 flights funnelling into a single Day 2.
+  return [emptyStage([emptyFlight(), emptyFlight()]), emptyStage([emptyFlight([0, 1])])]
 }
 
-// Structure entries → end-of-day <Select> options. The value is the array index:
-// maximumEndIndex points into the whole structure (breaks included — a day
-// usually bags up *on* its closing break). The 1-based row number disambiguates
-// repeated breaks and matches the structure editor's row order.
+// Structure entries → end-of-day <Select> options. Value is the array index
+// (maximumEndIndex points into the whole structure, breaks included — a day
+// usually bags up on its closing break).
 function levelOptions(structure) {
-  return (structure ?? []).map((e, i) => {
-    const row = i + 1
-    const label =
+  return (structure ?? []).map((e, i) => ({
+    value: String(i),
+    label:
       e.type === 'level'
-        ? `${row}. Level ${e.blindNumber} — ${e.smallBlind}/${e.bigBlind}`
-        : `${row}. Break — ${e.durationMinutes}m`
-    return { value: String(i), label }
-  })
+        ? `${i + 1}. Level ${e.blindNumber} — ${e.smallBlind}/${e.bigBlind}`
+        : `${i + 1}. Break — ${e.durationMinutes}m`,
+  }))
 }
 
-// Session labels this plan will create — mirrors buildSessionDocs' labelling so
-// the TD sees exactly what lands. Only Day 1 is flighted in the guided shapes.
-function previewLabels(shape, days, flightCount) {
-  if (shape === 'singleDay') return ['Single session']
+// The session labels this plan will create — mirrors buildSessionDocs' labelling.
+function previewLabels(stages) {
   const labels = []
-  for (let i = 0; i < days.length; i++) {
-    if (shape === 'multiFlight' && i === 0 && flightCount > 1) {
-      for (let f = 0; f < flightCount; f++) labels.push(`Day 1${String.fromCharCode(65 + f)}`)
-    } else {
-      labels.push(`Day ${i + 1}`)
-    }
-  }
+  stages.forEach((stage, i) => {
+    if (stage.flights.length > 1) stage.flights.forEach((_, f) => labels.push(`Day ${i + 1}${letter(f)}`))
+    else labels.push(`Day ${i + 1}`)
+  })
   return labels
 }
 
-// Grow/shrink the per-day array to n entries, preserving existing days.
-function resizeDays(days, n) {
-  const next = days.slice(0, n)
-  while (next.length < n) next.push({ ...EMPTY_DAY })
-  return next
+// Map the form-shaped stages to the domain plan (times omitted — validation
+// doesn't need them) so we can surface live soundness feedback.
+function toPlan(stages) {
+  return {
+    stages: stages.map((s, i) => ({
+      endStructureIndex: s.endIndex === '' ? null : Number(s.endIndex),
+      playToPercentRemaining: s.playPct === '' ? null : Number(s.playPct),
+      flights: s.flights.map((f) => ({ survivorsFrom: i === 0 ? [] : f.survivorsFrom })),
+    })),
+  }
 }
 
 export default function SessionPlanBuilder({ value, onChange, structure, disabled }) {
-  const { shape, days, flightCount } = value
-  const multiFlight = shape === 'multiFlight'
+  const { shape, stages } = value
   const multi = shape !== 'singleDay'
   const endOpts = levelOptions(structure)
   const hasStructure = endOpts.length > 0
 
-  const patchDay = (i, patch) =>
-    onChange({ days: days.map((d, idx) => (idx === i ? { ...d, ...patch } : d)) })
+  const setStages = (next) => onChange({ stages: next })
 
   function selectShape(next) {
     if (next === shape) return
-    if (next === 'singleDay') {
-      onChange({ shape: next, days: [{ ...EMPTY_DAY }] })
-      return
-    }
-    // Multi-day / multi-flight both need at least two days (flights need a later
-    // day to converge into). Grow the array but keep what's already filled in.
-    const grown = resizeDays(days, Math.max(2, days.length))
-    const patch = { shape: next, days: grown }
-    if (next === 'multiFlight' && flightCount < 2) patch.flightCount = 2
-    onChange(patch)
+    onChange({ shape: next, stages: seedStages(next) })
   }
 
-  const setDayCount = (n) => onChange({ days: resizeDays(days, n) })
-  const labels = previewLabels(shape, days, flightCount)
+  function setDayCount(n) {
+    const target = Math.max(2, n)
+    const next = stages.slice(0, target)
+    while (next.length < target) {
+      const prevCount = next[next.length - 1].flights.length
+      next.push(emptyStage([emptyFlight(range(prevCount))])) // new final pulls from all of the prior stage
+    }
+    setStages(next)
+  }
+
+  const patchStage = (i, patch) => setStages(stages.map((s, idx) => (idx === i ? { ...s, ...patch } : s)))
+  const patchFlight = (si, fi, patch) =>
+    setStages(
+      stages.map((s, i) =>
+        i === si ? { ...s, flights: s.flights.map((f, j) => (j === fi ? { ...f, ...patch } : f)) } : s,
+      ),
+    )
+  const addFlight = (si) =>
+    setStages(stages.map((s, i) => (i === si ? { ...s, flights: [...s.flights, emptyFlight()] } : s)))
+  function removeFlight(si, fi) {
+    setStages(
+      stages.map((s, i) => {
+        if (i === si) return { ...s, flights: s.flights.filter((_, j) => j !== fi) }
+        // Fix the next stage's references to the removed flight: drop it, shift down.
+        if (i === si + 1) {
+          return {
+            ...s,
+            flights: s.flights.map((f) => ({
+              ...f,
+              survivorsFrom: f.survivorsFrom.filter((p) => p !== fi).map((p) => (p > fi ? p - 1 : p)),
+            })),
+          }
+        }
+        return s
+      }),
+    )
+  }
+  function toggleSurvivor(si, fi, prev) {
+    const cur = stages[si].flights[fi].survivorsFrom
+    const nextFrom = cur.includes(prev) ? cur.filter((p) => p !== prev) : [...cur, prev].sort((a, b) => a - b)
+    patchFlight(si, fi, { survivorsFrom: nextFrom })
+  }
+
+  const labels = previewLabels(stages)
+  const planError = multi && hasStructure ? validateSessionPlan(toPlan(stages), structure.length) : null
 
   return (
     <section className="mb-5">
@@ -133,83 +167,130 @@ export default function SessionPlanBuilder({ value, onChange, structure, disable
         )}
 
         {multi && (
-          <div className="flex flex-wrap gap-8">
-            <Stepper label="Number of days" value={days.length} min={2} onChange={setDayCount} disabled={disabled} />
-            {multiFlight && (
-              <Stepper
-                label="Day 1 flights"
-                value={flightCount}
-                min={2}
-                onChange={(n) => onChange({ flightCount: n })}
-                disabled={disabled}
-              />
-            )}
-          </div>
+          <Stepper label="Number of days" value={stages.length} min={2} onChange={setDayCount} disabled={disabled} />
         )}
 
-        {multi && (
-          <div className="space-y-2">
-            {days.map((day, i) => {
-              const isFirst = i === 0
-              const isFinal = i === days.length - 1
-              const title =
-                multiFlight && isFirst ? `Day 1 — flights ${flightRange(flightCount)}` : `Day ${i + 1}`
-              return (
-                <div key={i} className="bg-felt-900/50 border border-white/5 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-display text-gold-200 text-sm">{title}</span>
-                    {isFinal && (
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
-                        plays to a winner
-                      </span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {isFirst ? (
-                      <p className="text-[11px] text-white/40 self-end pb-2">
-                        Starts at the tournament&apos;s scheduled time.
-                      </p>
-                    ) : (
-                      <DateTime
-                        label="Day start (optional)"
-                        value={day.startTime}
-                        onChange={(v) => patchDay(i, { startTime: v })}
-                        disabled={disabled}
-                      />
-                    )}
-                    {!isFinal ? (
-                      <Select
-                        label="Ends after level"
-                        value={day.endIndex}
-                        onChange={(v) => patchDay(i, { endIndex: v })}
-                        options={[
-                          { value: '', label: hasStructure ? '— choose level —' : 'build structure first' },
-                          ...endOpts,
-                        ]}
-                        disabled={disabled || !hasStructure}
-                      />
-                    ) : (
-                      <div className="hidden md:block" />
-                    )}
-                    {!isFinal && (
-                      <PctField
-                        label="Play down to % remaining (optional)"
-                        value={day.playPct}
-                        onChange={(v) => patchDay(i, { playPct: v })}
-                        disabled={disabled}
-                      />
-                    )}
-                  </div>
+        {multi &&
+          stages.map((stage, i) => {
+            const isFinal = i === stages.length - 1
+            const prevFlights = i > 0 ? stages[i - 1].flights : []
+            const multiFlight = stage.flights.length > 1
+            return (
+              <div key={i} className="bg-felt-900/50 border border-white/5 rounded-lg p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-display text-gold-200 text-sm">
+                    Day {i + 1}
+                    {multiFlight ? ` — flights A–${letter(stage.flights.length - 1)}` : ''}
+                  </span>
+                  {isFinal && (
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                      plays to a winner
+                    </span>
+                  )}
                 </div>
-              )
-            })}
-          </div>
-        )}
 
-        <p className="text-[11px] text-white/40">
-          Creates: <span className="text-white/70">{labels.join(', ')}</span>{' '}
-          ({labels.length} session{labels.length === 1 ? '' : 's'})
-        </p>
+                {/* Day-level slice + early-stop (non-final days cap at a level). */}
+                {!isFinal && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Select
+                      label="Ends after level"
+                      value={stage.endIndex}
+                      onChange={(v) => patchStage(i, { endIndex: v })}
+                      options={[
+                        { value: '', label: hasStructure ? '— choose level —' : 'build structure first' },
+                        ...endOpts,
+                      ]}
+                      disabled={disabled || !hasStructure}
+                    />
+                    <PctField
+                      label="Play down to % remaining (optional)"
+                      value={stage.playPct}
+                      onChange={(v) => patchStage(i, { playPct: v })}
+                      disabled={disabled}
+                    />
+                  </div>
+                )}
+
+                {/* Flights */}
+                <div className="space-y-2">
+                  {stage.flights.map((flight, f) => (
+                    <div key={f} className="bg-felt-800/60 border border-white/5 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-white/70">
+                          {multiFlight ? `Flight ${letter(f)}` : 'Session'}
+                        </span>
+                        {stage.flights.length > 1 && (
+                          <button
+                            type="button"
+                            aria-label={`Remove flight ${letter(f)}`}
+                            disabled={disabled}
+                            onClick={() => removeFlight(i, f)}
+                            className="text-white/30 hover:text-red-300 text-sm px-2 disabled:opacity-40"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                      <DateTime
+                        label="Flight start (blank = tournament start)"
+                        value={flight.startTime}
+                        onChange={(v) => patchFlight(i, f, { startTime: v })}
+                        disabled={disabled}
+                      />
+                      {i > 0 && (
+                        <div className="mt-2">
+                          <span className="block text-[10px] font-mono uppercase tracking-widest text-white/40 mb-1">
+                            Survivors from
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {prevFlights.map((_, p) => {
+                              const on = flight.survivorsFrom.includes(p)
+                              const lbl = prevFlights.length > 1 ? `Day ${i}${letter(p)}` : `Day ${i}`
+                              return (
+                                <button
+                                  key={p}
+                                  type="button"
+                                  disabled={disabled}
+                                  onClick={() => toggleSurvivor(i, f, p)}
+                                  className={
+                                    'px-2.5 py-1 rounded-full text-[11px] border transition-colors disabled:opacity-50 ' +
+                                    (on
+                                      ? 'bg-gold-500/20 border-gold-500/40 text-gold-100'
+                                      : 'bg-felt-900 border-white/10 text-white/50 hover:bg-white/5')
+                                  }
+                                >
+                                  {lbl}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {!isFinal && (
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => addFlight(i)}
+                      className="text-[11px] text-gold-300 hover:text-gold-200 disabled:opacity-50"
+                    >
+                      + flight
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+
+        {planError ? (
+          <p className="text-[11px] text-amber-300/90">⚠ {planError}</p>
+        ) : (
+          <p className="text-[11px] text-white/40">
+            Creates: <span className="text-white/70">{labels.join(', ')}</span>{' '}
+            ({labels.length} session{labels.length === 1 ? '' : 's'})
+          </p>
+        )}
       </div>
     </section>
   )

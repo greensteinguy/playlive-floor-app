@@ -27,6 +27,17 @@ import StructureEditor from '../../components/StructureEditor'
 import SessionPlanBuilder from '../../components/SessionPlanBuilder'
 import FormWizard from '../../components/FormWizard'
 
+// Quick-start seeds for the session routing grid (mirrors SessionPlanBuilder's
+// presets): single day = one session; multi-day = a 2-stage linear chain;
+// multi-flight = two Day-1 flights funnelling into a single Day 2.
+function seedSessionStages(shape) {
+  const flight = (survivorsFrom = []) => ({ startTime: '', survivorsFrom })
+  const stage = (flights) => ({ endIndex: '', playPct: '', flights })
+  if (shape === 'multiFlight') return [stage([flight(), flight()]), stage([flight([0, 1])])]
+  if (shape === 'multiDay') return [stage([flight()]), stage([flight([0])])]
+  return [stage([flight()])]
+}
+
 function initialForm() {
   return {
     fromTemplateId: '',
@@ -38,11 +49,10 @@ function initialForm() {
     guarantee: '',
     houseConsumption: '',
     startingStack: '20000',
-    // Session plan (task 2.4) — guided shape + per-day inputs. isMultiDay /
-    // isMultiFlight are DERIVED from this at create time, never stored here.
+    // Session plan — guided preset + the stages/flights routing model. isMultiDay
+    // / isMultiFlight are DERIVED from this at create time, never stored here.
     sessionShape: 'singleDay',
-    sessionDays: [{ endIndex: '', playPct: '', startTime: '' }],
-    sessionFlightCount: 2,
+    sessionStages: seedSessionStages('singleDay'),
     hasUpperDeckMainDeck: false,
     structureTemplateId: '',
     structure: [],
@@ -126,8 +136,8 @@ export default function TournamentNew() {
     if (!tpl) return
     const c = tpl.config
     // Templates carry only the format booleans (they predate the session graph),
-    // so seed a matching guided shape with placeholder days the TD fills in on
-    // the Days & flights step. The default two-day skeleton is a starting point.
+    // so seed a matching guided preset; the TD refines the days/flights/routing on
+    // the Days & flights step.
     const sessionShape = c.isMultiFlight ? 'multiFlight' : c.isMultiDay ? 'multiDay' : 'singleDay'
     set({
       fromTemplateId: tpl.id,
@@ -140,14 +150,7 @@ export default function TournamentNew() {
       houseConsumption: centsToStr(c.houseConsumption),
       startingStack: String(c.startingStack),
       sessionShape,
-      sessionDays:
-        sessionShape === 'singleDay'
-          ? [{ endIndex: '', playPct: '', startTime: '' }]
-          : [
-              { endIndex: '', playPct: '', startTime: '' },
-              { endIndex: '', playPct: '', startTime: '' },
-            ],
-      sessionFlightCount: 2,
+      sessionStages: seedSessionStages(sessionShape),
       hasUpperDeckMainDeck: c.hasUpperDeckMainDeck,
       structureTemplateId: c.structureTemplateId ?? '',
       structure: c.structureTemplateId ? levelsOf(c.structureTemplateId) : [],
@@ -162,25 +165,22 @@ export default function TournamentNew() {
     })
   }
 
-  // Guided session state → the domain plan buildSessionDocs consumes, or null
-  // for a single-day tournament (createTournament falls back to SINGLE_DAY_PLAN).
-  // Only Day 1 is flighted in the guided shapes; the final day always plays to a
-  // winner (endStructureIndex null) and Day 1 always opens at the tournament's
-  // scheduled start (startTime null → the op fills it in).
+  // Guided session state → the domain plan buildSessionDocs consumes, or null for
+  // a single-day tournament (createTournament falls back to SINGLE_DAY_PLAN). The
+  // final stage plays to a winner (endStructureIndex null) unless capped; each
+  // flight's start time defaults to the tournament start when left blank
+  // (localToDate('') → null). survivorsFrom is empty for stage 0.
   function buildSessionPlan() {
     if (form.sessionShape === 'singleDay') return null
-    const lastIndex = form.sessionDays.length - 1
-    const days = form.sessionDays.map((day, i) => {
-      const isFirst = i === 0
-      const isFinal = i === lastIndex
-      return {
-        flightCount: form.sessionShape === 'multiFlight' && isFirst ? intOf(form.sessionFlightCount) : 1,
-        endStructureIndex: isFinal ? null : intOrNull(day.endIndex),
-        playToPercentRemaining: day.playPct === '' ? null : Number(day.playPct),
-        scheduledStartTime: isFirst ? null : localToDate(day.startTime),
-      }
-    })
-    return { days }
+    const stages = form.sessionStages.map((stage, i) => ({
+      endStructureIndex: stage.endIndex === '' ? null : intOf(stage.endIndex),
+      playToPercentRemaining: stage.playPct === '' ? null : Number(stage.playPct),
+      flights: stage.flights.map((f) => ({
+        scheduledStartTime: localToDate(f.startTime),
+        survivorsFrom: i === 0 ? [] : (f.survivorsFrom ?? []),
+      })),
+    }))
+    return { stages }
   }
 
   // Returns an object keyed by STEP_ORDER; absent key = that step is valid.
@@ -351,12 +351,11 @@ export default function TournamentNew() {
       label: 'Days & flights',
       content: (
         <SessionPlanBuilder
-          value={{ shape: form.sessionShape, days: form.sessionDays, flightCount: form.sessionFlightCount }}
+          value={{ shape: form.sessionShape, stages: form.sessionStages }}
           onChange={(patch) => {
             const next = {}
             if ('shape' in patch) next.sessionShape = patch.shape
-            if ('days' in patch) next.sessionDays = patch.days
-            if ('flightCount' in patch) next.sessionFlightCount = patch.flightCount
+            if ('stages' in patch) next.sessionStages = patch.stages
             set(next)
           }}
           structure={form.structure}

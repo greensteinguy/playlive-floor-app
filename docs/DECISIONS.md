@@ -32,6 +32,20 @@ The screen's existing `busy` gate guarantees one in-flight op at a time, so a co
 
 **Decider:** Guy set the gospel rule and approved the optimistic-local approach in the brief. The two-signature reconciliation, the confirm-style timeout, the pure-module split, and the worktree isolation were Claude's implementation calls (the first two flagged by the design workflow's red-team). Builds on the 30 May clock entry below.
 
+## 31 May 2026 — Multi-flight is a general N→N→1 funnel (routing partition), not all-into-one
+
+Generalized the session model so multi-flight tournaments can have **multiple flights at every stage** funnelling down to one final — e.g. WSOP-style Day 1A–D → Day 2ABC + Day 2DEF → Day 3 — not just "all Day-1 flights into one Day 2" (the prior limit).
+
+**Routing model — fan-in funnel, no fan-out.** Each flight feeds **exactly one** flight in the next stage; a stage's flights **partition** the previous stage's flights (each upstream flight assigned to exactly one downstream — no orphan, split, or duplicate). This keeps the graph a clean in-tree with one final session, which is exactly what `convergesIntoSessionId` already models, so **NO schema change** was needed. (A single flight *splitting* across multiple downstream flights = fan-out would need a schema change; Guy confirmed the venue doesn't do that — survivors of a flight stay together.)
+
+**Plan model.** The domain session plan went from a flat `{ days: [{ flightCount, endStructureIndex, … }] }` to `{ stages: [{ endStructureIndex, playToPercentRemaining, flights: [{ scheduledStartTime, survivorsFrom }] }] }`, where `survivorsFrom` holds indices into the previous stage's flights ([] for stage 0). `validateSessionPlan` enforces the partition + contiguous slice tiling + single final; `buildSessionDocs` wires `convergesIntoSessionId` from the partition (pre-generated UUIDs, one atomic batch — unchanged). Per-flight start times now (Day 1A and 1B can start at different times).
+
+**UI — routing grid.** `SessionPlanBuilder` became a routing grid: stages of flights, each later flight with a "survivors from" chip-picker over the previous stage, live partition validation, and quick-start presets (single / multi-day / multi-flight). Chosen over pool-tags and a visual flow diagram (Guy picked the grid in the workshop; visual flow is a possible later polish).
+
+**Verification:** `npm test` **409 pass** (`sessions.test.js` rewritten for stages incl. the deep funnel + partition rejections; `tournaments.test.js` create tests updated), lint + build clean. Not browser-smoke-tested by Claude this round — Guy's emulator + dev server were live (ports 8080/5173), so the change HMR'd into his running app for live verification.
+
+**Decider:** Guy ("N Day 1s leading to N Day 2s and onward"). The partition representation (`survivorsFrom`) and the routing-grid UI were Claude's implementation calls from the workshop. Builds on the task-2.4 sessions model.
+
 ## 30 May 2026 — Late registration cutoff is a blind LEVEL, not a wall-clock time
 
 Changed `Tournament.lateRegCutoffTime` (a `Timestamp`) to `lateRegCutoffLevel` (a nullable positive int = the blindNumber late reg runs through). Late registration now closes at the **end of a designated blind level**, not at a fixed clock time.
