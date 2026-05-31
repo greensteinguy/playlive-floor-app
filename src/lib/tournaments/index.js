@@ -17,6 +17,16 @@ export { createTournament, updateTournament, setTournamentStatus } from './tourn
 export { validateSessionPlan, deriveFormatFlags, SINGLE_DAY_PLAN } from './sessions'
 
 export {
+  registerEntry,
+  recountTournamentEntries,
+  totalEntryCost,
+  registrationOpen,
+  registrableSessions,
+  planEntry,
+  computeEntryCounters,
+} from './registration'
+
+export {
   startClock,
   pauseClock,
   resumeClock,

@@ -25,7 +25,7 @@ import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { useTournament } from '../../hooks/useTournament'
 import { useStructureTemplates } from '../../hooks/useTemplates'
-import { updateTournament, setTournamentStatus, TournamentError } from '../../lib/tournaments'
+import { updateTournament, setTournamentStatus, registrationOpen, TournamentError } from '../../lib/tournaments'
 import { Structure } from '../../lib/schema'
 import { centsToStr, dollarsToCents, intOrNull, intOf, formatMoney } from '../../lib/money'
 import { payoutCurve, paidPlaceCount, applyRounding } from '../../lib/payouts'
@@ -342,7 +342,7 @@ export default function TournamentDetail() {
         <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
       ) : (
         <>
-          <TopBar t={tournament} />
+          <TopBar t={tournament} role={role} />
 
           {!canEdit && (
             <div className="bg-felt-800 border border-white/10 rounded-lg px-4 py-2 mb-5 text-xs text-white/50">
@@ -612,7 +612,8 @@ function StatusControls({ status, role, busy, onChange }) {
   )
 }
 
-function TopBar({ t }) {
+function TopBar({ t, role }) {
+  const canRegister = role === 'manager' || role === 'cashier'
   return (
     <div className="mb-6">
       <div className="flex items-baseline justify-between gap-4 mb-2">
@@ -625,12 +626,22 @@ function TopBar({ t }) {
             </span>
           )}
         </div>
-        <Link
-          to={`/td/tournaments/${t.id}/clock`}
-          className="text-xs font-medium text-gold-300 hover:text-gold-200 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"
-        >
-          ▸ Open clock
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          {canRegister && registrationOpen(t) && (
+            <Link
+              to={`/td/tournaments/${t.id}/register`}
+              className="text-xs font-medium text-emerald-200 hover:text-emerald-100 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"
+            >
+              ＋ Register players
+            </Link>
+          )}
+          <Link
+            to={`/td/tournaments/${t.id}/clock`}
+            className="text-xs font-medium text-gold-300 hover:text-gold-200 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"
+          >
+            ▸ Open clock
+          </Link>
+        </div>
       </div>
       <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 flex flex-wrap gap-x-8 gap-y-3">
         <Meta label="Game" value={GAME_TYPE_LABEL[t.gameType] ?? t.gameType} />
