@@ -6,6 +6,32 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 31 May 2026 — Clock pause/resume smoothness: optimistic local-anchor countdown (render layer)
+
+Fixed a bug in the task-2.6 clock: the TD screen's big countdown **jumped on pause→resume**. The fix is a render-layer redesign; `src/lib/clock.js`, the clock domain ops, and the schema are untouched.
+
+**The gospel rule (Guy).** The *running* displayed clock is what players read to know the current blinds, so it must count down perfectly smooth + monotonic with **zero** jumps. We MAY write Firebase on clock *events* (start/pause/resume/advance/finish), but must **never** adjust/snap the running (non-paused) displayed clock to a Firebase/server-derived time. While running, the **local** countdown is the source of truth; re-seed it only on genuine state-change events.
+
+**Root cause.** `useClock` derived the countdown from the Firestore echo on every tick. Pause/resume are async transactions whose new anchor is stamped at *commit* time; between click → commit → echo the display counted against the stale anchor and then **snapped** to the new one when it echoed back. Worst on the emulator (`experimentalForceLongPolling` removes latency compensation), but the window exists in production (WebChannel) too.
+
+**Decision: an optimistic local-anchor countdown, reconciled (not re-derived) against echoes.** The controlling screen keeps a local anchor in its own wall-clock; button clicks mutate it synchronously (pause freezes instantly; resume continues from the frozen remaining via the *same* `resumeStartedAtMs` math the domain op uses) and the async write happens in the background. The display is `deriveClock(syntheticSession(localAnchor), …)` — reusing the tested derivation but fed from the local anchor, so auto-advance / capped slices / play-to-winner / paused-freeze all still hold. When an echo arrives it is **reconciled**, never blindly applied.
+
+**The one genuinely hard call — two signatures.** The client can't predict the server's commit-ms, so:
+- **Confirmation** of our own in-flight op uses a **coarse** sig (`clockStartIndex:state:status`) — the only thing predictable at click time. A coarse-matching echo is recognised as our own action and **absorbed without re-seeding** (this is what hides the round-trip and kills the jump).
+- **External-event detection** uses a full **identity** sig (`…:startedAtMs:pausedAtMs:…`). It's stable across auto-advance (which writes nothing) but changes on every real event — including a re-anchor onto the *same* level — so a genuine change from another device re-seeds, while a no-op echo is ignored.
+
+The screen's existing `busy` gate guarantees one in-flight op at a time, so a coarse match can't be ambiguous (no FIFO queue needed). A 6s pending-timeout backstop is **confirm-style (keeps the smooth local clock), never a rollback**, so a slow-but-successful write can't itself cause a jump. The only running-side re-seed-from-server besides a genuine external event is the **rollback on an op *rejection*** (a rare precondition failure, surfaced via a toast).
+
+**Where the logic lives.** All gospel-critical, time-pure logic is in a new `src/lib/clock-sync.js` (signatures, synthetic session, seed, optimistic transitions, `reconcile`, and the `clockSyncReducer`), unit-tested without a React renderer (34 tests). `useClock` is thin glue (subscriptions, a 250ms tick gated on the local anchor, optimistic dispatch + rollback). `TournamentClock.jsx` is unchanged.
+
+**Process note.** The design was hardened with a multi-agent **workflow** (map the bug + invariants + test setup → 3 adversarial reviewers red-teaming the proposed design against the gospel rule → synthesize an implementation spec + test matrix). It surfaced the coarse-vs-identity split and the timeout-must-not-snap guard *before* any code was written. Claude reviewed the synthesis too and corrected one wrong claim in it (a "skew-immune seed" that mathematically reduces to a 1:1 copy on the controlling device — true cross-device skew handling remains a Phase-5 TV concern).
+
+**Verification.** `npm test` **434 pass** (+34 in `clock-sync.test.js`; the 44 existing clock tests in `clock.test.js` / `tournaments/clock.test.js` untouched and green), lint + build clean. Not browser-smoke-tested this round — the jump is a timing property the unit tests assert deterministically (monotonic-while-running, instant freeze, resume continuity with no latency snap, round-trip echo absorbed, external re-seed, rollback, session-switch reset), the render wiring is unchanged, and the live emulator/dev server were in use by the parallel multi-flight agent.
+
+**Built in an isolated git worktree** off `main` (branch `fix/clock-smooth-pause-resume`) because a parallel agent was live in the main checkout on `feature/multi-flight-convergence` with uncommitted work; switching branches there would have disrupted it. The changed files are disjoint from the multi-flight work, so the merge is clean.
+
+**Decider:** Guy set the gospel rule and approved the optimistic-local approach in the brief. The two-signature reconciliation, the confirm-style timeout, the pure-module split, and the worktree isolation were Claude's implementation calls (the first two flagged by the design workflow's red-team). Builds on the 30 May clock entry below.
+
 ## 30 May 2026 — Late registration cutoff is a blind LEVEL, not a wall-clock time
 
 Changed `Tournament.lateRegCutoffTime` (a `Timestamp`) to `lateRegCutoffLevel` (a nullable positive int = the blindNumber late reg runs through). Late registration now closes at the **end of a designated blind level**, not at a fixed clock time.

@@ -3,20 +3,23 @@
 // UNLIKE useTournament (a one-shot fetch, so a stream can't clobber an in-progress
 // edit), the clock screen is a read-only mirror of server state with action
 // buttons — so it SUBSCRIBES live to both the session (the clock's source of
-// truth) and the parent tournament (structure + counters). After any clock
-// action the subscription pushes the new state automatically; the screen never
-// reloads by hand.
+// truth) and the parent tournament (structure + counters).
 //
-// The live blind level + countdown are DERIVED (see lib/clock.js) from the
-// session's anchor fields + the structure, so they auto-advance with no writes.
-// A local 1s tick (only while the clock is running) re-renders the countdown
-// between Firestore updates; deriveClock self-corrects each tick against the
-// stored anchor, so the local tick can never drift the clock out of sync.
+// SMOOTHNESS (the gospel rule — see lib/clock-sync.js): the displayed running
+// countdown must never jump. So this hook does NOT derive the running clock from
+// the Firestore echo every tick (which made pause/resume snap across the async
+// write's round trip). Instead it keeps an OPTIMISTIC LOCAL ANCHOR: button clicks
+// mutate it synchronously (pause freezes instantly; resume continues from the
+// frozen remaining instantly), the async domain op writes in the background, and
+// when the echo lands we RECONCILE (absorb our own echo without a snap; re-seed
+// only on a genuine external event). All of that state machine is the pure,
+// unit-tested clockSyncReducer; this hook is just the React glue (subscriptions,
+// a wall-clock tick while running, and wiring the action buttons + rollback).
 //
 // Pure-mock mode (no emulator) surfaces as `mockMode`; a missing session/
 // tournament as `notFound` — neither is a thrown UI error, matching useTournament.
 
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { tournaments as tournamentsApi, sessions as sessionsApi, MockModeError, NotFoundError } from '../lib/firestore'
 import {
   startClock,
@@ -27,43 +30,28 @@ import {
   gotoLevel,
   finishClock,
 } from '../lib/tournaments'
-import { deriveClock, clockState, CLOCK_RUNNING } from '../lib/clock'
+import { deriveClock } from '../lib/clock'
+import { clockSyncReducer, initialClockState, syntheticSession, isAnchorRunning } from '../lib/clock-sync'
 import { useAuth } from '../auth/useAuth'
 
-const initialState = {
-  tournament: null,
-  session: null,
-  error: null,
-  mockMode: false,
-  notFound: false,
-}
+// Backstop if an optimistic op neither confirms nor rejects within this window
+// (e.g. multi-device contention): adopt the latest server state as baseline but
+// KEEP the smooth local clock. Longer than the worst plausible long-poll RTT.
+const PENDING_TIMEOUT_MS = 6000
 
-function reducer(state, action) {
-  switch (action.type) {
-    case 'RESET':
-      return initialState
-    case 'SET_TOURNAMENT':
-      return { ...state, tournament: action.tournament }
-    case 'SET_SESSION':
-      return { ...state, session: action.session }
-    case 'MOCK':
-      return { ...initialState, mockMode: true }
-    case 'NOTFOUND':
-      return { ...state, notFound: true }
-    case 'ERROR':
-      return { ...state, error: action.error }
-    default:
-      return state
-  }
-}
+// While running, tick faster than 1s so the displayed whole second updates
+// promptly (formatRemaining rounds up, so 250ms collapses to clean 1s steps).
+const TICK_MS = 250
 
 export function useClock(tournamentId, sessionId) {
   const { user, role } = useAuth()
-  const [state, dispatch] = useReducer(reducer, initialState)
+  const [state, dispatch] = useReducer(clockSyncReducer, initialClockState)
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const tokenRef = useRef(0)
 
   // Subscribe to the tournament + session live. ensureLive() throws MockModeError
-  // synchronously in pure-mock mode, so the subscribe calls are guarded.
+  // synchronously in pure-mock mode, so the subscribe calls are guarded. RESET on
+  // id change clears the optimistic anchor too, so switching sessions re-seeds clean.
   useEffect(() => {
     dispatch({ type: 'RESET' })
     if (!tournamentId || !sessionId) return undefined
@@ -81,7 +69,7 @@ export function useClock(tournamentId, sessionId) {
       const unsubS = sessionsApi.subscribeToSession(
         tournamentId,
         sessionId,
-        (s) => dispatch({ type: 'SET_SESSION', session: s }),
+        (s) => dispatch({ type: 'ECHO', session: s, nowMs: Date.now() }),
         onError,
       )
       return () => {
@@ -94,41 +82,67 @@ export function useClock(tournamentId, sessionId) {
     }
   }, [tournamentId, sessionId])
 
-  // Tick once a second only while the clock is actually running (paused/stopped
-  // clocks are static — deriveClock ignores `now` when paused).
-  const running = clockState(state.session) === CLOCK_RUNNING
+  // Tick only while the LOCAL anchor is running (paused/stopped are static). Gating
+  // on the local anchor — not the server echo — means optimistic pause stops the
+  // tick instantly and optimistic resume starts it instantly.
+  const running = isAnchorRunning(state.localAnchor)
   useEffect(() => {
     if (!running) return undefined
-    const id = setInterval(() => setNowMs(Date.now()), 1000)
+    const id = setInterval(() => setNowMs(Date.now()), TICK_MS)
     return () => clearInterval(id)
   }, [running])
 
+  // The displayed clock: from the LOCAL anchor while started (so the running
+  // countdown is purely local and never snapped), or straight from the server doc
+  // while stopped/finished (yields the stopped/EMPTY shape — preserves the
+  // NOT-STARTED preview + the FINISHED screen, which read the server session).
   const derived = useMemo(() => {
-    if (!state.session || !state.tournament) return null
-    return deriveClock(state.session, state.tournament.structure, nowMs)
-  }, [state.session, state.tournament, nowMs])
+    if (!state.tournament) return null
+    if (state.localAnchor) {
+      return deriveClock(syntheticSession(state.localAnchor, state.session), state.tournament.structure, nowMs)
+    }
+    if (state.session) {
+      return deriveClock(state.session, state.tournament.structure, nowMs)
+    }
+    return null
+  }, [state.localAnchor, state.session, state.tournament, nowMs])
 
-  // Clock actions, bound to the current actor + ids. Each rejects (throws) on a
-  // precondition failure so the screen can toast it; the live subscription
-  // delivers the resulting state, so there's nothing to reload.
+  // Clock actions. Each applies its OPTIMISTIC local transition synchronously (so
+  // the display reacts instantly), fires the async domain op, and on rejection
+  // rolls the optimistic change back to the server doc + re-throws so the screen
+  // can toast. The confirming echo (or a timeout backstop) clears the pending slot.
   const actorId = user?.uid
   const actorRole = role
-  const op = useCallback(
-    (fn, extra = {}) => fn({ tournamentId, sessionId, actorId, actorRole, ...extra }),
+  const runOp = useCallback(
+    async (verb, fn, extra = {}) => {
+      const token = ++tokenRef.current
+      dispatch({ type: 'OPTIMISTIC', verb, nowMs: Date.now(), token, targetIndex: extra.targetIndex })
+      const timer = setTimeout(() => {
+        if (tokenRef.current === token) dispatch({ type: 'PENDING_TIMEOUT' })
+      }, PENDING_TIMEOUT_MS)
+      try {
+        await fn({ tournamentId, sessionId, actorId, actorRole, ...extra })
+      } catch (e) {
+        clearTimeout(timer)
+        dispatch({ type: 'ROLLBACK', nowMs: Date.now() })
+        throw e
+      }
+      clearTimeout(timer)
+    },
     [tournamentId, sessionId, actorId, actorRole],
   )
 
   const actions = useMemo(
     () => ({
-      start: () => op(startClock),
-      pause: () => op(pauseClock),
-      resume: () => op(resumeClock),
-      advance: () => op(advanceLevel),
-      rewind: () => op(rewindLevel),
-      goto: (targetIndex) => op(gotoLevel, { targetIndex }),
-      finish: () => op(finishClock),
+      start: () => runOp('start', startClock),
+      pause: () => runOp('pause', pauseClock),
+      resume: () => runOp('resume', resumeClock),
+      advance: () => runOp('advance', advanceLevel),
+      rewind: () => runOp('rewind', rewindLevel),
+      goto: (targetIndex) => runOp('goto', gotoLevel, { targetIndex }),
+      finish: () => runOp('finish', finishClock),
     }),
-    [op],
+    [runOp],
   )
 
   const ready = state.tournament !== null && state.session !== null
