@@ -12,7 +12,7 @@
 // move only through the wallet module). A merged record is shown read-only with a
 // pointer to the record it was merged into.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
@@ -22,9 +22,12 @@ import { ValidationError } from '../../lib/firestore'
 import { formatMoney } from '../../lib/money'
 import { playerFormFromDoc, validatePlayerForm, buildPlayerPatch } from '../../lib/playerForm'
 import PlayerProfileFields from '../../components/PlayerProfileFields'
+import { usePlayerActivity } from '../../hooks/usePlayerActivity'
+import { summarizeEntries, entryWinnings, entryResultLabel, entryTypeLabel } from '../../lib/entryDisplay'
 
 const TABS = [
   { id: 'profile', label: 'Profile' },
+  { id: 'activity', label: 'Activity' },
   { id: 'wallet', label: 'Wallet & tickets' },
 ]
 
@@ -164,6 +167,8 @@ export default function PlayerDetail() {
             </>
           )}
 
+          {tab === 'activity' && <ActivityTab playerId={player.id} />}
+
           {tab === 'wallet' && <WalletTab player={player} canRegister={canRegister} />}
         </>
       )}
@@ -211,6 +216,78 @@ function Stat({ label, value, accent }) {
       <div className="text-[10px] font-mono uppercase tracking-widest text-white/30">{label}</div>
       <div className={'text-base tabular-nums ' + (accent ? 'text-emerald-300' : 'text-white/80')}>{value}</div>
     </div>
+  )
+}
+
+function ActivityTab({ playerId }) {
+  const { entries, tournamentNameById, loading, error, mockMode } = usePlayerActivity(playerId)
+  const totals = useMemo(() => summarizeEntries(entries), [entries])
+  const rows = useMemo(
+    () =>
+      entries
+        .filter((e) => e.voidedAt === null)
+        .sort((a, b) => (b.registeredAt?.toMillis?.() ?? 0) - (a.registeredAt?.toMillis?.() ?? 0)),
+    [entries]
+  )
+
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+        <BalanceCard label="Tournaments played" value={String(totals.played)} />
+        <BalanceCard label="Total buy-ins" value={formatMoney(totals.totalSpent)} />
+        <BalanceCard label="Total winnings" value={formatMoney(totals.totalWinnings)} accent />
+      </div>
+
+      {mockMode ? (
+        <EmptyState
+          title="Mock mode — no activity available."
+          body="Register this player into a tournament against the emulator to see their history."
+        />
+      ) : error ? (
+        <EmptyState title="Couldn't load activity." body={error.message} tone="error" />
+      ) : loading ? (
+        <div className="py-8 text-center text-white/40 text-sm">Loading…</div>
+      ) : rows.length === 0 ? (
+        <EmptyState title="No tournament history yet." body="Entries this player makes will appear here." />
+      ) : (
+        <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+              <tr>
+                <th className="text-left px-4 py-2">Tournament</th>
+                <th className="text-left px-4 py-2 whitespace-nowrap">Date</th>
+                <th className="text-left px-4 py-2 whitespace-nowrap">Entry</th>
+                <th className="text-right px-4 py-2 whitespace-nowrap">Buy-in</th>
+                <th className="text-left px-4 py-2 whitespace-nowrap">Result</th>
+                <th className="text-right px-4 py-2 whitespace-nowrap">Winnings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((e) => (
+                <tr key={e.id} className="border-t border-white/5">
+                  <td className="px-4 py-2.5 text-white/90">{tournamentNameById[e.tournamentId] ?? '—'}</td>
+                  <td className="px-4 py-2.5 text-white/50 whitespace-nowrap">{fmtDate(e.registeredAt)}</td>
+                  <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">
+                    {entryTypeLabel(e.entryType)} #{e.entryNumber}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-white/70 tabular-nums whitespace-nowrap">
+                    {formatMoney(e.paymentAmount)}
+                  </td>
+                  <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">{entryResultLabel(e)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
+                    {entryWinnings(e) > 0 ? (
+                      <span className="text-emerald-300">{formatMoney(entryWinnings(e))}</span>
+                    ) : (
+                      <span className="text-white/30">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   )
 }
 
