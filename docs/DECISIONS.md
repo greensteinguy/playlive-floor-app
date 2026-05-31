@@ -6,6 +6,20 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 31 May 2026 — Data-layer write timeout (no more infinite "Saving…")
+
+A Firestore write against an unreachable backend used to spin forever: the SDK retries indefinitely (online-only, ADR-001), the write promise never settles, the `finally` that clears the button never runs, so a save sits on "Saving…" / "Creating…" with no feedback. Surfaced twice in dev when the local emulator was down.
+
+**Decision: a 10-second write-timeout race at the data-layer write boundary.** `withWriteTimeout(promise, opLabel)` (`src/lib/firestore/_timeout.js`) races every write — `validatedSet`, `validatedUpdate`, `validatedDelete`, `runValidatedTransaction`, `runValidatedBatch` — against a deadline and rejects with a typed `WriteTimeoutError` whose `message` is user-facing: *"The server isn't responding. Please try again — if this problem persists, contact your system administrator."* The UI catch blocks already toast typed errors, so the four player/money flows (player create + edit, deposit, registration) surface it cleanly; every other write inherits the protection automatically and re-enables its button via the existing `finally`.
+
+**Why the data layer, not each call site:** one wrapper protects every write app-wide and can't be forgotten on a new page. Why a typed error: `instanceof WriteTimeoutError` survives `wrapWalletErrors` (which re-throws the same instance), and the UI formatters already strip the `[wallet.*]` prefix.
+
+**Why 10s, and the accepted caveat:** normal writes settle in well under a second (emulator or production), so 10s only trips on a genuinely unreachable/stalled backend — finite feedback beats an infinite spinner. The one edge case: a write that lands *after* the timeout (rare — a slow-but-alive backend) can't be recalled, so a retry could duplicate it. Accepted for v1 because the realistic trigger is "backend down" (nothing landed); the deadline is a single exported constant (`WRITE_TIMEOUT_MS`) if it needs tuning. Reads are deliberately left untouched (a hung read shows "Loading…", lower-stakes than an ambiguous money write) — a candidate follow-up.
+
+**Verification:** `npm test` **550 pass** (+6 in `_timeout.test.js`: resolves-fast, rejects-after-deadline, doesn't-fire-early, propagates-a-real-rejection-unmasked, carries-label-+-user-message, clears-its-timer), lint + build clean. Browser-verified against the emulator: a normal create still completes in ~160ms; with the emulator killed, a create timed out and rendered the toast verbatim, then re-enabled the button (no infinite hang).
+
+**Decider:** Guy requested the timeout + toast and the message wording. The 10s deadline, the data-layer placement, the typed-error approach, and the writes-only scope were Claude's implementation calls. Follows the 31 May wallet-deposit work, where the underlying hang was first diagnosed.
+
 ## 31 May 2026 — Wallet deposit + PayID wizard (task 3.6): player-first flow, receipt-gated PayID, venue PayID via env
 
 Built the wallet-deposit screen (`/desk/deposit`) and its PayID wizard. The deposit op (`recordDeposit`) was already built/tested in Phase 1, so this was UI + the wizard + surfacing — **no new wallet/domain code**. Several implementation calls, all reversible:

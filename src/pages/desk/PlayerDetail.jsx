@@ -18,7 +18,7 @@ import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { usePlayer } from '../../hooks/usePlayer'
 import { updatePlayer, playerDisplayName, PlayerError } from '../../lib/players'
-import { ValidationError } from '../../lib/firestore'
+import { ValidationError, WriteTimeoutError } from '../../lib/firestore'
 import { formatMoney } from '../../lib/money'
 import { playerFormFromDoc, validatePlayerForm, buildPlayerPatch } from '../../lib/playerForm'
 import PlayerProfileFields from '../../components/PlayerProfileFields'
@@ -97,7 +97,9 @@ export default function PlayerDetail() {
       reload()
     } catch (e) {
       toast.error(
-        e instanceof PlayerError || e instanceof ValidationError ? e.message : `Save failed: ${e.message}`
+        e instanceof PlayerError || e instanceof ValidationError || e instanceof WriteTimeoutError
+          ? e.message
+          : `Save failed: ${e.message}`
       )
     } finally {
       setSaving(false)
