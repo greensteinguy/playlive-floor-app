@@ -23,7 +23,7 @@ const TILES = [
     navPath: '/desk/players',
     icon: '♟',
     label: 'Player search',
-    description: 'Look up an existing player by name, phone, or membership number — independent of a tournament.',
+    description: 'Look up an existing player by name, phone, or email — independent of a tournament.',
     badge: 'Phase 3',
   },
   {
