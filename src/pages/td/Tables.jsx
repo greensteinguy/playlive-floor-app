@@ -24,11 +24,14 @@ import {
   balanceTables,
   breakTable,
   seatNextAlternate,
+  openTable,
+  setTableActive,
   planBalance,
   planBreak,
   canBreakTable,
   waitlist,
   firstEmptySeat,
+  fillableTables,
   tableSizes,
   seatableEntries,
   occupiedSeatCount,
@@ -209,10 +212,27 @@ export default function Tables() {
     await run(async () => {
       const res = await breakTable({ tournament, sessionId: activeSessionId, tableId, actorId: user.uid, actorRole: role })
       toast.success(
-        `Broke Table ${res.brokenTableNumber} — moved ${res.moves.length} player${res.moves.length === 1 ? '' : 's'}.`
+        res.moves.length
+          ? `Closed Table ${res.brokenTableNumber} — moved ${res.moves.length} player${res.moves.length === 1 ? '' : 's'}.`
+          : `Closed Table ${res.brokenTableNumber}.`
       )
       setBreakTableId(null)
       setSelectedEntryId(null)
+      seating.reload()
+    })
+  }
+
+  async function handleOpenTable() {
+    await run(async () => {
+      const res = await openTable({ tournament, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
+      toast.success(`Opened Table ${res.tableNumber} — deactivated; activate it when you're ready to fill it.`)
+      seating.reload()
+    })
+  }
+
+  async function handleSetActive(tableId, active) {
+    await run(async () => {
+      await setTableActive({ tournament, tableId, active, actorId: user.uid, actorRole: role })
       seating.reload()
     })
   }
@@ -365,14 +385,27 @@ export default function Tables() {
           <Panel
             title="Seating"
             right={
-              openTables.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowSeatList((v) => !v)}
-                  className="text-[11px] text-white/50 hover:text-white"
-                >
-                  {showSeatList ? 'Hide seat list' : 'Seat list'}
-                </button>
+              canEdit && (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleOpenTable}
+                    disabled={busy}
+                    title="Open a new table (starts deactivated — activate it when ready to fill)"
+                    className="text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:opacity-40"
+                  >
+                    + Open table
+                  </button>
+                  {openTables.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSeatList((v) => !v)}
+                      className="text-[11px] text-white/50 hover:text-white"
+                    >
+                      {showSeatList ? 'Hide seat list' : 'Seat list'}
+                    </button>
+                  )}
+                </div>
               )
             }
           >
@@ -419,7 +452,7 @@ export default function Tables() {
           </Panel>
 
           {/* Balance */}
-          {openTables.length > 1 && (
+          {fillableTables(openTables).length > 1 && (
             <Panel title="Balance">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
                 <span className="text-white/50 text-xs font-mono">
@@ -491,7 +524,7 @@ export default function Tables() {
             </div>
           )}
 
-          {/* Break preview */}
+          {/* Close preview */}
           {breakTableId &&
             (() => {
               const t = openTables.find((x) => x.id === breakTableId)
@@ -499,9 +532,9 @@ export default function Tables() {
               return (
                 <div className="mb-4 bg-felt-800 border border-red-500/30 rounded-lg px-4 py-3 text-sm">
                   <p className="text-white/80 mb-2">
-                    Break <span className="text-white font-medium">Table {t.tableNumber}</span>
+                    Close <span className="text-white font-medium">Table {t.tableNumber}</span>
                     {breakMoves && breakMoves.length > 0
-                      ? ` — move ${breakMoves.length} player${breakMoves.length === 1 ? '' : 's'} to the other tables:`
+                      ? ` — move ${breakMoves.length} player${breakMoves.length === 1 ? '' : 's'} to the other active tables:`
                       : ' — no players to move; the table will just close.'}
                   </p>
                   {breakMoves && breakMoves.length > 0 && (
@@ -521,7 +554,7 @@ export default function Tables() {
                       disabled={busy || breakMoves === null}
                       className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/20 text-red-200 hover:bg-red-500/30 active:bg-red-500/40 disabled:opacity-40"
                     >
-                      {busy ? 'Breaking…' : `Confirm break of Table ${t.tableNumber}`}
+                      {busy ? 'Closing…' : `Confirm close of Table ${t.tableNumber}`}
                     </button>
                     <button
                       type="button"
@@ -549,8 +582,8 @@ export default function Tables() {
                       disabled={busy || !nextSeat}
                       title={
                         nextSeat
-                          ? `Seat #1 at table ${nextSeat.tableNumber}, seat ${nextSeat.seatNumber}`
-                          : 'No open seat — every table is full'
+                          ? 'Seat #1 in a random open seat on an active table'
+                          : 'No active seat free — activate a table first'
                       }
                       className="text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:text-white/30"
                     >
@@ -564,8 +597,9 @@ export default function Tables() {
               }
             >
               <p className="text-[11px] text-white/40 mb-2">
-                #1 is next to be seated (FIFO by registration). Click a name to place by hand, or “Seat next →” to fill the
-                emptiest open seat{nextSeat ? '' : ' (none free — tables are full)'}.
+                #1 is next (FIFO by registration). “Seat next →” drops them in a <span className="text-white/70">random</span>{' '}
+                open seat on an active table; or click a name then an empty seat to place by hand
+                {nextSeat ? '' : ' — no active seat free right now'}.
               </p>
               <div className="flex flex-wrap gap-2">
                 {waitlistEntries.map((e, i) => (
@@ -590,66 +624,95 @@ export default function Tables() {
           {/* Tables grid */}
           {openTables.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
-              {openTables.map((table) => (
-                <div key={table.id} className="bg-felt-800 border border-white/5 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="font-display text-lg text-gold-300">Table {table.tableNumber}</div>
-                    <div className="flex items-center gap-2">
-                      {canEdit && openTables.length > 1 && (
+              {openTables.map((table) => {
+                const isActive = table.active !== false
+                return (
+                  <div
+                    key={table.id}
+                    className={'bg-felt-800 border rounded-lg p-4 ' + (isActive ? 'border-white/5' : 'border-amber-500/20 opacity-70')}
+                  >
+                    <div className="flex items-center justify-between mb-2 gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-display text-lg text-gold-300">Table {table.tableNumber}</span>
+                        {!isActive && (
+                          <span className="text-[9px] font-mono uppercase tracking-widest text-amber-300/80 bg-amber-500/10 rounded px-1.5 py-0.5">
+                            deactivated
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                        {occupiedSeatCount(table)}/{table.seatCount}
+                      </span>
+                    </div>
+                    {canEdit && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSetActive(table.id, !isActive)}
+                          disabled={busy}
+                          className={
+                            'px-2 py-0.5 rounded text-[10px] font-medium disabled:opacity-30 ' +
+                            (isActive
+                              ? 'text-amber-300/80 bg-amber-500/10 hover:bg-amber-500/20'
+                              : 'text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25')
+                          }
+                        >
+                          {isActive ? 'Deactivate' : 'Activate'}
+                        </button>
                         <button
                           type="button"
                           onClick={() => setBreakTableId(table.id)}
                           disabled={busy || !canBreakTable(openTables, table.id)}
                           title={
                             canBreakTable(openTables, table.id)
-                              ? 'Break this table'
-                              : 'Not enough room on the other tables'
+                              ? 'Close this table (move any players to the other active tables)'
+                              : 'Nowhere to move the players — activate another table first'
                           }
                           className="px-2 py-0.5 rounded text-[10px] font-medium text-red-300/80 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-30"
                         >
-                          Break
+                          Close
                         </button>
-                      )}
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
-                        {occupiedSeatCount(table)}/{table.seatCount}
-                      </span>
-                    </div>
+                      </div>
+                    )}
+                    <ul className="space-y-1">
+                      {table.seats
+                        .slice()
+                        .sort((a, b) => a.seatNumber - b.seatNumber)
+                        .map((seat) => {
+                          const occupied = !!seat.entryId
+                          const isSel = occupied && seat.entryId === selectedEntryId
+                          // Deactivated tables aren't a placement target: empty seats are
+                          // display-only, but you can still pick up a seated player to move.
+                          const interactive = canEdit && (occupied || isActive)
+                          return (
+                            <li key={seat.seatNumber}>
+                              <button
+                                type="button"
+                                onClick={() => interactive && handleSeatClick(table, seat)}
+                                disabled={!interactive || busy}
+                                className={
+                                  'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left disabled:opacity-60 ' +
+                                  (occupied
+                                    ? isSel
+                                      ? 'bg-gold-500/30 text-gold-100'
+                                      : 'bg-felt-900/60 text-white/90 hover:bg-white/10'
+                                    : isActive && selectedEntry
+                                      ? 'bg-emerald-500/10 text-emerald-200/90 hover:bg-emerald-500/20'
+                                      : 'bg-felt-900/40 text-white/30')
+                                }
+                              >
+                                <span className="text-[10px] font-mono text-white/40 w-4 shrink-0">{seat.seatNumber}</span>
+                                <span className="truncate flex-1">
+                                  {occupied ? nameForEntry(entriesById[seat.entryId]) : isActive && selectedEntry ? 'seat here' : 'empty'}
+                                </span>
+                              </button>
+                            </li>
+                          )
+                        })}
+                    </ul>
                   </div>
-                  <ul className="space-y-1">
-                    {table.seats
-                      .slice()
-                      .sort((a, b) => a.seatNumber - b.seatNumber)
-                      .map((seat) => {
-                        const occupied = !!seat.entryId
-                        const isSel = occupied && seat.entryId === selectedEntryId
-                        return (
-                          <li key={seat.seatNumber}>
-                            <button
-                              type="button"
-                              onClick={() => canEdit && handleSeatClick(table, seat)}
-                              disabled={!canEdit || busy}
-                              className={
-                                'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left disabled:opacity-60 ' +
-                                (occupied
-                                  ? isSel
-                                    ? 'bg-gold-500/30 text-gold-100'
-                                    : 'bg-felt-900/60 text-white/90 hover:bg-white/10'
-                                  : selectedEntry
-                                    ? 'bg-emerald-500/10 text-emerald-200/90 hover:bg-emerald-500/20'
-                                    : 'bg-felt-900/40 text-white/30 hover:bg-white/5')
-                              }
-                            >
-                              <span className="text-[10px] font-mono text-white/40 w-4 shrink-0">{seat.seatNumber}</span>
-                              <span className="truncate flex-1">
-                                {occupied ? nameForEntry(entriesById[seat.entryId]) : selectedEntry ? 'seat here' : 'empty'}
-                              </span>
-                            </button>
-                          </li>
-                        )
-                      })}
-                  </ul>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 

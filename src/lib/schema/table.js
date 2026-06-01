@@ -31,6 +31,11 @@ export const Table = z
     openedAt: NullableTimestamp,
     closedAt: NullableTimestamp,
     status: Status,
+    // Active = the (open) table is being filled — random seating + balancing only
+    // ever touch active tables. A deactivated table is open (dealer ready) but
+    // skipped, so the TD can open ahead of need and fill it when ready.
+    // `.default(true)` keeps reads of docs created before this field valid.
+    active: z.boolean().default(true),
 
     // seats array length must equal seatCount (validated below)
     seats: z.array(Seat),
