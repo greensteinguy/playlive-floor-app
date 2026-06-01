@@ -27,7 +27,6 @@ import {
   seatableEntries,
   occupiedSeatCount,
   buildSeatList,
-  DEFAULT_SEAT_COUNT,
   SeatingError,
 } from '../../lib/tournaments'
 import { ValidationError, WriteTimeoutError } from '../../lib/firestore'
@@ -78,7 +77,6 @@ export default function Tables() {
   // session pick in the handler.
   const [tournamentId, setTournamentId] = useState(searchParams.get('tournamentId') ?? '')
   const [sessionId, setSessionId] = useState('')
-  const [seatCountStr, setSeatCountStr] = useState(String(DEFAULT_SEAT_COUNT))
   const [selectedEntryId, setSelectedEntryId] = useState(null)
   const [busy, setBusy] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
@@ -143,17 +141,12 @@ export default function Tables() {
   }
 
   async function handleDraw() {
-    const seatCount = parseInt(seatCountStr, 10)
-    if (!Number.isInteger(seatCount) || seatCount < 2) {
-      toast.error('Seats per table must be a whole number of 2 or more.')
-      return
-    }
     await run(async () => {
       const res = await drawSeats({
         tournament,
         sessionId: activeSessionId,
         entries,
-        seatCount,
+        seatCount: tournament.maxSeatsPerTable,
         actorId: user.uid,
         actorRole: role,
       })
@@ -316,19 +309,7 @@ export default function Tables() {
             }
           >
             {sessionTables.length === 0 ? (
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Seats per table</span>
-                  <input
-                    type="number"
-                    min={2}
-                    max={10}
-                    value={seatCountStr}
-                    onChange={(e) => setSeatCountStr(e.target.value)}
-                    disabled={!canEdit || busy}
-                    className="w-24 bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm disabled:opacity-50"
-                  />
-                </label>
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={handleDraw}
@@ -337,6 +318,7 @@ export default function Tables() {
                 >
                   {busy ? 'Drawing…' : `Draw seats (${pool.length})`}
                 </button>
+                <span className="text-xs text-white/40">{tournament.maxSeatsPerTable}-handed tables</span>
                 {pool.length === 0 && <span className="text-xs text-white/40">No seatable players in this session yet.</span>}
               </div>
             ) : (

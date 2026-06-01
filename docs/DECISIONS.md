@@ -6,6 +6,18 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 1 June 2026 — Table size is a per-tournament setting (`maxSeatsPerTable`, default 9)
+
+Guy's floor-UX feedback on the seating screens: **a table should always display the tournament's maximum number of seats** — a 9-handed event shows 9 seat positions even if only 3 are filled — rather than the seat count being an arbitrary per-draw number.
+
+**Decision: table size is a tournament-level field.** Added `maxSeatsPerTable: z.number().int().min(2).max(12).default(9)` to the `Tournament` schema. The **`.default(9)`** is load-bearing: docs created before this field (the seeded tournaments, any existing) still read as valid with `maxSeatsPerTable = 9`, so it's a backward-compatible additive change with no migration. It's set in the **create form** (General Information step, default 9, e.g. 8 / 9 / 10-handed) and carried through `createTournament`.
+
+**The seating page now draws at `tournament.maxSeatsPerTable`** — the per-draw "seats per table" input is gone (the table size belongs to the tournament, not the draw). The seat grid already rendered every seat in `table.seats` (length = `seatCount`), so empty seats already showed; the change just makes `seatCount` always the tournament's max. The draw control shows "N-handed tables" as info.
+
+**Verification:** `npm test` **579 pass** (+3: createTournament defaults to 9 / passes a custom value through; schema defaults-when-absent + bounds 2..12). Lint + build clean. Full emulator smoke-test: the pre-field "Thursday $80 Turbo" read as 9-handed (schema default), its draw produced a **9-seat table showing all 9 positions with 5 filled + 4 empty** (REST-confirmed `seatCount: 9`); the create form exposes "Max seats per table" defaulting to 9; zero console errors.
+
+**Decider:** Guy (tables show the tournament's max seats). The tournament-level field + the `.default(9)` backward-compat approach + dropping the per-draw input were Claude's implementation calls.
+
 ## 1 June 2026 — Table balancing (task 3.8): minimum-moves to ±1, preview-then-confirm, provisional UX
 
 Added live table balancing to the seating module + page. Decisions:

@@ -134,6 +134,10 @@ export const Tournament = z
     // Structure
     structureTemplateId: DocumentRef.nullable(),
     startingStack: ChipCount,
+    // Max seats per table — the tournament's table size / handed-ness (e.g. 9 for
+    // 9-handed NLH). Every table is created at this size and always shows all of
+    // its seats. `.default(9)` keeps reads of docs created before this field valid.
+    maxSeatsPerTable: z.number().int().min(2).max(12).default(9),
     structure: Structure,
 
     // Payout structure (embedded)

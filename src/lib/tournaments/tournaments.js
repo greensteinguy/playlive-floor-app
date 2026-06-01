@@ -109,6 +109,7 @@ export async function createTournament({
   houseConsumption = 0,
   structureTemplateId = null,
   startingStack,
+  maxSeatsPerTable = 9,
   structure,
   payoutStructure = null,
   scheduledStartTime,
@@ -173,6 +174,7 @@ export async function createTournament({
 
     structureTemplateId,
     startingStack,
+    maxSeatsPerTable,
     structure,
 
     payoutStructure: payoutStructure ?? DEFAULT_PAYOUT,

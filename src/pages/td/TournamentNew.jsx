@@ -49,6 +49,7 @@ function initialForm() {
     guarantee: '',
     houseConsumption: '',
     startingStack: '20000',
+    maxSeatsPerTable: '9',
     // Session plan — guided preset + the stages/flights routing model. isMultiDay
     // / isMultiFlight are DERIVED from this at create time, never stored here.
     sessionShape: 'singleDay',
@@ -149,6 +150,7 @@ export default function TournamentNew() {
       guarantee: centsToStr(c.guarantee),
       houseConsumption: centsToStr(c.houseConsumption),
       startingStack: String(c.startingStack),
+      maxSeatsPerTable: String(c.maxSeatsPerTable ?? 9),
       sessionShape,
       sessionStages: seedSessionStages(sessionShape),
       hasUpperDeckMainDeck: c.hasUpperDeckMainDeck,
@@ -224,6 +226,7 @@ export default function TournamentNew() {
       houseConsumption: dollarsToCents(form.houseConsumption),
       structureTemplateId: form.structureTemplateId === '' ? null : form.structureTemplateId,
       startingStack: intOf(form.startingStack),
+      maxSeatsPerTable: intOf(form.maxSeatsPerTable) || 9,
       structure: form.structure,
       payoutStructure: null,
       scheduledStartTime: localToDate(form.scheduledStartTime),
@@ -298,6 +301,7 @@ export default function TournamentNew() {
             <Text label="Short description" value={form.shortDescription} onChange={(v) => set({ shortDescription: v })} placeholder="Shown to players" disabled={d} />
             <Select label="Game type" value={form.gameType} onChange={(v) => set({ gameType: v })} options={GAME_TYPES} disabled={d} />
             <Num label="Starting stack (chips)" value={form.startingStack} onChange={(v) => set({ startingStack: v })} disabled={d} />
+            <Num label="Max seats per table" value={form.maxSeatsPerTable} onChange={(v) => set({ maxSeatsPerTable: v })} disabled={d} />
             <Money label="Buy-in" value={form.buyIn} onChange={(v) => set({ buyIn: v })} disabled={d} />
             <Money label="Hospitality / fee" value={form.hospitalityCost} onChange={(v) => set({ hospitalityCost: v })} disabled={d} />
             <Money label="Guarantee" value={form.guarantee} onChange={(v) => set({ guarantee: v })} disabled={d} />
