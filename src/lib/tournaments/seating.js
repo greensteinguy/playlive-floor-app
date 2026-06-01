@@ -19,6 +19,7 @@
 import {
   runValidatedTransaction,
   runValidatedBatch,
+  validatedSet,
   tables as tablesApi,
   generateId,
   auditLog,
@@ -168,6 +169,31 @@ export function planSeatDraw({ entries, seatCount = DEFAULT_SEAT_COUNT, tableNum
 /** Occupied seat count on a table. */
 export function occupiedSeatCount(table) {
   return table.seats.filter((s) => s.entryId !== null).length
+}
+
+/**
+ * The tables that can receive players: open AND active. Random seating and
+ * balancing only ever touch these — a deactivated table (active === false) is
+ * open/dealer-ready but skipped until the TD activates it. `active !== false`
+ * treats a missing flag as active (pre-field docs default to active).
+ */
+export function fillableTables(tables) {
+  return tables.filter((t) => t.status === 'open' && t.active !== false)
+}
+
+/**
+ * A uniformly random empty seat among the fillable (open + active) tables — the
+ * default placement for an auto-seated player (off the waitlist or a new entry),
+ * like drawing a seat card. Pure; rng injectable for tests. Returns
+ * { tableId, tableNumber, seatNumber } or null when no active table has room.
+ */
+export function randomEmptySeat(tables, rng = Math.random) {
+  const seats = fillableTables(tables).flatMap((t) =>
+    t.seats
+      .filter((s) => s.entryId === null)
+      .map((s) => ({ tableId: t.id, tableNumber: t.tableNumber, seatNumber: s.seatNumber }))
+  )
+  return seats.length === 0 ? null : seats[Math.floor(rng() * seats.length)]
 }
 
 /**
@@ -412,16 +438,14 @@ export async function unseatEntry({ tournament, entry, actorId, actorRole }) {
 
 // ── Balancing (task 3.8) ─────────────────────────────────────────────────────
 
-/** Occupied-seat counts of the OPEN tables, in display order. */
+/** Occupied-seat counts of the fillable (open + active) tables, in display order. */
 export function tableSizes(tables) {
-  return tables
-    .filter((t) => t.status === 'open')
-    .slice()
+  return fillableTables(tables)
     .sort((a, b) => a.tableNumber - b.tableNumber)
     .map((t) => ({ tableNumber: t.tableNumber, size: occupiedSeatCount(t), seatCount: t.seatCount }))
 }
 
-/** True when the OPEN tables are within ±1 of each other (or there are fewer than 2). */
+/** True when the fillable (open + active) tables are within ±1 (or there are fewer than 2). */
 export function isBalanced(tables) {
   const sizes = tableSizes(tables).map((s) => s.size)
   if (sizes.length < 2) return true
@@ -444,8 +468,7 @@ export function isBalanced(tables) {
  *                   toTableId:string, toTableNumber:number, toSeatNumber:number}>}
  */
 export function planBalance(tables) {
-  const state = tables
-    .filter((t) => t.status === 'open')
+  const state = fillableTables(tables)
     .map((t) => ({
       id: t.id,
       tableNumber: t.tableNumber,
@@ -556,7 +579,8 @@ export function planBreak(tables, tableId) {
   const movers = broken.seats
     .filter((s) => s.entryId !== null)
     .map((s) => ({ seatNumber: s.seatNumber, entryId: s.entryId }))
-  const dest = open
+  // Players from a closed table go to the OTHER active (fillable) tables.
+  const dest = fillableTables(tables)
     .filter((t) => t.id !== tableId)
     .map((t) => ({
       id: t.id,
@@ -604,13 +628,14 @@ export async function breakTable({ tournament, sessionId, tableId, actorId, acto
   requireActor(actorId)
   const sessionTables = await listSessionTables(tournament.id, sessionId)
   const open = sessionTables.filter((t) => t.status === 'open')
-  if (open.length < 2) throw new SeatingError('Need at least two open tables to break one.')
   if (!open.some((t) => t.id === tableId)) throw new SeatingError('That table is not open.')
 
   const timestamp = now()
   const result = await runValidatedTransaction(async (tx) => {
     const fresh = []
     for (const t of open) fresh.push(await tx.get(paths.tablePath(tournament.id, t.id), Table))
+    // planBreak returns [] for an empty table (always closeable) or null for an
+    // occupied one the active tables can't absorb.
     const moves = planBreak(fresh, tableId)
     if (moves === null) throw new CannotBreakTableError()
 
@@ -683,14 +708,13 @@ export function waitlist(entries, sessionId, seatedEntryIds) {
 }
 
 /**
- * The best open seat for the next alternate: the emptiest open table's lowest
- * empty seat (emptiest-first keeps the room balanced — and when a player busts,
- * the short table they left is the emptiest, so the alternate fills it). Pure.
- * Returns { tableId, tableNumber, seatNumber } or null when every open table is full.
+ * The emptiest active table's lowest empty seat. Random placement
+ * (`randomEmptySeat`) is the default for auto-seating; this deterministic variant
+ * stays for the "is there room?" check and as a Phase-4 hook (a bust frees the
+ * short table's seat). Pure. Returns the seat or null when no active table has room.
  */
 export function firstEmptySeat(tables) {
-  const candidate = tables
-    .filter((t) => t.status === 'open')
+  const candidate = fillableTables(tables)
     .map((t) => ({
       t,
       occupied: occupiedSeatCount(t),
@@ -702,22 +726,23 @@ export function firstEmptySeat(tables) {
 }
 
 /**
- * Seat the next waiting alternate (FIFO) into the best open seat — the manual
+ * Seat the next waiting alternate (FIFO) into a RANDOM active seat — the manual
  * version of "auto-assign on the next bust" (Phase 4 wires the bust to call this,
  * or `seatEntry` into the freed seat directly). Delegates the actual placement to
  * `seatEntry`, which is atomic and re-checks the seat is free inside its
- * transaction. Throws NoAlternatesError / NoOpenSeatError when there's nobody to
- * seat or nowhere to seat them.
+ * transaction. `rng` is injectable for tests. Throws NoAlternatesError /
+ * NoOpenSeatError when there's nobody to seat or no active table has room.
  *
  * @returns {Promise<{ entryId:string, tableNumber:number, seatNumber:number }>}
  */
-export async function seatNextAlternate({ tournament, sessionId, entries, tables, actorId, actorRole }) {
+export async function seatNextAlternate({ tournament, sessionId, entries, tables, actorId, actorRole, rng }) {
   requireActor(actorId)
   const openTables = tables.filter((t) => t.status === 'open')
   const seatedIds = new Set(openTables.flatMap((t) => t.seats.map((s) => s.entryId).filter(Boolean)))
   const queue = waitlist(entries, sessionId, seatedIds)
   if (queue.length === 0) throw new NoAlternatesError()
-  const seat = firstEmptySeat(openTables)
+  // Random seat among the active tables (like drawing a seat card), not deterministic.
+  const seat = randomEmptySeat(openTables, rng)
   if (!seat) throw new NoOpenSeatError()
 
   const res = await seatEntry({
@@ -729,4 +754,78 @@ export async function seatNextAlternate({ tournament, sessionId, entries, tables
     actorRole,
   })
   return { entryId: queue[0].id, ...res }
+}
+
+// ── Table lifecycle: open / activate (task: open-close-activate-deactivate) ───
+
+/**
+ * Open a new table for a session — a dealer is ready. Starts **deactivated** by
+ * default (open but not yet filled; the TD activates it when ready) and takes the
+ * next table number after the session's existing tables. Seat count defaults to
+ * the tournament's `maxSeatsPerTable`.
+ *
+ * @returns {Promise<{ tableId: string, tableNumber: number }>}
+ */
+export async function openTable({ tournament, sessionId, seatCount, active = false, actorId, actorRole }) {
+  requireActor(actorId)
+  const seats = seatCount ?? tournament.maxSeatsPerTable ?? DEFAULT_SEAT_COUNT
+  const existing = await listSessionTables(tournament.id, sessionId)
+  const tableNumber = existing.reduce((max, t) => Math.max(max, t.tableNumber), 0) + 1
+  const id = generateId()
+  const timestamp = now()
+
+  await validatedSet(paths.tablePath(tournament.id, id), Table, {
+    id,
+    tournamentId: tournament.id,
+    sessionId,
+    tableNumber,
+    seatCount: seats,
+    openedAt: null,
+    closedAt: null,
+    status: 'open',
+    active,
+    seats: Array.from({ length: seats }, (_, i) => ({ seatNumber: i + 1, entryId: null })),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  })
+
+  await auditLog.writeAuditLogSafe({
+    actorId,
+    actorRole,
+    actionType: 'seating.tableOpened',
+    targetType: 'tournament',
+    targetId: tournament.id,
+    timestamp,
+    metadata: { sessionId, tableId: id, tableNumber, active },
+  })
+  return { tableId: id, tableNumber }
+}
+
+/**
+ * Activate or deactivate an open table (RMW). Deactivating leaves any seated
+ * players where they are — it only stops the table being a seating / balancing
+ * target until it's re-activated.
+ *
+ * @returns {Promise<{ active: boolean }>}
+ */
+export async function setTableActive({ tournament, tableId, active, actorId, actorRole }) {
+  requireActor(actorId)
+  const timestamp = now()
+
+  await runValidatedTransaction(async (tx) => {
+    const table = await tx.get(paths.tablePath(tournament.id, tableId), Table)
+    if (table.status !== 'open') throw new SeatingError('Only an open table can be activated or deactivated.')
+    tx.set(paths.tablePath(tournament.id, tableId), Table, { ...table, active, updatedAt: timestamp })
+  })
+
+  await auditLog.writeAuditLogSafe({
+    actorId,
+    actorRole,
+    actionType: 'seating.tableActivated',
+    targetType: 'tournament',
+    targetId: tournament.id,
+    timestamp,
+    metadata: { tableId, active },
+  })
+  return { active }
 }

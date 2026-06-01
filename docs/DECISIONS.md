@@ -6,6 +6,24 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 1 June 2026 — Random seating + table lifecycle (open/close, activate/deactivate)
+
+Guy's floor feedback on the seating screens, two linked changes:
+
+**1. Auto-placement is random; manual is the exception.** "Most of the time we want all assignment to be random." `randomEmptySeat(tables, rng)` (pure) picks a **uniformly random** empty seat among the active tables — like drawing a seat card. `seatNextAlternate` now uses it (was the deterministic emptiest-seat). Clicking a specific seat still works for the "move someone to a certain table/seat" case. The initial `drawSeats` was already random (shuffle).
+
+**2. Tables have an `active` flag, separate from open/closed.** Per Guy: "We open a table because a dealer is ready... but we don't want to start filling it yet... so we leave it deactivated. Then... we activate the other table and add players until balanced." So:
+- `active: z.boolean().default(true)` on the `Table` schema (`.default(true)` → backward-compatible; pre-field docs read as active). **Fillable = open AND active** (`fillableTables`).
+- **Random seating + balancing only ever touch fillable tables.** A deactivated table is shown in the grid (dimmed, "deactivated" badge) but skipped — its empty seats aren't a placement target (you *can* still pick a seated player up to move them off).
+- **`openTable`** adds a table that **starts deactivated** (matches "leave it deactivated") with the next table number + the tournament's seat count. **`setTableActive`** toggles active. New audit types `seating.tableOpened` / `seating.tableActivated`.
+- **"Close" generalises the old "Break"** (renamed in the UI): an occupied table redistributes its players to the other **active** tables then closes (`status: 'broken'` + `closedAt`); an empty table closes anytime (the old "≥2 open tables" guard was removed — `planBreak` returns `[]` for an empty table, `null` only when an occupied one can't be absorbed). Table numbers are never reused (a closed table keeps its number; the next opened table is max+1).
+
+**Defaults flagged for the floor walkthrough:** open → deactivated; random is *pure* across active tables (balance is managed by which tables you activate + the Balance button, not by biasing the random draw); deactivated empty seats are non-placeable.
+
+**Verification:** `npm test` **602 pass** (+10 in `seating.test.js`: `fillableTables`/`randomEmptySeat` active-only; `planBalance`/`firstEmptySeat` skip deactivated; `openTable` deactivated-by-default + next-number + seat-count + active variant; `setTableActive` toggle + refuse-on-closed; reworked the seat-next test for random + the break test for the empty-table close). Lint + build clean. Full emulator smoke-test: opened two tables (both `active: false`, REST-confirmed) → "Seat next" disabled; activated Table 1 → seating 3 alternates landed **only on Table 1** at random seats **[1, 2, 4]** (not 1/2/3), Table 2 stayed empty; activated Table 2 + Balance moved a player in → [2,1]; closing Table 2 moved its player back to Table 1 and closed it (status broken). Zero console errors.
+
+**Decider:** Guy (random-by-default; open/close + activate/deactivate, with the dealer-ready/leave-deactivated workflow). The `active`-flag model, the open→deactivated default, the pure-random choice, and the Break→Close generalisation were Claude's implementation calls — flagged with the rest of the provisional seating UX for the floor-staff walkthrough Guy wants (the "2.8-style" review of the seating screens; this UI is functional-first and expected to change).
+
 ## 1 June 2026 — Alternates / waitlist (task 3.10): the unseated pool IS the FIFO waitlist
 
 Built the alternates/waitlist on the seating module. Decisions:

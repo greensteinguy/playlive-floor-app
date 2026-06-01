@@ -9,6 +9,7 @@ let nextId
 vi.mock('../firestore', () => ({
   runValidatedTransaction: vi.fn(),
   runValidatedBatch: vi.fn(),
+  validatedSet: vi.fn(),
   tables: { listTables: vi.fn() },
   generateId: vi.fn(() => nextId()),
   auditLog: { writeAuditLogSafe: vi.fn().mockResolvedValue(undefined) },
@@ -22,7 +23,7 @@ vi.mock('../players', () => ({
   playerDisplayName: (p) => p.displayName ?? `${p.firstName} ${p.lastName}`.trim(),
 }))
 
-import { runValidatedTransaction, runValidatedBatch, tables as tablesApi, auditLog } from '../firestore'
+import { runValidatedTransaction, runValidatedBatch, validatedSet, tables as tablesApi, auditLog } from '../firestore'
 import {
   isSeatable,
   seatableEntries,
@@ -39,6 +40,8 @@ import {
   balanceTables,
   breakTable,
   seatNextAlternate,
+  openTable,
+  setTableActive,
   tableSizes,
   isBalanced,
   planBalance,
@@ -46,6 +49,8 @@ import {
   canBreakTable,
   waitlist,
   firstEmptySeat,
+  randomEmptySeat,
+  fillableTables,
   DEFAULT_SEAT_COUNT,
   SeatingError,
   TablesExistError,
@@ -632,11 +637,24 @@ describe('breaking (task 3.9)', () => {
       )
     })
 
-    it('refuses to break with fewer than two open tables', async () => {
-      tablesApi.listTables.mockResolvedValue([tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2] })])
+    it('refuses to close an occupied table with nowhere to move the players', async () => {
+      const tA = tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2] })
+      tablesApi.listTables.mockResolvedValue([tA])
+      mockState.seed(tablePath('t1', 'tA'), tA)
       await expect(
         breakTable({ tournament, sessionId: 'session-1', tableId: 'tA', actorId: 'td-1', actorRole: 'td' })
-      ).rejects.toBeInstanceOf(SeatingError)
+      ).rejects.toBeInstanceOf(CannotBreakTableError)
+    })
+
+    it('closes an empty table even if it is the only one', async () => {
+      const tA = tableWith({ id: 'tA', tableNumber: 1, occupied: [] })
+      tablesApi.listTables.mockResolvedValue([tA])
+      mockState.seed(tablePath('t1', 'tA'), tA)
+      const res = await breakTable({ tournament, sessionId: 'session-1', tableId: 'tA', actorId: 'td-1', actorRole: 'td' })
+      expect(res.moves).toEqual([])
+      const setA = mockState.calls.set.find((c) => c.path[3] === 'tA')
+      expect(setA.data.status).toBe('broken')
+      expect(setA.data.closedAt).not.toBeNull()
     })
 
     it('refuses (CannotBreakTableError) when the others cannot absorb the players', async () => {
@@ -722,10 +740,10 @@ describe('alternates (task 3.10)', () => {
       auditLog.writeAuditLogSafe.mockClear()
     })
 
-    it('seats the head-of-queue alternate into the emptiest seat (atomic via seatEntry)', async () => {
+    it('seats the head-of-queue alternate into a random active seat (atomic via seatEntry)', async () => {
       const tA = tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3, 4, 5] })
       const tB = tableWith({ id: 'tB', tableNumber: 2, occupied: [1, 2] })
-      mockState.seed(tablePath('t1', 'tB'), tB)
+      mockState.seed(tablePath('t1', 'tA'), tA) // rng=0 → the first empty seat among the fillable tables (tA seat 6)
       const entries = [altEntry('early', 100), altEntry('late', 200)]
 
       const res = await seatNextAlternate({
@@ -735,13 +753,14 @@ describe('alternates (task 3.10)', () => {
         tables: [tA, tB],
         actorId: 'td-1',
         actorRole: 'td',
+        rng: () => 0,
       })
 
-      expect(res).toMatchObject({ entryId: 'early', tableNumber: 2, seatNumber: 3 })
-      const setB = mockState.calls.set.find((c) => c.path[3] === 'tB')
-      expect(setB.data.seats.find((s) => s.seatNumber === 3).entryId).toBe('early')
+      expect(res.entryId).toBe('early')
+      const setA = mockState.calls.set.find((c) => c.path[3] === 'tA')
+      expect(setA.data.seats.find((s) => s.seatNumber === 6).entryId).toBe('early')
       const eUpd = mockState.calls.update.find((c) => c.path[3] === 'early')
-      expect(eUpd.partial).toMatchObject({ currentTableId: 'tB', currentSeatNumber: 3 })
+      expect(eUpd.partial).toMatchObject({ currentTableId: 'tA', currentSeatNumber: 6 })
     })
 
     it('throws NoAlternatesError when nobody is waiting', async () => {
@@ -763,6 +782,135 @@ describe('alternates (task 3.10)', () => {
           actorRole: 'td',
         })
       ).rejects.toBeInstanceOf(NoOpenSeatError)
+    })
+  })
+})
+
+describe('table lifecycle + random seating', () => {
+  const tableWith = ({ id, tableNumber, seatCount = 9, occupied = [], status = 'open', active = true }) => ({
+    id,
+    tournamentId: 't1',
+    sessionId: 'session-1',
+    tableNumber,
+    seatCount,
+    status,
+    active,
+    openedAt: null,
+    closedAt: null,
+    seats: Array.from({ length: seatCount }, (_, i) => ({
+      seatNumber: i + 1,
+      entryId: occupied.includes(i + 1) ? `e${tableNumber}-${i + 1}` : null,
+    })),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  })
+
+  describe('fillableTables / randomEmptySeat (active only)', () => {
+    it('fillableTables = open AND active (a missing flag counts as active)', () => {
+      const t = [
+        tableWith({ id: 'a', tableNumber: 1 }),
+        tableWith({ id: 'b', tableNumber: 2, active: false }),
+        tableWith({ id: 'c', tableNumber: 3, status: 'broken' }),
+        { ...tableWith({ id: 'd', tableNumber: 4 }), active: undefined },
+      ]
+      expect(fillableTables(t).map((x) => x.id).sort()).toEqual(['a', 'd'])
+    })
+    it('randomEmptySeat only picks from active tables', () => {
+      const seat = randomEmptySeat(
+        [
+          tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3, 4, 5, 6, 7, 8, 9] }),
+          tableWith({ id: 'b', tableNumber: 2, active: false, occupied: [] }),
+          tableWith({ id: 'c', tableNumber: 3, occupied: [1, 2] }),
+        ],
+        () => 0
+      )
+      expect(seat.tableId).toBe('c')
+    })
+    it('randomEmptySeat returns null when no active table has room', () => {
+      expect(randomEmptySeat([tableWith({ id: 'b', tableNumber: 1, active: false })], () => 0)).toBeNull()
+    })
+  })
+
+  describe('planBalance / firstEmptySeat skip deactivated tables', () => {
+    it('planBalance never moves a player onto a deactivated table', () => {
+      const moves = planBalance([
+        tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3, 4, 5] }),
+        tableWith({ id: 'b', tableNumber: 2, occupied: [1] }),
+        tableWith({ id: 'c', tableNumber: 3, active: false, occupied: [] }),
+      ])
+      expect(moves.every((m) => m.toTableId !== 'c')).toBe(true)
+    })
+    it('firstEmptySeat ignores deactivated tables', () => {
+      const seat = firstEmptySeat([
+        tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3] }),
+        tableWith({ id: 'b', tableNumber: 2, active: false, occupied: [] }),
+      ])
+      expect(seat.tableId).toBe('a')
+    })
+  })
+
+  describe('openTable op', () => {
+    beforeEach(() => {
+      mockState = makeMockStore()
+      let counter = 0
+      nextId = () => `new-${++counter}`
+      runValidatedTransaction.mockImplementation(async (fn) => fn(mockState.tx))
+      tablesApi.listTables.mockResolvedValue([])
+      auditLog.writeAuditLogSafe.mockClear()
+      validatedSet.mockClear()
+    })
+
+    it('opens a DEACTIVATED table with the next number and the tournament seat count', async () => {
+      tablesApi.listTables.mockResolvedValue([tableWith({ id: 'x', tableNumber: 2 })])
+      const res = await openTable({
+        tournament: { id: 't1', maxSeatsPerTable: 8 },
+        sessionId: 'session-1',
+        actorId: 'td-1',
+        actorRole: 'td',
+      })
+      expect(res.tableNumber).toBe(3)
+      const [path, , data] = validatedSet.mock.calls[0]
+      expect(path).toEqual(['tournaments', 't1', 'tables', 'new-1'])
+      expect(data).toMatchObject({ tableNumber: 3, seatCount: 8, status: 'open', active: false })
+      expect(data.seats).toHaveLength(8)
+      expect(data.seats.every((s) => s.entryId === null)).toBe(true)
+      expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(expect.objectContaining({ actionType: 'seating.tableOpened' }))
+    })
+
+    it('can open an active table', async () => {
+      const res = await openTable({
+        tournament: { id: 't1', maxSeatsPerTable: 9 },
+        sessionId: 'session-1',
+        active: true,
+        actorId: 'td-1',
+        actorRole: 'td',
+      })
+      expect(res.tableNumber).toBe(1)
+      expect(validatedSet.mock.calls[0][2].active).toBe(true)
+    })
+  })
+
+  describe('setTableActive op', () => {
+    beforeEach(() => {
+      mockState = makeMockStore()
+      runValidatedTransaction.mockImplementation(async (fn) => fn(mockState.tx))
+      auditLog.writeAuditLogSafe.mockClear()
+    })
+
+    it('toggles active on an open table', async () => {
+      mockState.seed(tablePath('t1', 'tA'), tableWith({ id: 'tA', tableNumber: 1, active: false }))
+      const res = await setTableActive({ tournament, tableId: 'tA', active: true, actorId: 'td-1', actorRole: 'td' })
+      expect(res.active).toBe(true)
+      const setA = mockState.calls.set.find((c) => c.path[3] === 'tA')
+      expect(setA.data.active).toBe(true)
+      expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(expect.objectContaining({ actionType: 'seating.tableActivated' }))
+    })
+
+    it('refuses on a broken (closed) table', async () => {
+      mockState.seed(tablePath('t1', 'tA'), tableWith({ id: 'tA', tableNumber: 1, status: 'broken' }))
+      await expect(
+        setTableActive({ tournament, tableId: 'tA', active: true, actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(SeatingError)
     })
   })
 })
