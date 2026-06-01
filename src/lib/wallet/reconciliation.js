@@ -4,7 +4,7 @@
 //   - the operator-facing report on total wallet liability
 
 import { walletTransactions, players } from '../firestore'
-import { balanceDelta } from './_shared'
+import { walletTxDelta } from './_shared'
 
 /**
  * Aggregate walletTransactions across all players for a time window. Returns
@@ -125,11 +125,7 @@ export async function verifyBalanceMatchesLedger(playerId) {
 
   let derived = 0
   for (const tx of txs) {
-    if (tx.type === 'adjustment') {
-      derived += tx.direction === 'credit' ? tx.amount : -tx.amount
-    } else {
-      derived += balanceDelta({ type: tx.type, amount: tx.amount, method: tx.method })
-    }
+    derived += walletTxDelta(tx)
   }
 
   return {

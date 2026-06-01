@@ -25,15 +25,21 @@ import PlayerProfileFields from '../../components/PlayerProfileFields'
 import { usePlayerActivity } from '../../hooks/usePlayerActivity'
 import { useWalletTransactions } from '../../hooks/useWalletTransactions'
 import { summarizeEntries, entryWinnings, entryResultLabel, entryTypeLabel } from '../../lib/entryDisplay'
+import { downloadCsv, csvFilename } from '../../lib/csv'
+import {
+  buildLedger,
+  ledgerTypeLabel,
+  ledgerMethodLabel,
+  ledgerAmountTone,
+  ledgerFilterMatch,
+  LEDGER_FILTERS,
+} from '../../lib/walletLedger'
 
 const TABS = [
   { id: 'profile', label: 'Profile' },
   { id: 'activity', label: 'Activity' },
   { id: 'wallet', label: 'Wallet & tickets' },
 ]
-
-const DEPOSIT_METHOD_LABELS = { cash: 'Cash', eftpos: 'EFTPOS', payid: 'PayID' }
-const depositMethodLabel = (m) => DEPOSIT_METHOD_LABELS[m] ?? m ?? '—'
 
 function fmtDate(ts) {
   if (!ts) return '—'
@@ -308,9 +314,64 @@ function ActivityTab({ playerId }) {
   )
 }
 
+const LEDGER_CSV_COLUMNS = [
+  { key: 'date', label: 'Date' }, // Firestore Timestamp → ISO via the CSV default formatter
+  { key: 'type', label: 'Type' },
+  { key: 'method', label: 'Method' },
+  { key: 'reference', label: 'Reference' },
+  { key: 'amount', label: 'Amount' },
+  { key: 'balance', label: 'Balance' },
+]
+
+function LedgerAmount({ delta, amount }) {
+  const tone = ledgerAmountTone(delta)
+  if (tone === 'credit') return <span className="text-emerald-300">+{formatMoney(amount)}</span>
+  if (tone === 'debit') return <span className="text-rose-300">−{formatMoney(amount)}</span>
+  // No wallet-balance effect (cash buy-in, ticket use, withdrawal request/cancel).
+  return <span className="text-white/40">{formatMoney(amount)}</span>
+}
+
 function WalletTab({ player, canRegister }) {
+  const toast = useToast()
   const { transactions, loading, error, mockMode } = useWalletTransactions(player.id)
-  const deposits = useMemo(() => transactions.filter((t) => t.type === 'deposit'), [transactions])
+  const [filter, setFilter] = useState('all')
+
+  // Running balance is computed over the FULL history (anchored to the cached
+  // wallet balance), then we filter which rows show — so every visible row keeps
+  // its true running balance even when a filter hides its neighbours.
+  const allRows = useMemo(
+    () => buildLedger(transactions, player.walletBalance),
+    [transactions, player.walletBalance]
+  )
+  const activeFilter = LEDGER_FILTERS.find((f) => f.id === filter) ?? LEDGER_FILTERS[0]
+  const visible = useMemo(
+    () => allRows.filter((r) => ledgerFilterMatch(activeFilter, r.tx.type)),
+    [allRows, activeFilter]
+  )
+  const counts = useMemo(() => {
+    const c = {}
+    for (const f of LEDGER_FILTERS) {
+      c[f.id] = allRows.filter((r) => ledgerFilterMatch(f, r.tx.type)).length
+    }
+    return c
+  }, [allRows])
+
+  function handleExport() {
+    if (visible.length === 0) {
+      toast.info('Nothing to export — no transactions in this view.')
+      return
+    }
+    const rows = visible.map(({ tx, delta, balanceAfter }) => ({
+      date: tx.timestamp,
+      type: ledgerTypeLabel(tx),
+      method: ledgerMethodLabel(tx),
+      reference: tx.reference || tx.notes || '',
+      amount: (delta < 0 ? '-' : delta > 0 ? '+' : '') + formatMoney(tx.amount),
+      balance: formatMoney(balanceAfter),
+    }))
+    downloadCsv(rows, LEDGER_CSV_COLUMNS, csvFilename('wallet-ledger'))
+    toast.success(`Exported ${rows.length} transaction${rows.length === 1 ? '' : 's'} to CSV.`)
+  }
 
   return (
     <>
@@ -320,12 +381,12 @@ function WalletTab({ player, canRegister }) {
         <BalanceCard label="Total deposited" value={formatMoney(player.totalDeposited)} />
       </div>
 
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Deposits</h3>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Transaction ledger</h3>
         {canRegister && (
           <Link
             to={`/desk/deposit?playerId=${player.id}`}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35 whitespace-nowrap"
           >
             + Record a deposit
           </Link>
@@ -335,52 +396,93 @@ function WalletTab({ player, canRegister }) {
       {mockMode ? (
         <EmptyState
           title="Mock mode — no wallet activity available."
-          body="Record a deposit against the emulator to see it here."
+          body="Record a deposit or register this player against the emulator to see the ledger."
         />
       ) : error ? (
         <EmptyState title="Couldn't load wallet activity." body={error.message} tone="error" />
       ) : loading ? (
         <div className="py-8 text-center text-white/40 text-sm">Loading…</div>
-      ) : deposits.length === 0 ? (
+      ) : allRows.length === 0 ? (
         <EmptyState
-          title="No deposits yet."
+          title="No wallet activity yet."
           body={
             canRegister
-              ? 'Use “+ Record a deposit” to add cash, EFTPOS, or PayID to this wallet.'
-              : 'Deposits to this wallet will appear here.'
+              ? 'Deposits, buy-ins, winnings, and withdrawals will appear here as they happen.'
+              : 'Wallet transactions for this player will appear here.'
           }
         />
       ) : (
-        <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
-              <tr>
-                <th className="text-left px-4 py-2 whitespace-nowrap">Date</th>
-                <th className="text-left px-4 py-2">Method</th>
-                <th className="text-left px-4 py-2">Reference</th>
-                <th className="text-right px-4 py-2 whitespace-nowrap">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deposits.map((t) => (
-                <tr key={t.id} className="border-t border-white/5">
-                  <td className="px-4 py-2.5 text-white/50 whitespace-nowrap">{fmtDateTime(t.timestamp)}</td>
-                  <td className="px-4 py-2.5 text-white/80">{depositMethodLabel(t.method)}</td>
-                  <td className="px-4 py-2.5 text-white/50 break-all">{t.reference || '—'}</td>
-                  <td className="px-4 py-2.5 text-right text-emerald-300 tabular-nums whitespace-nowrap">
-                    {formatMoney(t.amount)}
-                  </td>
-                </tr>
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {LEDGER_FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setFilter(f.id)}
+                  className={
+                    'px-3 py-1.5 rounded-full text-xs font-medium ' +
+                    (filter === f.id
+                      ? 'bg-gold-500/20 text-gold-300'
+                      : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80')
+                  }
+                >
+                  {f.label}
+                  <span className="ml-1.5 text-white/30">{counts[f.id]}</span>
+                </button>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </div>
+            <button
+              type="button"
+              onClick={handleExport}
+              className="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-white/70 hover:bg-white/10 active:bg-white/15"
+            >
+              Export CSV
+            </button>
+          </div>
 
-      <p className="text-xs text-white/30 mt-4">
-        The full per-player ledger (every spend, win credit, withdrawal) arrives with task 3.11; the
-        withdrawal queue is Phase 4.
-      </p>
+          {visible.length === 0 ? (
+            <EmptyState title="No transactions match this filter." body="Try a different filter above." />
+          ) : (
+            <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+                  <tr>
+                    <th className="text-left px-4 py-2 whitespace-nowrap">Date</th>
+                    <th className="text-left px-4 py-2">Type</th>
+                    <th className="text-left px-4 py-2">Method</th>
+                    <th className="text-left px-4 py-2">Reference</th>
+                    <th className="text-right px-4 py-2 whitespace-nowrap">Amount</th>
+                    <th className="text-right px-4 py-2 whitespace-nowrap">Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map(({ tx, delta, balanceAfter }) => (
+                    <tr key={tx.id} className="border-t border-white/5">
+                      <td className="px-4 py-2.5 text-white/50 whitespace-nowrap">{fmtDateTime(tx.timestamp)}</td>
+                      <td className="px-4 py-2.5 text-white/80 whitespace-nowrap">{ledgerTypeLabel(tx)}</td>
+                      <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">{ledgerMethodLabel(tx)}</td>
+                      <td className="px-4 py-2.5 text-white/40 break-all">{tx.reference || tx.notes || '—'}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
+                        <LedgerAmount delta={delta} amount={tx.amount} />
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-white/70 tabular-nums whitespace-nowrap">
+                        {formatMoney(balanceAfter)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="text-xs text-white/30 mt-4">
+            Running <span className="text-white/50">Balance</span> is the wallet balance after each
+            transaction; rows with no wallet effect (a cash buy-in, a ticket used, a withdrawal
+            request) leave it unchanged. The withdrawal queue is Phase 4.
+          </p>
+        </>
+      )}
     </>
   )
 }

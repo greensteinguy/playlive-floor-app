@@ -79,6 +79,26 @@ export function balanceDelta({ type, amount, method }) {
 }
 
 /**
+ * Signed wallet-balance effect of a FULL transaction row, in cents.
+ * Unlike `balanceDelta`, this handles `adjustment` (which carries its sign in
+ * `direction`, not in `type`) by reading the row's `direction` field, and
+ * delegates every other type to `balanceDelta`.
+ *
+ * This is the single source of truth for "what did this ledger row do to the
+ * wallet balance" — used by both reconciliation (verifyBalanceMatchesLedger)
+ * and the per-player ledger view (task 3.11), so the two can never drift.
+ *
+ * @param {{ type: string, amount: number, method: string|null, direction: string|null }} tx
+ * @returns {number} positive = credit, negative = debit, 0 = no wallet effect
+ */
+export function walletTxDelta(tx) {
+  if (tx.type === 'adjustment') {
+    return tx.direction === 'credit' ? tx.amount : -tx.amount
+  }
+  return balanceDelta({ type: tx.type, amount: tx.amount, method: tx.method })
+}
+
+/**
  * Effect on the running ticketBalance. Positive when a ticket is issued,
  * negative when used. Other types have no effect.
  *
