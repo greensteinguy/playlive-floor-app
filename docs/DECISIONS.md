@@ -6,6 +6,22 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 1 June 2026 — Table balancing (task 3.8): minimum-moves to ±1, preview-then-confirm, provisional UX
+
+Added live table balancing to the seating module + page. Decisions:
+
+**1. Balancing moves the *minimum* number of players to reach ±1, not a full reshuffle.** `planBalance(tables)` (pure) greedily moves a player off the fullest open table into the emptiest, repeating until `max-min ≤ 1` — which lands on the even-distribution shape but with the fewest moves (least disruption to seated players). Pure + injectable into the op.
+
+**2. Player-selection rule (v1) = highest-seat-on-fullest → lowest-empty-on-emptiest. NOT position-aware — explicitly flagged for the floor-staff walkthrough.** Real rooms usually move "the next big blind" (so a player doesn't pay blinds twice / lands in an equivalent seat), but we don't track the button. The deterministic highest-seat rule is a defensible v1 default; the TD reviews the proposed moves before committing and can hand-adjust with a manual move (3.7). The exact rule is a prime candidate to change after the floor UX review Guy flagged (a "2.8-style" walkthrough for the seating/floor screens).
+
+**3. `balanceTables` re-plans INSIDE its transaction from fresh reads.** The page computes `planBalance` client-side for the preview, but the op re-reads every open table in the transaction and re-plans from that consistent snapshot before writing — so a concurrent bust/move can't make the applied moves stale. It writes every touched table (whole-doc validated) + repoints every moved entry, atomically (canonical §6.1). An already-balanced call returns `{moves: []}` with no write and no audit (the UI gates the button on the client-side plan anyway).
+
+**4. The UI is preview-then-confirm (human-in-the-loop), kept deliberately light.** A "Balance" panel shows the per-table sizes and, when imbalanced, a "Balance tables (N moves)" button that expands a move list (player · from → to) before a Confirm. Given the floor UX is expected to change, this is functional-first — clear preview, no over-styling.
+
+**Verification:** `npm test` **576 pass** (+8 in `seating.test.js`: `isBalanced`/`tableSizes`, `planBalance` no-op/two-move/three-table-to-±1-without-losing-a-player, `balanceTables` atomic-apply / already-balanced-no-op / single-table-no-op). Lint + build clean. Full emulator smoke-test: from a balanced [3,2] draw, a manual move created [4,1] → the Balance panel flipped to "Balance tables (1 move)" → the preview read "Charlie Davis — Table 1 seat 4 → Table 2 seat 1" (the highest-seat→lowest-empty rule) → Confirm restored [3,2], REST-verified (occupancy, total still 5, the entry repointed atomically); zero console errors.
+
+**Decider:** Action Plan spec (keep 9-handed tables ±1). The minimum-moves algorithm, the highest-seat selection rule (flagged), the re-plan-in-transaction safety, and the preview-then-confirm UX were Claude's implementation calls. **Guy flagged that the seating/floor screens will get a floor-staff UX walkthrough (like the 2.8 Phase-2 sign-off), so this UI is functional-first and expected to change.**
+
 ## 1 June 2026 — Seat assignment (task 3.7): even-distribution random draw, separate draw/clear, standalone page
 
 Built seating's first task — random seat draw, manual override, seat list — as a domain module (`src/lib/tournaments/seating.js`) + the `/td/tables` page. Several implementation calls, all reversible:

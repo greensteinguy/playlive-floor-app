@@ -36,6 +36,10 @@ import {
   clearSeating,
   seatEntry,
   unseatEntry,
+  balanceTables,
+  tableSizes,
+  isBalanced,
+  planBalance,
   DEFAULT_SEAT_COUNT,
   TablesExistError,
   NoSeatableEntriesError,
@@ -370,6 +374,155 @@ describe('seating ops', () => {
       const cleared = mockState.calls.update.filter((c) => c.path[2] === 'entries')
       expect(cleared.map((c) => c.path[3]).sort()).toEqual(['e1', 'e2'])
       expect(cleared.every((c) => c.partial.currentTableId === null)).toBe(true)
+    })
+  })
+})
+
+describe('balancing (task 3.8)', () => {
+  const tableWith = ({ id, tableNumber, seatCount = 9, occupied = [] }) => ({
+    id,
+    tournamentId: 't1',
+    sessionId: 'session-1',
+    tableNumber,
+    seatCount,
+    status: 'open',
+    openedAt: null,
+    closedAt: null,
+    seats: Array.from({ length: seatCount }, (_, i) => {
+      const seatNumber = i + 1
+      return { seatNumber, entryId: occupied.includes(seatNumber) ? `e${tableNumber}-${seatNumber}` : null }
+    }),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  })
+  // Replay moves onto a {tableNumber: size} map to assert the resulting spread.
+  const applySizes = (sizes, moves) => {
+    const out = { ...sizes }
+    for (const m of moves) {
+      out[m.fromTableNumber]--
+      out[m.toTableNumber]++
+    }
+    return out
+  }
+
+  describe('isBalanced / tableSizes', () => {
+    it('is balanced within ±1 or with fewer than two tables', () => {
+      expect(isBalanced([])).toBe(true)
+      expect(isBalanced([tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3] })])).toBe(true)
+      expect(
+        isBalanced([
+          tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3] }),
+          tableWith({ id: 'b', tableNumber: 2, occupied: [1, 2] }),
+        ])
+      ).toBe(true)
+      expect(
+        isBalanced([
+          tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3, 4, 5] }),
+          tableWith({ id: 'b', tableNumber: 2, occupied: [1] }),
+        ])
+      ).toBe(false)
+    })
+
+    it('reports occupied sizes in table order', () => {
+      const sizes = tableSizes([
+        tableWith({ id: 'b', tableNumber: 2, occupied: [1, 2] }),
+        tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3] }),
+      ])
+      expect(sizes.map((s) => [s.tableNumber, s.size])).toEqual([
+        [1, 3],
+        [2, 2],
+      ])
+    })
+  })
+
+  describe('planBalance', () => {
+    it('returns no moves when already within ±1', () => {
+      expect(
+        planBalance([
+          tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3] }),
+          tableWith({ id: 'b', tableNumber: 2, occupied: [1, 2] }),
+        ])
+      ).toEqual([])
+    })
+
+    it('balances [5,1] in two moves, highest seat → lowest empty', () => {
+      const moves = planBalance([
+        tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3, 4, 5] }),
+        tableWith({ id: 'b', tableNumber: 2, occupied: [1] }),
+      ])
+      expect(moves).toHaveLength(2)
+      expect(moves[0]).toMatchObject({
+        fromTableNumber: 1,
+        fromSeatNumber: 5,
+        toTableNumber: 2,
+        toSeatNumber: 2,
+        entryId: 'e1-5',
+      })
+      const final = applySizes({ 1: 5, 2: 1 }, moves)
+      expect(Math.max(final[1], final[2]) - Math.min(final[1], final[2])).toBeLessThanOrEqual(1)
+    })
+
+    it('balances three uneven tables to ±1 without losing a player', () => {
+      const moves = planBalance([
+        tableWith({ id: 'a', tableNumber: 1, occupied: [1, 2, 3, 4, 5, 6] }),
+        tableWith({ id: 'b', tableNumber: 2, occupied: [1, 2] }),
+        tableWith({ id: 'c', tableNumber: 3, occupied: [1] }),
+      ])
+      const final = applySizes({ 1: 6, 2: 2, 3: 1 }, moves)
+      const arr = [final[1], final[2], final[3]]
+      expect(Math.max(...arr) - Math.min(...arr)).toBeLessThanOrEqual(1)
+      expect(arr.reduce((a, b) => a + b, 0)).toBe(9)
+    })
+  })
+
+  describe('balanceTables op', () => {
+    beforeEach(() => {
+      mockState = makeMockStore()
+      let counter = 0
+      nextId = () => `table-${++counter}`
+      runValidatedTransaction.mockImplementation(async (fn) => fn(mockState.tx))
+      runValidatedBatch.mockImplementation(async (fn) => fn(mockState.tx))
+      tablesApi.listTables.mockResolvedValue([])
+      auditLog.writeAuditLogSafe.mockClear()
+    })
+
+    it('applies the balance atomically: frees the source seat, fills the target, repoints the entry', async () => {
+      const tA = tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3, 4] })
+      const tB = tableWith({ id: 'tB', tableNumber: 2, occupied: [1] })
+      tablesApi.listTables.mockResolvedValue([tA, tB])
+      mockState.seed(tablePath('t1', 'tA'), tA)
+      mockState.seed(tablePath('t1', 'tB'), tB)
+
+      const res = await balanceTables({ tournament, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+
+      expect(res.moves).toHaveLength(1)
+      const setA = mockState.calls.set.find((c) => c.path[3] === 'tA')
+      expect(setA.data.seats.find((s) => s.seatNumber === 4).entryId).toBeNull()
+      const setB = mockState.calls.set.find((c) => c.path[3] === 'tB')
+      expect(setB.data.seats.find((s) => s.seatNumber === 2).entryId).toBe('e1-4')
+      const eUpd = mockState.calls.update.find((c) => c.path[3] === 'e1-4')
+      expect(eUpd.partial).toMatchObject({ currentTableId: 'tB', currentSeatNumber: 2 })
+      expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(expect.objectContaining({ actionType: 'seating.balanced' }))
+    })
+
+    it('does nothing (no writes, no audit) when already balanced', async () => {
+      const tA = tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3] })
+      const tB = tableWith({ id: 'tB', tableNumber: 2, occupied: [1, 2] })
+      tablesApi.listTables.mockResolvedValue([tA, tB])
+      mockState.seed(tablePath('t1', 'tA'), tA)
+      mockState.seed(tablePath('t1', 'tB'), tB)
+
+      const res = await balanceTables({ tournament, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+
+      expect(res.moves).toEqual([])
+      expect(mockState.calls.set).toHaveLength(0)
+      expect(auditLog.writeAuditLogSafe).not.toHaveBeenCalled()
+    })
+
+    it('is a no-op with a single open table', async () => {
+      tablesApi.listTables.mockResolvedValue([tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3] })])
+      const res = await balanceTables({ tournament, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+      expect(res.moves).toEqual([])
     })
   })
 })

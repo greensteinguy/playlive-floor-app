@@ -391,3 +391,132 @@ export async function unseatEntry({ tournament, entry, actorId, actorRole }) {
 
   return { ok: true }
 }
+
+// ── Balancing (task 3.8) ─────────────────────────────────────────────────────
+
+/** Occupied-seat counts of the OPEN tables, in display order. */
+export function tableSizes(tables) {
+  return tables
+    .filter((t) => t.status === 'open')
+    .slice()
+    .sort((a, b) => a.tableNumber - b.tableNumber)
+    .map((t) => ({ tableNumber: t.tableNumber, size: occupiedSeatCount(t), seatCount: t.seatCount }))
+}
+
+/** True when the OPEN tables are within ±1 of each other (or there are fewer than 2). */
+export function isBalanced(tables) {
+  const sizes = tableSizes(tables).map((s) => s.size)
+  if (sizes.length < 2) return true
+  return Math.max(...sizes) - Math.min(...sizes) <= 1
+}
+
+/**
+ * Plan the minimum set of moves to bring the OPEN tables within ±1 of each other
+ * — move a player off the fullest table into the emptiest, repeat until balanced.
+ * Pure (no Firestore); balanceTables re-plans inside its transaction from fresh
+ * reads and applies the result.
+ *
+ * Player-selection rule (v1): the player in the HIGHEST-numbered occupied seat of
+ * the fullest table moves to the LOWEST-numbered empty seat of the emptiest table.
+ * Deterministic and simple — NOT position-aware (real rooms often move the next
+ * big blind). Flagged for the floor-staff walkthrough; the TD can hand-adjust with
+ * a manual move afterward.
+ *
+ * @returns {Array<{entryId:string, fromTableId:string, fromTableNumber:number, fromSeatNumber:number,
+ *                   toTableId:string, toTableNumber:number, toSeatNumber:number}>}
+ */
+export function planBalance(tables) {
+  const state = tables
+    .filter((t) => t.status === 'open')
+    .map((t) => ({
+      id: t.id,
+      tableNumber: t.tableNumber,
+      occupied: t.seats.filter((s) => s.entryId !== null).map((s) => ({ seatNumber: s.seatNumber, entryId: s.entryId })),
+      empty: t.seats.filter((s) => s.entryId === null).map((s) => s.seatNumber),
+    }))
+  const moves = []
+  const size = (t) => t.occupied.length
+  // Guard bounds the loop far above any real table-count × seat-count.
+  for (let guard = 0; guard < 10_000; guard++) {
+    if (state.length < 2) break
+    const largest = [...state].sort((a, b) => size(b) - size(a))[0]
+    const smallest = [...state]
+      .sort((a, b) => size(a) - size(b))
+      .find((t) => t.id !== largest.id && t.empty.length > 0)
+    if (!smallest || size(largest) - size(smallest) <= 1) break
+
+    const moving = [...largest.occupied].sort((a, b) => b.seatNumber - a.seatNumber)[0]
+    const toSeatNumber = [...smallest.empty].sort((a, b) => a - b)[0]
+    moves.push({
+      entryId: moving.entryId,
+      fromTableId: largest.id,
+      fromTableNumber: largest.tableNumber,
+      fromSeatNumber: moving.seatNumber,
+      toTableId: smallest.id,
+      toTableNumber: smallest.tableNumber,
+      toSeatNumber,
+    })
+    largest.occupied = largest.occupied.filter((o) => o.entryId !== moving.entryId)
+    largest.empty.push(moving.seatNumber)
+    smallest.occupied.push({ seatNumber: toSeatNumber, entryId: moving.entryId })
+    smallest.empty = smallest.empty.filter((s) => s !== toSeatNumber)
+  }
+  return moves
+}
+
+/**
+ * Balance a session's open tables to within ±1, atomically. Re-reads the tables
+ * inside the transaction and re-plans from that consistent snapshot (so a
+ * concurrent bust/move can't make the applied moves stale), then writes every
+ * touched table + repoints every moved entry. A no-op (already balanced) returns
+ * an empty move list without writing or auditing.
+ *
+ * @returns {Promise<{ moves: Array<object> }>}
+ */
+export async function balanceTables({ tournament, sessionId, actorId, actorRole }) {
+  requireActor(actorId)
+  const sessionTables = await listSessionTables(tournament.id, sessionId)
+  const openIds = sessionTables.filter((t) => t.status === 'open').map((t) => t.id)
+  if (openIds.length < 2) return { moves: [] }
+
+  const timestamp = now()
+  const result = await runValidatedTransaction(async (tx) => {
+    const fresh = []
+    for (const id of openIds) fresh.push(await tx.get(paths.tablePath(tournament.id, id), Table))
+    const moves = planBalance(fresh)
+    if (moves.length === 0) return { moves: [] }
+
+    const byId = Object.fromEntries(fresh.map((t) => [t.id, t]))
+    for (const m of moves) {
+      byId[m.fromTableId].seats = byId[m.fromTableId].seats.map((s) =>
+        s.seatNumber === m.fromSeatNumber ? { ...s, entryId: null } : s
+      )
+      byId[m.toTableId].seats = byId[m.toTableId].seats.map((s) =>
+        s.seatNumber === m.toSeatNumber ? { ...s, entryId: m.entryId } : s
+      )
+    }
+    const touched = new Set(moves.flatMap((m) => [m.fromTableId, m.toTableId]))
+    for (const id of touched) tx.set(paths.tablePath(tournament.id, id), Table, { ...byId[id], updatedAt: timestamp })
+    for (const m of moves) {
+      tx.update(paths.entryPath(tournament.id, m.entryId), {
+        currentTableId: m.toTableId,
+        currentSeatNumber: m.toSeatNumber,
+        updatedAt: timestamp,
+      })
+    }
+    return { moves }
+  })
+
+  if (result.moves.length > 0) {
+    await auditLog.writeAuditLogSafe({
+      actorId,
+      actorRole,
+      actionType: 'seating.balanced',
+      targetType: 'tournament',
+      targetId: tournament.id,
+      timestamp,
+      metadata: { sessionId, moveCount: result.moves.length },
+    })
+  }
+  return result
+}
