@@ -38,11 +38,14 @@ import {
   unseatEntry,
   balanceTables,
   breakTable,
+  seatNextAlternate,
   tableSizes,
   isBalanced,
   planBalance,
   planBreak,
   canBreakTable,
+  waitlist,
+  firstEmptySeat,
   DEFAULT_SEAT_COUNT,
   SeatingError,
   TablesExistError,
@@ -51,6 +54,8 @@ import {
   SeatOutOfRangeError,
   EntryNotSeatableError,
   CannotBreakTableError,
+  NoAlternatesError,
+  NoOpenSeatError,
 } from './seating'
 
 const tablePath = (tid, id) => ['tournaments', tid, 'tables', id]
@@ -643,6 +648,121 @@ describe('breaking (task 3.9)', () => {
       await expect(
         breakTable({ tournament, sessionId: 'session-1', tableId: 'tB', actorId: 'td-1', actorRole: 'td' })
       ).rejects.toBeInstanceOf(CannotBreakTableError)
+    })
+  })
+})
+
+describe('alternates (task 3.10)', () => {
+  const altEntry = (id, ms, over = {}) => ({
+    id,
+    playerId: `p-${id}`,
+    originSessionId: 'session-1',
+    voidedAt: null,
+    bustedAt: null,
+    currentTableId: null,
+    currentSeatNumber: null,
+    registeredAt: Timestamp.fromMillis(ms),
+    ...over,
+  })
+  const tableWith = ({ id, tableNumber, seatCount = 9, occupied = [], status = 'open' }) => ({
+    id,
+    tournamentId: 't1',
+    sessionId: 'session-1',
+    tableNumber,
+    seatCount,
+    status,
+    openedAt: null,
+    closedAt: null,
+    seats: Array.from({ length: seatCount }, (_, i) => ({
+      seatNumber: i + 1,
+      entryId: occupied.includes(i + 1) ? `e${tableNumber}-${i + 1}` : null,
+    })),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  })
+
+  describe('waitlist', () => {
+    it('orders seatable-but-unseated entries FIFO by registration; excludes seated/busted/voided/other-session', () => {
+      const entries = [
+        altEntry('late', 300),
+        altEntry('early', 100),
+        altEntry('mid', 200),
+        altEntry('seated', 50),
+        altEntry('busted', 10, { bustedAt: Timestamp.now() }),
+        altEntry('voided', 10, { voidedAt: Timestamp.now() }),
+        altEntry('other', 10, { originSessionId: 'session-2' }),
+      ]
+      const q = waitlist(entries, 'session-1', new Set(['seated']))
+      expect(q.map((e) => e.id)).toEqual(['early', 'mid', 'late'])
+    })
+  })
+
+  describe('firstEmptySeat', () => {
+    it('returns the emptiest open table’s lowest empty seat, ignoring broken tables', () => {
+      const seat = firstEmptySeat([
+        tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3, 4, 5] }),
+        tableWith({ id: 'tB', tableNumber: 2, occupied: [1, 2] }),
+        tableWith({ id: 'tC', tableNumber: 3, occupied: [1, 2, 3], status: 'broken' }),
+      ])
+      expect(seat).toEqual({ tableId: 'tB', tableNumber: 2, seatNumber: 3 })
+    })
+    it('returns null when every open table is full', () => {
+      expect(firstEmptySeat([tableWith({ id: 'tA', tableNumber: 1, seatCount: 2, occupied: [1, 2] })])).toBeNull()
+    })
+  })
+
+  describe('seatNextAlternate op', () => {
+    beforeEach(() => {
+      mockState = makeMockStore()
+      let counter = 0
+      nextId = () => `table-${++counter}`
+      runValidatedTransaction.mockImplementation(async (fn) => fn(mockState.tx))
+      runValidatedBatch.mockImplementation(async (fn) => fn(mockState.tx))
+      tablesApi.listTables.mockResolvedValue([])
+      auditLog.writeAuditLogSafe.mockClear()
+    })
+
+    it('seats the head-of-queue alternate into the emptiest seat (atomic via seatEntry)', async () => {
+      const tA = tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3, 4, 5] })
+      const tB = tableWith({ id: 'tB', tableNumber: 2, occupied: [1, 2] })
+      mockState.seed(tablePath('t1', 'tB'), tB)
+      const entries = [altEntry('early', 100), altEntry('late', 200)]
+
+      const res = await seatNextAlternate({
+        tournament,
+        sessionId: 'session-1',
+        entries,
+        tables: [tA, tB],
+        actorId: 'td-1',
+        actorRole: 'td',
+      })
+
+      expect(res).toMatchObject({ entryId: 'early', tableNumber: 2, seatNumber: 3 })
+      const setB = mockState.calls.set.find((c) => c.path[3] === 'tB')
+      expect(setB.data.seats.find((s) => s.seatNumber === 3).entryId).toBe('early')
+      const eUpd = mockState.calls.update.find((c) => c.path[3] === 'early')
+      expect(eUpd.partial).toMatchObject({ currentTableId: 'tB', currentSeatNumber: 3 })
+    })
+
+    it('throws NoAlternatesError when nobody is waiting', async () => {
+      const tB = tableWith({ id: 'tB', tableNumber: 2, occupied: [1, 2] })
+      await expect(
+        seatNextAlternate({ tournament, sessionId: 'session-1', entries: [], tables: [tB], actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(NoAlternatesError)
+    })
+
+    it('throws NoOpenSeatError when every open table is full', async () => {
+      const tFull = tableWith({ id: 'tA', tableNumber: 1, seatCount: 2, occupied: [1, 2] })
+      await expect(
+        seatNextAlternate({
+          tournament,
+          sessionId: 'session-1',
+          entries: [altEntry('early', 100)],
+          tables: [tFull],
+          actorId: 'td-1',
+          actorRole: 'td',
+        })
+      ).rejects.toBeInstanceOf(NoOpenSeatError)
     })
   })
 })

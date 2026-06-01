@@ -74,6 +74,18 @@ export class CannotBreakTableError extends SeatingError {
     this.name = 'CannotBreakTableError'
   }
 }
+export class NoAlternatesError extends SeatingError {
+  constructor() {
+    super('No alternates are waiting to be seated.')
+    this.name = 'NoAlternatesError'
+  }
+}
+export class NoOpenSeatError extends SeatingError {
+  constructor() {
+    super('No open seat available — every open table is full.')
+    this.name = 'NoOpenSeatError'
+  }
+}
 
 function requireActor(actorId) {
   if (typeof actorId !== 'string' || actorId.trim() === '') {
@@ -649,4 +661,72 @@ export async function breakTable({ tournament, sessionId, tableId, actorId, acto
     },
   })
   return result
+}
+
+// ── Alternates / waitlist (task 3.10) ────────────────────────────────────────
+
+const registeredMs = (e) => e.registeredAt?.toMillis?.() ?? 0
+
+/**
+ * The alternates waiting for a seat: seatable entries in the session that aren't
+ * currently seated, ordered FIFO by registration time (so the earliest-waiting is
+ * #1 = next to be seated; late registrants queue at the back). Pure. The index +1
+ * is the alternate's queue number (their alternate-ticket number — printing is
+ * Phase 5; this captures the order). `seatedEntryIds` is the set of entryIds
+ * currently in a seat.
+ */
+export function waitlist(entries, sessionId, seatedEntryIds) {
+  const seated = seatedEntryIds instanceof Set ? seatedEntryIds : new Set(seatedEntryIds)
+  return seatableEntries(entries, sessionId)
+    .filter((e) => !seated.has(e.id))
+    .sort((a, b) => registeredMs(a) - registeredMs(b))
+}
+
+/**
+ * The best open seat for the next alternate: the emptiest open table's lowest
+ * empty seat (emptiest-first keeps the room balanced — and when a player busts,
+ * the short table they left is the emptiest, so the alternate fills it). Pure.
+ * Returns { tableId, tableNumber, seatNumber } or null when every open table is full.
+ */
+export function firstEmptySeat(tables) {
+  const candidate = tables
+    .filter((t) => t.status === 'open')
+    .map((t) => ({
+      t,
+      occupied: occupiedSeatCount(t),
+      emptySeats: t.seats.filter((s) => s.entryId === null).map((s) => s.seatNumber).sort((a, b) => a - b),
+    }))
+    .filter((c) => c.emptySeats.length > 0)
+    .sort((a, b) => a.occupied - b.occupied || a.t.tableNumber - b.t.tableNumber)[0]
+  return candidate ? { tableId: candidate.t.id, tableNumber: candidate.t.tableNumber, seatNumber: candidate.emptySeats[0] } : null
+}
+
+/**
+ * Seat the next waiting alternate (FIFO) into the best open seat — the manual
+ * version of "auto-assign on the next bust" (Phase 4 wires the bust to call this,
+ * or `seatEntry` into the freed seat directly). Delegates the actual placement to
+ * `seatEntry`, which is atomic and re-checks the seat is free inside its
+ * transaction. Throws NoAlternatesError / NoOpenSeatError when there's nobody to
+ * seat or nowhere to seat them.
+ *
+ * @returns {Promise<{ entryId:string, tableNumber:number, seatNumber:number }>}
+ */
+export async function seatNextAlternate({ tournament, sessionId, entries, tables, actorId, actorRole }) {
+  requireActor(actorId)
+  const openTables = tables.filter((t) => t.status === 'open')
+  const seatedIds = new Set(openTables.flatMap((t) => t.seats.map((s) => s.entryId).filter(Boolean)))
+  const queue = waitlist(entries, sessionId, seatedIds)
+  if (queue.length === 0) throw new NoAlternatesError()
+  const seat = firstEmptySeat(openTables)
+  if (!seat) throw new NoOpenSeatError()
+
+  const res = await seatEntry({
+    tournament,
+    entry: queue[0],
+    targetTableId: seat.tableId,
+    targetSeatNumber: seat.seatNumber,
+    actorId,
+    actorRole,
+  })
+  return { entryId: queue[0].id, ...res }
 }
