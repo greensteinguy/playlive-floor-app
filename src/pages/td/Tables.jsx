@@ -21,6 +21,9 @@ import {
   clearSeating,
   seatEntry,
   unseatEntry,
+  balanceTables,
+  planBalance,
+  tableSizes,
   seatableEntries,
   occupiedSeatCount,
   buildSeatList,
@@ -79,6 +82,7 @@ export default function Tables() {
   const [selectedEntryId, setSelectedEntryId] = useState(null)
   const [busy, setBusy] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [confirmBalance, setConfirmBalance] = useState(false)
   const [showSeatList, setShowSeatList] = useState(false)
 
   const seating = useSeating(tournamentId)
@@ -104,6 +108,7 @@ export default function Tables() {
     [sessionTables]
   )
   const unseated = pool.filter((e) => !seatedIds.has(e.id))
+  const balanceMoves = useMemo(() => planBalance(sessionTables), [sessionTables])
   const selectedEntry = selectedEntryId ? entriesById[selectedEntryId] ?? null : null
 
   const nameForEntry = (entry) => {
@@ -116,12 +121,14 @@ export default function Tables() {
     setSessionId('')
     setSelectedEntryId(null)
     setConfirmClear(false)
+    setConfirmBalance(false)
     setShowSeatList(false)
   }
   function pickSession(id) {
     setSessionId(id)
     setSelectedEntryId(null)
     setConfirmClear(false)
+    setConfirmBalance(false)
   }
 
   async function run(fn) {
@@ -160,6 +167,18 @@ export default function Tables() {
       const res = await clearSeating({ tournament, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
       toast.success(`Cleared ${res.tablesRemoved} table${res.tablesRemoved === 1 ? '' : 's'}.`)
       setConfirmClear(false)
+      setSelectedEntryId(null)
+      seating.reload()
+    })
+  }
+
+  async function handleBalance() {
+    await run(async () => {
+      const res = await balanceTables({ tournament, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
+      toast.success(
+        res.moves.length ? `Balanced — ${res.moves.length} move${res.moves.length === 1 ? '' : 's'}.` : 'Tables already balanced.'
+      )
+      setConfirmBalance(false)
       setSelectedEntryId(null)
       seating.reload()
     })
@@ -225,7 +244,7 @@ export default function Tables() {
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="font-display text-3xl md:text-4xl text-gold-400">Tables &amp; seating</h1>
           <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
-            Phase 3 — task 3.7
+            Phase 3 — tasks 3.7 / 3.8
           </span>
         </div>
         <p className="mt-2 text-sm text-white/50">
@@ -348,6 +367,63 @@ export default function Tables() {
               </div>
             )}
           </Panel>
+
+          {/* Balance */}
+          {sessionTables.length > 1 && (
+            <Panel title="Balance">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                <span className="text-white/50 text-xs font-mono">
+                  {tableSizes(sessionTables).map((s) => `T${s.tableNumber}: ${s.size}`).join('  ·  ')}
+                </span>
+                {balanceMoves.length === 0 ? (
+                  <span className="text-emerald-300/80 text-xs">Balanced (within ±1).</span>
+                ) : !confirmBalance ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmBalance(true)}
+                    disabled={!canEdit || busy}
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-gold-500/20 text-gold-200 hover:bg-gold-500/30 active:bg-gold-500/40 disabled:opacity-40"
+                  >
+                    Balance tables ({balanceMoves.length} move{balanceMoves.length === 1 ? '' : 's'})
+                  </button>
+                ) : (
+                  <div className="w-full">
+                    <p className="text-xs text-white/60 mb-2">Move {balanceMoves.length} player(s) to even the tables:</p>
+                    <ul className="text-xs text-white/70 space-y-0.5 mb-3">
+                      {balanceMoves.map((m, i) => (
+                        <li key={i}>
+                          <span className="text-white/90">{nameForEntry(entriesById[m.entryId])}</span> — Table {m.fromTableNumber}{' '}
+                          seat {m.fromSeatNumber} → Table {m.toTableNumber} seat {m.toSeatNumber}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleBalance}
+                        disabled={busy}
+                        className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30 active:bg-emerald-500/40 disabled:opacity-40"
+                      >
+                        {busy ? 'Balancing…' : 'Confirm balance'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBalance(false)}
+                        disabled={busy}
+                        className="px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-white/30 mt-2">
+                      Rule: the highest-seat player on the fullest table fills the lowest empty seat on the emptiest — review
+                      and hand-adjust afterward if needed.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </Panel>
+          )}
 
           {/* Selection hint */}
           {selectedEntry && (
