@@ -23,9 +23,12 @@ import {
   unseatEntry,
   balanceTables,
   breakTable,
+  seatNextAlternate,
   planBalance,
   planBreak,
   canBreakTable,
+  waitlist,
+  firstEmptySeat,
   tableSizes,
   seatableEntries,
   occupiedSeatCount,
@@ -53,6 +56,12 @@ const SEAT_LIST_COLUMNS = [
   { key: 'playerName', label: 'Player' },
   { key: 'startingStack', label: 'Starting stack' },
   { key: 'tournamentName', label: 'Tournament' },
+]
+
+const ALTERNATE_COLUMNS = [
+  { key: 'queue', label: 'Alt #' },
+  { key: 'player', label: 'Player' },
+  { key: 'tournament', label: 'Tournament' },
 ]
 
 function Panel({ title, right, children }) {
@@ -113,6 +122,10 @@ export default function Tables() {
     [openTables]
   )
   const unseated = pool.filter((e) => !seatedIds.has(e.id))
+  // Alternates waiting for a seat, FIFO (queue #1 = next). nextSeat is where a
+  // "Seat next alternate" would place #1 (the emptiest open seat, or null if full).
+  const waitlistEntries = useMemo(() => waitlist(entries, activeSessionId, seatedIds), [entries, activeSessionId, seatedIds])
+  const nextSeat = useMemo(() => firstEmptySeat(openTables), [openTables])
   const balanceMoves = useMemo(() => planBalance(openTables), [openTables])
   const breakMoves = useMemo(
     () => (breakTableId ? planBreak(openTables, breakTableId) : null),
@@ -239,6 +252,34 @@ export default function Tables() {
     })
   }
 
+  async function handleSeatNext() {
+    await run(async () => {
+      const res = await seatNextAlternate({
+        tournament,
+        sessionId: activeSessionId,
+        entries,
+        tables: openTables,
+        actorId: user.uid,
+        actorRole: role,
+      })
+      toast.success(
+        `Seated ${nameForEntry(entriesById[res.entryId])} at table ${res.tableNumber}, seat ${res.seatNumber}.`
+      )
+      setSelectedEntryId(null)
+      seating.reload()
+    })
+  }
+
+  function exportAlternates() {
+    if (waitlistEntries.length === 0) {
+      toast.error('No alternates waiting.')
+      return
+    }
+    const rows = waitlistEntries.map((e, i) => ({ queue: i + 1, player: nameForEntry(e), tournament: tournament?.name ?? '' }))
+    downloadCsv(rows, ALTERNATE_COLUMNS, csvFilename(`alternates-${tournament?.name ?? 'tournament'}`))
+    toast.success(`Exported ${rows.length} alternate${rows.length === 1 ? '' : 's'} to CSV.`)
+  }
+
   function exportSeatList() {
     const rows = buildSeatList({ tables: openTables, entriesById, playersById, tournament })
     if (rows.length === 0) {
@@ -264,7 +305,7 @@ export default function Tables() {
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="font-display text-3xl md:text-4xl text-gold-400">Tables &amp; seating</h1>
           <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
-            Phase 3 — tasks 3.7 / 3.8
+            Phase 3 — tasks 3.7–3.10
           </span>
         </div>
         <p className="mt-2 text-sm text-white/50">
@@ -495,11 +536,39 @@ export default function Tables() {
               )
             })()}
 
-          {/* Unseated pool */}
-          {openTables.length > 0 && unseated.length > 0 && (
-            <Panel title={`Unseated (${unseated.length})`}>
+          {/* Alternates / waitlist */}
+          {openTables.length > 0 && waitlistEntries.length > 0 && (
+            <Panel
+              title={`Alternates / waitlist (${waitlistEntries.length})`}
+              right={
+                <div className="flex items-center gap-3">
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={handleSeatNext}
+                      disabled={busy || !nextSeat}
+                      title={
+                        nextSeat
+                          ? `Seat #1 at table ${nextSeat.tableNumber}, seat ${nextSeat.seatNumber}`
+                          : 'No open seat — every table is full'
+                      }
+                      className="text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:text-white/30"
+                    >
+                      Seat next →
+                    </button>
+                  )}
+                  <button type="button" onClick={exportAlternates} className="text-[11px] text-gold-300 hover:text-gold-200">
+                    Export CSV
+                  </button>
+                </div>
+              }
+            >
+              <p className="text-[11px] text-white/40 mb-2">
+                #1 is next to be seated (FIFO by registration). Click a name to place by hand, or “Seat next →” to fill the
+                emptiest open seat{nextSeat ? '' : ' (none free — tables are full)'}.
+              </p>
               <div className="flex flex-wrap gap-2">
-                {unseated.map((e) => (
+                {waitlistEntries.map((e, i) => (
                   <button
                     key={e.id}
                     type="button"
@@ -510,6 +579,7 @@ export default function Tables() {
                       (selectedEntryId === e.id ? 'bg-gold-500/30 text-gold-100' : 'bg-white/5 text-white/80 hover:bg-white/10')
                     }
                   >
+                    <span className="text-[10px] font-mono text-white/40 mr-1.5">#{i + 1}</span>
                     {nameForEntry(e)}
                   </button>
                 ))}

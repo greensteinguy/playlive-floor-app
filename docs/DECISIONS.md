@@ -6,6 +6,20 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 1 June 2026 — Alternates / waitlist (task 3.10): the unseated pool IS the FIFO waitlist
+
+Built the alternates/waitlist on the seating module. Decisions:
+
+**1. Alternates are just the seatable-but-unseated entries, ordered FIFO by registration.** No new collection or schema — `waitlist(entries, sessionId, seatedEntryIds)` (pure) returns the seatable entries in the session that aren't currently seated, sorted by `registeredAt` ascending. So #1 is the earliest-waiting (next to seat) and late registrants naturally queue at the back. The list index +1 is the alternate's **queue number** — the alternate-ticket number (printing the ticket is Phase 5; this captures the order + exports it to CSV). The `/td/tables` "Unseated" panel is reframed as **"Alternates / waitlist (N)"** with the #-prefixed chips.
+
+**2. `seatNextAlternate` seats the head of the queue into the emptiest open seat — the manual form of "auto-assign on the next bust".** Bust-out is Phase 4, so v1 ships the mechanism + a manual **"Seat next →"** button; Phase 4 wires the bust to call `seatNextAlternate` (or `seatEntry` into the freed seat). It delegates the placement to `seatEntry` (atomic, re-checks the seat is free in its transaction). The target is `firstEmptySeat` = the **emptiest** open table's lowest empty seat — and when a player busts, the short table they left *is* the emptiest, so the alternate fills it (the right behavior for free). Throws `NoAlternatesError` / `NoOpenSeatError` when there's nobody waiting or nowhere to put them.
+
+**3. Ordering caveat flagged for the floor walkthrough.** FIFO-by-registration is the simple, fair default, but a player who was *seated then unseated* (a correction) sorts by their original registration — so they could jump ahead of a genuinely-later registrant. Real rooms run an explicit alternate-number sequence. Acceptable for v1; flagged with the rest of the seating UX.
+
+**Verification:** `npm test` **592 pass** (+6 in `seating.test.js`: `waitlist` FIFO ordering + exclusions; `firstEmptySeat` emptiest-first / null-when-full / ignores-broken; `seatNextAlternate` seats-head-of-queue-atomically / NoAlternates / NoOpenSeat). Lint + build clean. Full emulator smoke-test: from a 1-table draw (5 seated), unseating two players produced the waitlist **"#1 Charlie Davis, #2 Alice Brown"** (FIFO — Charlie registered before Alice); **"Seat next →"** seated #1 (Charlie) into the emptiest seat and re-numbered the queue to "#1 Alice Brown" (REST-confirmed Charlie repointed to a seat); the CSV export fired; zero console errors.
+
+**Decider:** Action Plan spec (queue late players / alternate ticket with queue number / auto-assign on next bust). The pool-is-the-waitlist framing, the FIFO-by-registration order, the emptiest-seat target, and deferring the auto-on-bust trigger to Phase 4 were Claude's implementation calls — UI functional-first per the flagged floor-staff walkthrough. **Phase 3 seating cluster (3.7–3.10) is now complete.**
+
 ## 1 June 2026 — Table breaking (task 3.9): redistribute then close, manual, atomic
 
 Built table breaking on the seating module. Decisions:
