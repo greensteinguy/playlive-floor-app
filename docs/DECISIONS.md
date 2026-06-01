@@ -6,6 +6,22 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 1 June 2026 — Seat assignment (task 3.7): even-distribution random draw, separate draw/clear, standalone page
+
+Built seating's first task — random seat draw, manual override, seat list — as a domain module (`src/lib/tournaments/seating.js`) + the `/td/tables` page. Several implementation calls, all reversible:
+
+**1. The random draw distributes players evenly across tables from the start** (`distributeCounts` — e.g. 19 players 9-handed → tables of 7/6/6, not 9/9/1), shuffles the entries (injectable rng for tests), and fills seats 1..k per table. *Why even from the start:* standard poker practice — balanced tables are what the later balancing task (3.8) maintains; an initial fill-then-balance would just create immediate rebalancing work. Random *which-table/order* (via the shuffle) is the "draw"; seat-number-within-table is sequential for v1 (a random seat-within-table is a possible refinement).
+
+**2. Draw (initial) and Clear are separate ops, not an in-place redraw.** `drawSeats` refuses if tables already exist for the session; `clearSeating` deletes the session's tables and clears every seated entry's seat fields. A redraw = Clear then Draw (the page chains them behind a confirm). *Why:* each op stays small and atomic, and clearSeating explicitly nulls every entry that referenced a deleted table, so there are no dangling `currentTableId` refs — an in-place redraw would have to reconcile old vs new assignments in one pass. drawSeats/clearSeating are single `runValidatedBatch` writes; a manual `seatEntry` move is one `runValidatedTransaction` over the target table, the source table (if different), and the entry (canonical §6.1 #6).
+
+**3. Seats-per-table defaults to 9 (NLH), configurable per draw — not a tournament field.** The `Tournament` schema has no seats-per-table; the draw takes a seat-count input (default `DEFAULT_SEAT_COUNT = 9`). *Why:* it varies by format and the venue can decide at draw time; adding a schema field for it now would be premature.
+
+**4. The seating page is the standalone `/td/tables` (the existing nav item) with a tournament + session picker, not a new tournament-scoped route.** It deep-links via `?tournamentId=` (a "Tables" link on the tournament detail top bar preselects it) and auto-selects the session for single-session tournaments. *Why:* reuses the existing nav entry; tables are per-session so the picker is needed regardless. The seat-card data (player · table · seat · starting stack = `tournament.startingStack`) exports to CSV; the thermal print job stays Phase 5.
+
+**Verification:** `npm test` **568 pass** (+18 in `seating.test.js`: pure planners incl. a no-overflow sweep across many field sizes + Table-schema conformance of drawn tables; all four ops via the mock-store, incl. occupied/out-of-range/busted rejections and cross-table moves). Lint + build clean. Full emulator browser smoke-test: registered 5 players into a single-day tournament, drew at seatCount 4 → 2 tables [3,2] (REST-verified table docs + entry seat fields), moved a player across tables (occupancy [2,3], source seat freed + target filled atomically), exported the seat list, then Clear (tables deleted + every entry seat cleared, 0 dangling) → redraw → 1 table of 5. Zero console errors.
+
+**Decider:** Action Plan spec (random draw / manual override / seat list). The even-distribution algorithm, the draw/clear split, the seatCount default, and the standalone-picker route were Claude's implementation calls.
+
 ## 31 May 2026 — Data-layer write timeout (no more infinite "Saving…")
 
 A Firestore write against an unreachable backend used to spin forever: the SDK retries indefinitely (online-only, ADR-001), the write promise never settles, the `finally` that clears the button never runs, so a save sits on "Saving…" / "Creating…" with no feedback. Surfaced twice in dev when the local emulator was down.

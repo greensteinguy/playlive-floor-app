@@ -36,4 +36,26 @@ export {
   finishClock,
 } from './clock'
 
+export {
+  drawSeats,
+  clearSeating,
+  seatEntry,
+  unseatEntry,
+  seatableEntries,
+  isSeatable,
+  tableCountFor,
+  distributeCounts,
+  shuffle,
+  planSeatDraw,
+  occupiedSeatCount,
+  buildSeatList,
+  DEFAULT_SEAT_COUNT,
+  SeatingError,
+  TablesExistError,
+  NoSeatableEntriesError,
+  SeatOccupiedError,
+  SeatOutOfRangeError,
+  EntryNotSeatableError,
+} from './seating'
+
 export { TournamentError } from './errors'

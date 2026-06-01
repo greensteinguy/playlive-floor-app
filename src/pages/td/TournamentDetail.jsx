@@ -619,6 +619,7 @@ function StatusControls({ status, role, busy, onChange }) {
 
 function TopBar({ t, role }) {
   const canRegister = role === 'manager' || role === 'cashier'
+  const canManageTables = role === 'manager' || role === 'td'
   return (
     <div className="mb-6">
       <div className="flex items-baseline justify-between gap-4 mb-2">
@@ -646,6 +647,14 @@ function TopBar({ t, role }) {
           >
             ▸ Open clock
           </Link>
+          {canManageTables && (
+            <Link
+              to={`/td/tables?tournamentId=${t.id}`}
+              className="text-xs font-medium text-gold-300 hover:text-gold-200 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"
+            >
+              ⊞ Tables
+            </Link>
+          )}
         </div>
       </div>
       <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 flex flex-wrap gap-x-8 gap-y-3">
