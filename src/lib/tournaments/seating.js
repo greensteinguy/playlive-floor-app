@@ -68,6 +68,12 @@ export class EntryNotSeatableError extends SeatingError {
     this.name = 'EntryNotSeatableError'
   }
 }
+export class CannotBreakTableError extends SeatingError {
+  constructor() {
+    super('Not enough empty seats on the other tables to break this one.')
+    this.name = 'CannotBreakTableError'
+  }
+}
 
 function requireActor(actorId) {
   if (typeof actorId !== 'string' || actorId.trim() === '') {
@@ -518,5 +524,129 @@ export async function balanceTables({ tournament, sessionId, actorId, actorRole 
       metadata: { sessionId, moveCount: result.moves.length },
     })
   }
+  return result
+}
+
+// ── Breaking (task 3.9) ──────────────────────────────────────────────────────
+
+/**
+ * Plan breaking a table: its seated players fill empty seats on the OTHER open
+ * tables, emptiest-first (which keeps the room roughly balanced). Pure. Returns
+ * the move list ([] if the table is already empty — still breakable), or `null`
+ * if the other open tables don't have enough empty seats to absorb its players.
+ *
+ * @returns {Array<{entryId,fromTableId,fromTableNumber,fromSeatNumber,toTableId,toTableNumber,toSeatNumber}>|null}
+ */
+export function planBreak(tables, tableId) {
+  const open = tables.filter((t) => t.status === 'open')
+  const broken = open.find((t) => t.id === tableId)
+  if (!broken) return null
+  const movers = broken.seats
+    .filter((s) => s.entryId !== null)
+    .map((s) => ({ seatNumber: s.seatNumber, entryId: s.entryId }))
+  const dest = open
+    .filter((t) => t.id !== tableId)
+    .map((t) => ({
+      id: t.id,
+      tableNumber: t.tableNumber,
+      occupied: occupiedSeatCount(t),
+      empty: t.seats.filter((s) => s.entryId === null).map((s) => s.seatNumber).sort((a, b) => a - b),
+    }))
+  const totalEmpty = dest.reduce((sum, d) => sum + d.empty.length, 0)
+  if (totalEmpty < movers.length) return null
+
+  const moves = []
+  for (const mover of movers) {
+    dest.sort((a, b) => a.occupied - b.occupied || a.tableNumber - b.tableNumber)
+    const target = dest.find((d) => d.empty.length > 0)
+    const toSeatNumber = target.empty.shift()
+    moves.push({
+      entryId: mover.entryId,
+      fromTableId: broken.id,
+      fromTableNumber: broken.tableNumber,
+      fromSeatNumber: mover.seatNumber,
+      toTableId: target.id,
+      toTableNumber: target.tableNumber,
+      toSeatNumber,
+    })
+    target.occupied += 1
+  }
+  return moves
+}
+
+/** Can this open table be broken — i.e. do the OTHER open tables have room? */
+export function canBreakTable(tables, tableId) {
+  return planBreak(tables, tableId) !== null
+}
+
+/**
+ * Break a table: move its players to empty seats on the other open tables, then
+ * close it (status 'broken' + closedAt; its seats cleared). Atomic — re-reads the
+ * open tables inside the transaction and re-plans, then writes every receiving
+ * table + the broken table + repoints every moved entry (canonical §6.1). Refuses
+ * if fewer than two tables are open or the others can't absorb the players.
+ *
+ * @returns {Promise<{ moves: Array<object>, brokenTableNumber: number }>}
+ */
+export async function breakTable({ tournament, sessionId, tableId, actorId, actorRole }) {
+  requireActor(actorId)
+  const sessionTables = await listSessionTables(tournament.id, sessionId)
+  const open = sessionTables.filter((t) => t.status === 'open')
+  if (open.length < 2) throw new SeatingError('Need at least two open tables to break one.')
+  if (!open.some((t) => t.id === tableId)) throw new SeatingError('That table is not open.')
+
+  const timestamp = now()
+  const result = await runValidatedTransaction(async (tx) => {
+    const fresh = []
+    for (const t of open) fresh.push(await tx.get(paths.tablePath(tournament.id, t.id), Table))
+    const moves = planBreak(fresh, tableId)
+    if (moves === null) throw new CannotBreakTableError()
+
+    const byId = Object.fromEntries(fresh.map((t) => [t.id, t]))
+    for (const m of moves) {
+      byId[m.toTableId].seats = byId[m.toTableId].seats.map((s) =>
+        s.seatNumber === m.toSeatNumber ? { ...s, entryId: m.entryId } : s
+      )
+    }
+    const broken = byId[tableId]
+    // Close the table: clear its seats, mark broken. The Table schema requires
+    // closedAt ⇒ openedAt and status 'broken' ⇒ closedAt, so stamp openedAt too
+    // if the table was drawn but never formally opened (its dealerMinutes → 0).
+    const closed = {
+      ...broken,
+      seats: broken.seats.map((s) => ({ ...s, entryId: null })),
+      status: 'broken',
+      openedAt: broken.openedAt ?? timestamp,
+      closedAt: timestamp,
+      updatedAt: timestamp,
+    }
+
+    const touchedDest = new Set(moves.map((m) => m.toTableId))
+    for (const id of touchedDest) tx.set(paths.tablePath(tournament.id, id), Table, { ...byId[id], updatedAt: timestamp })
+    tx.set(paths.tablePath(tournament.id, tableId), Table, closed)
+    for (const m of moves) {
+      tx.update(paths.entryPath(tournament.id, m.entryId), {
+        currentTableId: m.toTableId,
+        currentSeatNumber: m.toSeatNumber,
+        updatedAt: timestamp,
+      })
+    }
+    return { moves, brokenTableNumber: broken.tableNumber }
+  })
+
+  await auditLog.writeAuditLogSafe({
+    actorId,
+    actorRole,
+    actionType: 'seating.tableBroken',
+    targetType: 'tournament',
+    targetId: tournament.id,
+    timestamp,
+    metadata: {
+      sessionId,
+      tableId,
+      brokenTableNumber: result.brokenTableNumber,
+      moveCount: result.moves.length,
+    },
+  })
   return result
 }
