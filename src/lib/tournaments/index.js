@@ -42,6 +42,7 @@ export {
   seatEntry,
   unseatEntry,
   balanceTables,
+  breakTable,
   seatableEntries,
   isSeatable,
   tableCountFor,
@@ -53,6 +54,8 @@ export {
   tableSizes,
   isBalanced,
   planBalance,
+  planBreak,
+  canBreakTable,
   DEFAULT_SEAT_COUNT,
   SeatingError,
   TablesExistError,
@@ -60,6 +63,7 @@ export {
   SeatOccupiedError,
   SeatOutOfRangeError,
   EntryNotSeatableError,
+  CannotBreakTableError,
 } from './seating'
 
 export { TournamentError } from './errors'

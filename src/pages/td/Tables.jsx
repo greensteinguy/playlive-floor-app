@@ -22,7 +22,10 @@ import {
   seatEntry,
   unseatEntry,
   balanceTables,
+  breakTable,
   planBalance,
+  planBreak,
+  canBreakTable,
   tableSizes,
   seatableEntries,
   occupiedSeatCount,
@@ -81,6 +84,7 @@ export default function Tables() {
   const [busy, setBusy] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [confirmBalance, setConfirmBalance] = useState(false)
+  const [breakTableId, setBreakTableId] = useState(null)
   const [showSeatList, setShowSeatList] = useState(false)
 
   const seating = useSeating(tournamentId)
@@ -100,13 +104,20 @@ export default function Tables() {
     () => tables.filter((t) => t.sessionId === activeSessionId).sort((a, b) => a.tableNumber - b.tableNumber),
     [tables, activeSessionId]
   )
+  // Broken tables (status !== 'open') are closed — they stay in the collection for
+  // dealerMinutes but drop out of the live grid / balancing / breaking views.
+  const openTables = useMemo(() => sessionTables.filter((t) => t.status === 'open'), [sessionTables])
   const pool = useMemo(() => seatableEntries(entries, activeSessionId), [entries, activeSessionId])
   const seatedIds = useMemo(
-    () => new Set(sessionTables.flatMap((t) => t.seats.map((s) => s.entryId).filter(Boolean))),
-    [sessionTables]
+    () => new Set(openTables.flatMap((t) => t.seats.map((s) => s.entryId).filter(Boolean))),
+    [openTables]
   )
   const unseated = pool.filter((e) => !seatedIds.has(e.id))
-  const balanceMoves = useMemo(() => planBalance(sessionTables), [sessionTables])
+  const balanceMoves = useMemo(() => planBalance(openTables), [openTables])
+  const breakMoves = useMemo(
+    () => (breakTableId ? planBreak(openTables, breakTableId) : null),
+    [openTables, breakTableId]
+  )
   const selectedEntry = selectedEntryId ? entriesById[selectedEntryId] ?? null : null
 
   const nameForEntry = (entry) => {
@@ -120,6 +131,7 @@ export default function Tables() {
     setSelectedEntryId(null)
     setConfirmClear(false)
     setConfirmBalance(false)
+    setBreakTableId(null)
     setShowSeatList(false)
   }
   function pickSession(id) {
@@ -127,6 +139,7 @@ export default function Tables() {
     setSelectedEntryId(null)
     setConfirmClear(false)
     setConfirmBalance(false)
+    setBreakTableId(null)
   }
 
   async function run(fn) {
@@ -160,6 +173,7 @@ export default function Tables() {
       const res = await clearSeating({ tournament, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
       toast.success(`Cleared ${res.tablesRemoved} table${res.tablesRemoved === 1 ? '' : 's'}.`)
       setConfirmClear(false)
+      setBreakTableId(null)
       setSelectedEntryId(null)
       seating.reload()
     })
@@ -172,6 +186,19 @@ export default function Tables() {
         res.moves.length ? `Balanced — ${res.moves.length} move${res.moves.length === 1 ? '' : 's'}.` : 'Tables already balanced.'
       )
       setConfirmBalance(false)
+      setSelectedEntryId(null)
+      seating.reload()
+    })
+  }
+
+  async function handleBreak() {
+    const tableId = breakTableId
+    await run(async () => {
+      const res = await breakTable({ tournament, sessionId: activeSessionId, tableId, actorId: user.uid, actorRole: role })
+      toast.success(
+        `Broke Table ${res.brokenTableNumber} — moved ${res.moves.length} player${res.moves.length === 1 ? '' : 's'}.`
+      )
+      setBreakTableId(null)
       setSelectedEntryId(null)
       seating.reload()
     })
@@ -213,7 +240,7 @@ export default function Tables() {
   }
 
   function exportSeatList() {
-    const rows = buildSeatList({ tables: sessionTables, entriesById, playersById, tournament })
+    const rows = buildSeatList({ tables: openTables, entriesById, playersById, tournament })
     if (rows.length === 0) {
       toast.error('No seated players to export yet.')
       return
@@ -297,7 +324,7 @@ export default function Tables() {
           <Panel
             title="Seating"
             right={
-              sessionTables.length > 0 && (
+              openTables.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setShowSeatList((v) => !v)}
@@ -351,11 +378,11 @@ export default function Tables() {
           </Panel>
 
           {/* Balance */}
-          {sessionTables.length > 1 && (
+          {openTables.length > 1 && (
             <Panel title="Balance">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
                 <span className="text-white/50 text-xs font-mono">
-                  {tableSizes(sessionTables).map((s) => `T${s.tableNumber}: ${s.size}`).join('  ·  ')}
+                  {tableSizes(openTables).map((s) => `T${s.tableNumber}: ${s.size}`).join('  ·  ')}
                 </span>
                 {balanceMoves.length === 0 ? (
                   <span className="text-emerald-300/80 text-xs">Balanced (within ±1).</span>
@@ -423,8 +450,53 @@ export default function Tables() {
             </div>
           )}
 
+          {/* Break preview */}
+          {breakTableId &&
+            (() => {
+              const t = openTables.find((x) => x.id === breakTableId)
+              if (!t) return null
+              return (
+                <div className="mb-4 bg-felt-800 border border-red-500/30 rounded-lg px-4 py-3 text-sm">
+                  <p className="text-white/80 mb-2">
+                    Break <span className="text-white font-medium">Table {t.tableNumber}</span>
+                    {breakMoves && breakMoves.length > 0
+                      ? ` — move ${breakMoves.length} player${breakMoves.length === 1 ? '' : 's'} to the other tables:`
+                      : ' — no players to move; the table will just close.'}
+                  </p>
+                  {breakMoves && breakMoves.length > 0 && (
+                    <ul className="text-xs text-white/70 space-y-0.5 mb-3">
+                      {breakMoves.map((m, i) => (
+                        <li key={i}>
+                          <span className="text-white/90">{nameForEntry(entriesById[m.entryId])}</span> — seat{' '}
+                          {m.fromSeatNumber} → Table {m.toTableNumber} seat {m.toSeatNumber}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleBreak}
+                      disabled={busy || breakMoves === null}
+                      className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/20 text-red-200 hover:bg-red-500/30 active:bg-red-500/40 disabled:opacity-40"
+                    >
+                      {busy ? 'Breaking…' : `Confirm break of Table ${t.tableNumber}`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBreakTableId(null)}
+                      disabled={busy}
+                      className="px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
+
           {/* Unseated pool */}
-          {sessionTables.length > 0 && unseated.length > 0 && (
+          {openTables.length > 0 && unseated.length > 0 && (
             <Panel title={`Unseated (${unseated.length})`}>
               <div className="flex flex-wrap gap-2">
                 {unseated.map((e) => (
@@ -446,14 +518,31 @@ export default function Tables() {
           )}
 
           {/* Tables grid */}
-          {sessionTables.length > 0 && (
+          {openTables.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
-              {sessionTables.map((table) => (
+              {openTables.map((table) => (
                 <div key={table.id} className="bg-felt-800 border border-white/5 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-display text-lg text-gold-300">Table {table.tableNumber}</div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-white/40">
-                      {occupiedSeatCount(table)}/{table.seatCount}
+                    <div className="flex items-center gap-2">
+                      {canEdit && openTables.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setBreakTableId(table.id)}
+                          disabled={busy || !canBreakTable(openTables, table.id)}
+                          title={
+                            canBreakTable(openTables, table.id)
+                              ? 'Break this table'
+                              : 'Not enough room on the other tables'
+                          }
+                          className="px-2 py-0.5 rounded text-[10px] font-medium text-red-300/80 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-30"
+                        >
+                          Break
+                        </button>
+                      )}
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                        {occupiedSeatCount(table)}/{table.seatCount}
+                      </span>
                     </div>
                   </div>
                   <ul className="space-y-1">
@@ -495,7 +584,7 @@ export default function Tables() {
           )}
 
           {/* Seat list (printable data) */}
-          {showSeatList && sessionTables.length > 0 && (
+          {showSeatList && openTables.length > 0 && (
             <Panel
               title="Seat list"
               right={
@@ -515,7 +604,7 @@ export default function Tables() {
                     </tr>
                   </thead>
                   <tbody>
-                    {buildSeatList({ tables: sessionTables, entriesById, playersById, tournament }).map((r) => (
+                    {buildSeatList({ tables: openTables, entriesById, playersById, tournament }).map((r) => (
                       <tr key={`${r.tableNumber}-${r.seatNumber}`} className="border-t border-white/5">
                         <td className="px-2 py-1.5 text-white/70">{r.tableNumber}</td>
                         <td className="px-2 py-1.5 text-white/70">{r.seatNumber}</td>

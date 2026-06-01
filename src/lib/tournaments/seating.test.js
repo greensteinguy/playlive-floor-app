@@ -37,15 +37,20 @@ import {
   seatEntry,
   unseatEntry,
   balanceTables,
+  breakTable,
   tableSizes,
   isBalanced,
   planBalance,
+  planBreak,
+  canBreakTable,
   DEFAULT_SEAT_COUNT,
+  SeatingError,
   TablesExistError,
   NoSeatableEntriesError,
   SeatOccupiedError,
   SeatOutOfRangeError,
   EntryNotSeatableError,
+  CannotBreakTableError,
 } from './seating'
 
 const tablePath = (tid, id) => ['tournaments', tid, 'tables', id]
@@ -523,6 +528,121 @@ describe('balancing (task 3.8)', () => {
       tablesApi.listTables.mockResolvedValue([tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3] })])
       const res = await balanceTables({ tournament, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
       expect(res.moves).toEqual([])
+    })
+  })
+})
+
+describe('breaking (task 3.9)', () => {
+  const tableWith = ({ id, tableNumber, seatCount = 9, occupied = [], status = 'open' }) => ({
+    id,
+    tournamentId: 't1',
+    sessionId: 'session-1',
+    tableNumber,
+    seatCount,
+    status,
+    openedAt: null,
+    closedAt: null,
+    seats: Array.from({ length: seatCount }, (_, i) => {
+      const seatNumber = i + 1
+      return { seatNumber, entryId: occupied.includes(seatNumber) ? `e${tableNumber}-${seatNumber}` : null }
+    }),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  })
+
+  describe('planBreak / canBreakTable', () => {
+    it('redistributes the broken table players emptiest-first and keeps the room ±1', () => {
+      const tables = [
+        tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3, 4] }),
+        tableWith({ id: 'tB', tableNumber: 2, occupied: [1, 2, 3, 4] }),
+        tableWith({ id: 'tC', tableNumber: 3, occupied: [1, 2, 3] }),
+      ]
+      const moves = planBreak(tables, 'tC')
+      expect(moves).toHaveLength(3)
+      expect(moves.every((m) => m.fromTableId === 'tC')).toBe(true)
+      const sizes = { tA: 4, tB: 4 }
+      for (const m of moves) sizes[m.toTableId] += 1
+      expect(Math.max(sizes.tA, sizes.tB) - Math.min(sizes.tA, sizes.tB)).toBeLessThanOrEqual(1)
+      expect(canBreakTable(tables, 'tC')).toBe(true)
+    })
+
+    it('returns [] for an already-empty table (still breakable)', () => {
+      const tables = [
+        tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3] }),
+        tableWith({ id: 'tB', tableNumber: 2, occupied: [] }),
+      ]
+      expect(planBreak(tables, 'tB')).toEqual([])
+      expect(canBreakTable(tables, 'tB')).toBe(true)
+    })
+
+    it('returns null when the other tables cannot absorb the players', () => {
+      const tables = [
+        tableWith({ id: 'tA', tableNumber: 1, seatCount: 4, occupied: [1, 2, 3, 4] }),
+        tableWith({ id: 'tB', tableNumber: 2, seatCount: 4, occupied: [1, 2, 3] }),
+      ]
+      expect(planBreak(tables, 'tB')).toBeNull()
+      expect(canBreakTable(tables, 'tB')).toBe(false)
+    })
+
+    it('returns null for an unknown / non-open table id', () => {
+      const tables = [tableWith({ id: 'tA', tableNumber: 1, occupied: [1] })]
+      expect(planBreak(tables, 'nope')).toBeNull()
+    })
+  })
+
+  describe('breakTable op', () => {
+    beforeEach(() => {
+      mockState = makeMockStore()
+      let counter = 0
+      nextId = () => `table-${++counter}`
+      runValidatedTransaction.mockImplementation(async (fn) => fn(mockState.tx))
+      runValidatedBatch.mockImplementation(async (fn) => fn(mockState.tx))
+      tablesApi.listTables.mockResolvedValue([])
+      auditLog.writeAuditLogSafe.mockClear()
+    })
+
+    it('moves the players, closes the table (broken + closedAt, seats cleared), repoints entries', async () => {
+      const tA = tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2, 3, 4] })
+      const tB = tableWith({ id: 'tB', tableNumber: 2, occupied: [1, 2] })
+      tablesApi.listTables.mockResolvedValue([tA, tB])
+      mockState.seed(tablePath('t1', 'tA'), tA)
+      mockState.seed(tablePath('t1', 'tB'), tB)
+
+      const res = await breakTable({ tournament, sessionId: 'session-1', tableId: 'tB', actorId: 'td-1', actorRole: 'td' })
+
+      expect(res.brokenTableNumber).toBe(2)
+      expect(res.moves).toHaveLength(2)
+      const setA = mockState.calls.set.find((c) => c.path[3] === 'tA')
+      expect(setA.data.seats.filter((s) => s.entryId !== null)).toHaveLength(6)
+      const setB = mockState.calls.set.find((c) => c.path[3] === 'tB')
+      expect(setB.data.status).toBe('broken')
+      expect(setB.data.closedAt).not.toBeNull()
+      expect(setB.data.openedAt).not.toBeNull()
+      expect(setB.data.seats.every((s) => s.entryId === null)).toBe(true)
+      const moved = mockState.calls.update.filter((c) => c.path[2] === 'entries')
+      expect(moved).toHaveLength(2)
+      expect(moved.every((c) => c.partial.currentTableId === 'tA')).toBe(true)
+      expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(
+        expect.objectContaining({ actionType: 'seating.tableBroken' })
+      )
+    })
+
+    it('refuses to break with fewer than two open tables', async () => {
+      tablesApi.listTables.mockResolvedValue([tableWith({ id: 'tA', tableNumber: 1, occupied: [1, 2] })])
+      await expect(
+        breakTable({ tournament, sessionId: 'session-1', tableId: 'tA', actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(SeatingError)
+    })
+
+    it('refuses (CannotBreakTableError) when the others cannot absorb the players', async () => {
+      const tA = tableWith({ id: 'tA', tableNumber: 1, seatCount: 4, occupied: [1, 2, 3, 4] })
+      const tB = tableWith({ id: 'tB', tableNumber: 2, seatCount: 4, occupied: [1, 2, 3] })
+      tablesApi.listTables.mockResolvedValue([tA, tB])
+      mockState.seed(tablePath('t1', 'tA'), tA)
+      mockState.seed(tablePath('t1', 'tB'), tB)
+      await expect(
+        breakTable({ tournament, sessionId: 'session-1', tableId: 'tB', actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(CannotBreakTableError)
     })
   })
 })

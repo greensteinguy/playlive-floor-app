@@ -6,6 +6,22 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 1 June 2026 — Table breaking (task 3.9): redistribute then close, manual, atomic
+
+Built table breaking on the seating module. Decisions:
+
+**1. Breaking redistributes the broken table's players to the OTHER open tables, emptiest-first, then closes it.** `planBreak(tables, tableId)` (pure) sends each seated player to the lowest empty seat of the currently-emptiest other table — which keeps the room roughly balanced (the same emptiest-first idea as `balanceTables`). Returns the move list, `[]` for an already-empty table (still breakable — just closes), or `null` if the other open tables don't have enough empty seats to absorb the players. The op `breakTable` then moves the players AND closes the table: `status: 'broken'`, `closedAt` stamped (and `openedAt` back-filled if the table was drawn but never formally opened, since the schema requires `closedAt ⇒ openedAt` and `broken ⇒ closedAt`), seats cleared.
+
+**2. Breaking is manual — the TD picks which table to break.** No auto-break-when-short heuristic in v1 (that's a floor-review call). The per-table "Break" button is disabled when the table can't be absorbed (`canBreakTable` false) or there are fewer than two open tables. Refuses with a typed `CannotBreakTableError` if attempted anyway.
+
+**3. Atomic, like the other seat ops.** `breakTable` re-reads the open tables inside a `runValidatedTransaction` and re-plans from that snapshot (race-safe), then writes every receiving table (whole-doc validated) + the closed table + repoints every moved entry (canonical §6.1). New `seating.tableBroken` audit type.
+
+**4. Broken tables drop out of the live views but stay in the collection.** The `/td/tables` grid, balancing, and breaking all operate on **open** tables only (`status === 'open'`); broken tables remain as docs (they carry `openedAt`/`closedAt` for the eventual `dealerMinutes` derivation, canonical §5.3) but disappear from the grid. The draw-vs-clear toggle still keys off *all* session tables, so a session with only broken tables shows "Clear & redraw" (a fresh draw needs the docs gone first).
+
+**Verification:** `npm test` **586 pass** (+7 in `seating.test.js`: `planBreak` emptiest-first / can't-absorb-null / empty-table / unknown-id; `breakTable` atomic-close-and-move / refuse-<2-tables / refuse-CannotBreak). Lint + build clean. Full emulator smoke-test (a 3-handed test config so 5 players make two tables): the Break buttons were correctly **disabled** on a full [3,2] (neither table can absorb the other); after unseating two players to [1,2], a Break button enabled; breaking Table 1 previewed "Alice Brown — seat 3", and on confirm moved her to Table 2 and **closed Table 1** (REST: `status broken`, `closedAt` set, seats cleared; the grid hid it); zero console errors.
+
+**Decider:** Action Plan spec (table-breaking workflow). The emptiest-first redistribution, manual selection, atomic close, and broken-tables-leave-the-grid behavior were Claude's implementation calls — UI is functional-first per the flagged floor-staff walkthrough.
+
 ## 1 June 2026 — Table size is a per-tournament setting (`maxSeatsPerTable`, default 9)
 
 Guy's floor-UX feedback on the seating screens: **a table should always display the tournament's maximum number of seats** — a 9-handed event shows 9 seat positions even if only 3 are filled — rather than the seat count being an arbitrary per-draw number.

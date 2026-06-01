@@ -48,12 +48,13 @@ export const WELL_KNOWN_ACTION_TYPES = /** @type {const} */ ([
   'entry.created',
   'entry.busted',
   'entry.voided',
-  // seating (task 3.7 / 3.8)
+  // seating (task 3.7 / 3.8 / 3.9)
   'seating.drawn',
   'seating.cleared',
   'seating.seatAssigned',
   'seating.unseated',
   'seating.balanced',
+  'seating.tableBroken',
   // wallet
   'wallet.deposit',
   'wallet.spend',
