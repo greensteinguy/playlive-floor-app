@@ -6,6 +6,22 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 1 June 2026 — Per-player wallet ledger (task 3.11)
+
+Grew the player-profile **Wallet & tickets** tab from a deposits-only table into the full per-player transaction ledger — every `walletTransaction` type, newest-first, with a running wallet balance.
+
+**1. One signed-delta SSOT — `walletTxDelta`.** The ledger's running balance and credit/debit colouring must agree with reconciliation exactly, or the two would drift. So I extracted the "signed wallet effect of a full ledger row" into `walletTxDelta(tx)` in `src/lib/wallet/_shared.js` (handles `adjustment` via its `direction` field, delegates everything else to the existing `balanceDelta`), exported it from the wallet index, and refactored `verifyBalanceMatchesLedger` to use it (removing its duplicated inline branch). The new pure display lib `src/lib/walletLedger.js` imports the **same** function. There is now exactly one place that knows what a row does to the balance.
+
+**2. Running balance is anchored to the cached balance, not summed from zero.** `buildLedger(transactions, currentBalance)` sorts ascending, walks the deltas, and offsets so the **newest** row's running balance equals the cached `players/{pid}.walletBalance` exactly — i.e. the ledger reconciles to the page header by construction. Older rows are derived by unwinding. Rationale: an operator reads top-down; the most-recent row must match the big balance in the header or they'll file a bug. In normal operation the implied opening is 0; any nonzero opening would mean genuine ledger drift, which the reconciliation view (Phase 4) is the right place to surface — not this view.
+
+**3. Running balance is computed over the FULL history, then rows are filtered for display.** The type-filter chips (All / Deposits / Buy-ins / Winnings / Withdrawals / Adjustments) hide rows but never recompute the balance on the visible subset — so a filtered row still shows its true balance-after (like a bank statement filtered by category). Verified live: filtering to "Buy-ins" kept the four rows' real balances ($270/$270/$270/$0), not a re-derivation.
+
+**4. Neutral rows are shown, muted, with no sign.** Cash/EFTPOS buy-ins (`spend` with `method≠wallet`), `ticketUse`, and `withdrawalRequest`/`withdrawalCancel` have zero wallet-balance effect but are real ledger events, so they appear with the amount in muted grey (no +/−) and the running balance unchanged. Credits are green `+`, wallet debits red `−`. A footnote explains the neutral rows so staff aren't confused by "a buy-in that didn't drop my balance" (it was paid by cash, not from the wallet). The wallet ledger's Balance column tracks the **wallet** balance only; ticket movement isn't given a second running column in v1 (tickets are the secondary balance).
+
+CSV export of the (filtered) ledger wired via the shared `downloadCsv` (the Action-Plan "walletTransactions export in one line" target). No schema change, no hook change (`useWalletTransactions` already fetched the whole subcollection). `npm test` **615 pass** (+13 `walletLedger.test.js`), lint + build clean. Full emulator smoke-test: seeded all 11 types onto one player (REST), the ledger reconciled end-to-end (implied opening $0 → newest **$377.00 = header**), every type/label/method/sign rendered correctly, filter chips + counts worked and preserved true balances, CSV export fired ("Exported 14 transactions to CSV."), zero console errors.
+
+**Decider:** Claude (implementation calls — the anchor-to-cached choice, full-history-balance-under-filter, and neutral-row treatment). Surfacing the full ledger is the task 3.11 deliverable. Still functional-first pending Guy's Phase-3 mock-tournament review (3.12).
+
 ## 1 June 2026 — Random seating + table lifecycle (open/close, activate/deactivate)
 
 Guy's floor feedback on the seating screens, two linked changes:

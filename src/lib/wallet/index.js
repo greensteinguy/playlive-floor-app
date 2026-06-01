@@ -37,6 +37,10 @@ export {
   verifyBalanceMatchesLedger,
 } from './reconciliation'
 
+// Signed wallet-balance effect of a ledger row (SSOT shared by reconciliation
+// and the per-player ledger view — task 3.11).
+export { walletTxDelta } from './_shared'
+
 // Typed errors (for catch blocks)
 export {
   WalletError,
