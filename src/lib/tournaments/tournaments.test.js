@@ -163,6 +163,14 @@ describe('createTournament — document assembly', () => {
     expect(created).toEqual(tourSet.data)
   })
 
+  it('defaults maxSeatsPerTable to 9 and passes a custom value through', async () => {
+    await createTournament(makeArgs())
+    expect(batchSets.find((c) => c.path.length === 2).data.maxSeatsPerTable).toBe(9)
+
+    await createTournament(makeArgs({ maxSeatsPerTable: 8 }))
+    expect(batchSets.find((c) => c.path.length === 2).data.maxSeatsPerTable).toBe(8)
+  })
+
   it('fills the live-state, counters, and audit fields the form does not own', async () => {
     await createTournament(makeArgs())
     const doc = capturedDoc()
@@ -252,6 +260,19 @@ describe('createTournament — lateRegCutoffLevel schema invariant', () => {
   })
   it('the real schema rejects a cutoff level beyond the structure', () => {
     expect(Tournament.safeParse(makeTournament({ lateRegCutoffLevel: 99 })).success).toBe(false)
+  })
+})
+
+describe('createTournament — maxSeatsPerTable schema invariant', () => {
+  it('defaults to 9 when absent (backward-compat with pre-field docs)', () => {
+    const parsed = Tournament.safeParse(makeTournament())
+    expect(parsed.success).toBe(true)
+    expect(parsed.data.maxSeatsPerTable).toBe(9)
+  })
+  it('accepts a custom in-range size and rejects out-of-range', () => {
+    expect(Tournament.safeParse(makeTournament({ maxSeatsPerTable: 8 })).success).toBe(true)
+    expect(Tournament.safeParse(makeTournament({ maxSeatsPerTable: 1 })).success).toBe(false)
+    expect(Tournament.safeParse(makeTournament({ maxSeatsPerTable: 13 })).success).toBe(false)
   })
 })
 

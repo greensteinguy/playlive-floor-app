@@ -69,6 +69,7 @@ export function buildTournament(overrides = {}) {
     houseConsumption: 0,
     structureTemplateId: null,
     startingStack: 10_000,
+    maxSeatsPerTable: 9,
     structure: buildStructure(),
     payoutStructure: buildPayoutStructure(),
     scheduledStartTime: ts(),
