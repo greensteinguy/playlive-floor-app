@@ -143,25 +143,28 @@ export default function Players() {
                       <th className="text-left px-4 py-2 whitespace-nowrap">Email</th>
                       <th className="text-right px-4 py-2 whitespace-nowrap">Wallet</th>
                       <th className="text-right px-4 py-2 whitespace-nowrap">Tickets</th>
-                      <th className="px-4 py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {results.map((p) => (
-                      <tr key={p.id} className="border-t border-white/5 hover:bg-white/[0.03]">
-                        <td className="px-4 py-3 text-white/90">{playerDisplayName(p)}</td>
+                      <tr
+                        key={p.id}
+                        className="relative border-t border-white/5 hover:bg-white/[0.04] cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-3 text-white/90">
+                          {/* Stretched link — whole row is clickable, but still a real anchor
+                              (keyboard, middle-click / open-in-new-tab). */}
+                          <Link
+                            to={`/desk/players/${p.id}`}
+                            className="font-medium text-white/90 hover:text-white after:absolute after:inset-0 after:content-['']"
+                          >
+                            {playerDisplayName(p)}
+                          </Link>
+                        </td>
                         <td className="px-4 py-3 text-white/70 whitespace-nowrap">{p.phone}</td>
                         <td className="px-4 py-3 text-white/50 whitespace-nowrap">{p.email ?? '—'}</td>
                         <td className="px-4 py-3 text-right text-white/70 tabular-nums whitespace-nowrap">{formatMoney(p.walletBalance)}</td>
                         <td className="px-4 py-3 text-right text-white/70 tabular-nums whitespace-nowrap">{formatMoney(p.ticketBalance)}</td>
-                        <td className="px-4 py-3 text-right">
-                          <Link
-                            to={`/desk/players/${p.id}`}
-                            className="px-3 py-1.5 rounded text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white active:bg-white/15"
-                          >
-                            Open →
-                          </Link>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
