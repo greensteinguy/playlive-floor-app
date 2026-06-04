@@ -28,6 +28,7 @@ import {
 import { Table } from '../schema'
 import { playerDisplayName } from '../players'
 import { now } from '../wallet/_shared'
+import { recountTournamentEntries } from './registration'
 
 export const DEFAULT_SEAT_COUNT = 9 // 9-handed NLH; configurable per draw
 
@@ -67,6 +68,12 @@ export class EntryNotSeatableError extends SeatingError {
   constructor() {
     super('This entry can no longer be seated (it is busted or voided).')
     this.name = 'EntryNotSeatableError'
+  }
+}
+export class AlreadyBustedError extends SeatingError {
+  constructor() {
+    super('This player is already out of the tournament.')
+    this.name = 'AlreadyBustedError'
   }
 }
 export class CannotBreakTableError extends SeatingError {
@@ -431,6 +438,73 @@ export async function unseatEntry({ tournament, entry, actorId, actorRole }) {
     targetId: entry.id,
     timestamp,
     metadata: { tournamentId: tournament.id },
+  })
+
+  return { ok: true }
+}
+
+/**
+ * Eliminate (bust out) an entry from the tournament — the floor action when a
+ * player is knocked out. Frees their seat (if seated) and marks the entry busted:
+ * sets bustedAt + bustedInSessionId and clears the seat fields in one write, so the
+ * entry's bust/seat invariants hold. Leaves finishingPlace null — finishing places
+ * and payouts are assigned in Phase 4; this just removes the player from the live
+ * field. One transaction over the table (if seated) + the entry, then a best-effort
+ * recount so the tournament's remainingPlayerCount drops by one.
+ *
+ * Unlike unseatEntry (which returns the player to the alternates pool), an
+ * eliminated entry is no longer seatable and drops off the waitlist.
+ *
+ * @returns {Promise<{ ok: true }>}
+ */
+export async function eliminateEntry({ tournament, entry, sessionId, actorId, actorRole }) {
+  requireActor(actorId)
+  if (entry.voidedAt) throw new EntryNotSeatableError()
+  if (entry.bustedAt) throw new AlreadyBustedError()
+  if (typeof sessionId !== 'string' || sessionId.trim() === '') {
+    throw new SeatingError('a session is required to eliminate a player')
+  }
+  const timestamp = now()
+
+  await runValidatedTransaction(async (tx) => {
+    // Free the seat if the player is seated (clear by entryId, like unseatEntry).
+    if (entry.currentTableId) {
+      const table = await tx.get(paths.tablePath(tournament.id, entry.currentTableId), Table)
+      tx.set(paths.tablePath(tournament.id, entry.currentTableId), Table, {
+        ...table,
+        seats: table.seats.map((s) => (s.entryId === entry.id ? { ...s, entryId: null } : s)),
+        updatedAt: timestamp,
+      })
+    }
+    // bustedAt + bustedInSessionId set together and the seat fields cleared in the
+    // same write keeps the entry's bust/seat invariants intact. finishingPlace is
+    // left untouched (null) — Phase 4 owns finishing order / payouts.
+    tx.update(paths.entryPath(tournament.id, entry.id), {
+      currentTableId: null,
+      currentSeatNumber: null,
+      bustedAt: timestamp,
+      bustedInSessionId: sessionId,
+      updatedAt: timestamp,
+    })
+  })
+
+  // Refresh the tournament's cached counters (remainingPlayerCount drops). Best-effort
+  // — the counters are a rebuildable cache, so a recount failure never undoes the
+  // elimination; it self-heals on the next recount.
+  try {
+    await recountTournamentEntries({ tournamentId: tournament.id })
+  } catch {
+    /* counters self-heal on the next recount */
+  }
+
+  await auditLog.writeAuditLogSafe({
+    actorId,
+    actorRole,
+    actionType: 'entry.busted',
+    targetType: 'entry',
+    targetId: entry.id,
+    timestamp,
+    metadata: { tournamentId: tournament.id, sessionId },
   })
 
   return { ok: true }

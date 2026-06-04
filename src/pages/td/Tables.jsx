@@ -21,6 +21,7 @@ import {
   clearSeating,
   seatEntry,
   unseatEntry,
+  eliminateEntry,
   balanceTables,
   breakTable,
   seatNextAlternate,
@@ -98,6 +99,10 @@ export default function Tables() {
   const [confirmBalance, setConfirmBalance] = useState(false)
   const [breakTableId, setBreakTableId] = useState(null)
   const [showSeatList, setShowSeatList] = useState(false)
+  const [confirmEliminate, setConfirmEliminate] = useState(false)
+  // Per-table drill-down: tables collapse to an at-a-glance ✓/✗ seat map by default;
+  // expanding one reveals its named seat list. Set of expanded table ids.
+  const [expandedTables, setExpandedTables] = useState(() => new Set())
 
   const seating = useSeating(tournamentId)
   const { tournament, sessions, tables, entries } = seating
@@ -135,6 +140,12 @@ export default function Tables() {
     [openTables, breakTableId]
   )
   const selectedEntry = selectedEntryId ? entriesById[selectedEntryId] ?? null : null
+  const allExpanded = openTables.length > 0 && openTables.every((t) => expandedTables.has(t.id))
+  // Players knocked out of this session (busted, not voided) — surfaced in the summary.
+  const eliminatedCount = useMemo(
+    () => entries.filter((e) => e.originSessionId === activeSessionId && e.voidedAt === null && e.bustedAt !== null).length,
+    [entries, activeSessionId]
+  )
 
   const nameForEntry = (entry) => {
     const p = entry ? playersById[entry.playerId] : null
@@ -147,15 +158,19 @@ export default function Tables() {
     setSelectedEntryId(null)
     setConfirmClear(false)
     setConfirmBalance(false)
+    setConfirmEliminate(false)
     setBreakTableId(null)
     setShowSeatList(false)
+    setExpandedTables(new Set())
   }
   function pickSession(id) {
     setSessionId(id)
     setSelectedEntryId(null)
     setConfirmClear(false)
     setConfirmBalance(false)
+    setConfirmEliminate(false)
     setBreakTableId(null)
+    setExpandedTables(new Set())
   }
 
   async function run(fn) {
@@ -238,6 +253,7 @@ export default function Tables() {
   }
 
   async function handleSeatClick(table, seat) {
+    setConfirmEliminate(false)
     if (seat.entryId) {
       // Occupied — pick this player up to move (toggle).
       setSelectedEntryId((cur) => (cur === seat.entryId ? null : seat.entryId))
@@ -268,8 +284,31 @@ export default function Tables() {
       await unseatEntry({ tournament, entry, actorId: user.uid, actorRole: role })
       toast.success(`Unseated ${nameForEntry(entry)}.`)
       setSelectedEntryId(null)
+      setConfirmEliminate(false)
       seating.reload()
     })
+  }
+
+  async function handleEliminate(entry) {
+    await run(async () => {
+      await eliminateEntry({ tournament, entry, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
+      toast.success(`Eliminated ${nameForEntry(entry)}.`)
+      setConfirmEliminate(false)
+      setSelectedEntryId(null)
+      seating.reload()
+    })
+  }
+
+  function toggleExpand(tableId) {
+    setExpandedTables((cur) => {
+      const next = new Set(cur)
+      if (next.has(tableId)) next.delete(tableId)
+      else next.add(tableId)
+      return next
+    })
+  }
+  function toggleExpandAll() {
+    setExpandedTables(allExpanded ? new Set() : new Set(openTables.map((t) => t.id)))
   }
 
   async function handleSeatNext() {
@@ -325,11 +364,12 @@ export default function Tables() {
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="font-display text-3xl md:text-4xl text-gold-400">Tables &amp; seating</h1>
           <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
-            Phase 3 — tasks 3.7–3.10
+            Phase 3 — seating
           </span>
         </div>
         <p className="mt-2 text-sm text-white/50">
-          Draw seats randomly, move players by hand, and export the seat list. Tables are per-session.
+          An at-a-glance room overview — each table shows which seats are filled (✓) or open (✗). Expand a table
+          for the named seats to move players by hand, or pick a player up to eliminate them. Tables are per-session.
         </p>
       </div>
 
@@ -377,8 +417,9 @@ export default function Tables() {
             {activeSession && <span>{activeSession.sessionLabel}</span>}
             <span>Starting stack {fmtChips(tournament.startingStack)}</span>
             <span className="text-gold-300">
-              {pool.length} seatable · {seatedIds.size} seated · {unseated.length} unseated
+              {pool.length} in field · {seatedIds.size} seated · {unseated.length} unseated
             </span>
+            {eliminatedCount > 0 && <span className="text-white/40">{eliminatedCount} out</span>}
           </div>
 
           {/* Draw / clear / export controls */}
@@ -508,19 +549,62 @@ export default function Tables() {
             </Panel>
           )}
 
-          {/* Selection hint */}
+          {/* Selection hint / actions for the picked-up player */}
           {selectedEntry && (
-            <div className="mb-4 bg-gold-500/10 border border-gold-500/30 rounded-lg px-4 py-2 text-sm text-gold-200 flex items-center justify-between gap-3">
-              <span>
-                Placing <span className="font-medium">{nameForEntry(selectedEntry)}</span> — click an empty seat, or{' '}
-                <button type="button" onClick={() => handleUnseat(selectedEntry)} disabled={busy || !selectedEntry.currentTableId} className="underline disabled:no-underline disabled:opacity-40">
-                  unseat
-                </button>
-                .
-              </span>
-              <button type="button" onClick={() => setSelectedEntryId(null)} className="text-gold-300/70 hover:text-gold-200 text-xs">
-                Cancel
-              </button>
+            <div className="mb-4 bg-gold-500/10 border border-gold-500/30 rounded-lg px-4 py-2.5 text-sm text-gold-200">
+              {!confirmEliminate ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span>
+                    Holding <span className="font-medium">{nameForEntry(selectedEntry)}</span> — click an empty seat to move them, or{' '}
+                    <button
+                      type="button"
+                      onClick={() => handleUnseat(selectedEntry)}
+                      disabled={busy || !selectedEntry.currentTableId}
+                      className="underline disabled:no-underline disabled:opacity-40"
+                    >
+                      unseat
+                    </button>
+                    {' · '}
+                    <button
+                      type="button"
+                      onClick={() => setConfirmEliminate(true)}
+                      disabled={busy}
+                      className="underline text-red-300 hover:text-red-200 disabled:no-underline disabled:opacity-40"
+                    >
+                      eliminate
+                    </button>
+                    .
+                  </span>
+                  <button type="button" onClick={() => setSelectedEntryId(null)} className="text-gold-300/70 hover:text-gold-200 text-xs shrink-0">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <span className="text-white/85">
+                    Eliminate <span className="font-medium text-white">{nameForEntry(selectedEntry)}</span> from the tournament? They’ll show as{' '}
+                    <span className="font-medium">Busted</span> and leave the field.
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleEliminate(selectedEntry)}
+                      disabled={busy}
+                      className="px-3 py-1.5 rounded text-xs font-medium bg-red-500/20 text-red-200 hover:bg-red-500/30 active:bg-red-500/40 disabled:opacity-40"
+                    >
+                      {busy ? 'Eliminating…' : 'Yes, eliminate'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmEliminate(false)}
+                      disabled={busy}
+                      className="px-3 py-1.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -606,7 +690,11 @@ export default function Tables() {
                   <button
                     key={e.id}
                     type="button"
-                    onClick={() => canEdit && setSelectedEntryId((cur) => (cur === e.id ? null : e.id))}
+                    onClick={() => {
+                      if (!canEdit) return
+                      setConfirmEliminate(false)
+                      setSelectedEntryId((cur) => (cur === e.id ? null : e.id))
+                    }}
                     disabled={!canEdit || busy}
                     className={
                       'px-3 py-1.5 rounded-lg text-sm disabled:opacity-50 ' +
@@ -621,99 +709,160 @@ export default function Tables() {
             </Panel>
           )}
 
-          {/* Tables grid */}
+          {/* Room overview — tables collapse to an at-a-glance ✓/✗ seat map; expand
+              a card (or "Expand all") to drill into the named seats for moves. */}
           {openTables.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
-              {openTables.map((table) => {
-                const isActive = table.active !== false
-                return (
-                  <div
-                    key={table.id}
-                    className={'bg-felt-800 border rounded-lg p-4 ' + (isActive ? 'border-white/5' : 'border-amber-500/20 opacity-70')}
-                  >
-                    <div className="flex items-center justify-between mb-2 gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-display text-lg text-gold-300">Table {table.tableNumber}</span>
-                        {!isActive && (
-                          <span className="text-[9px] font-mono uppercase tracking-widest text-amber-300/80 bg-amber-500/10 rounded px-1.5 py-0.5">
-                            deactivated
-                          </span>
+            <section className="mb-5">
+              <div className="flex items-center justify-between mb-2 gap-3">
+                <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                  Room — {openTables.length} table{openTables.length === 1 ? '' : 's'}
+                  <span className="ml-2 text-white/30 normal-case tracking-normal">✓ taken · ✗ open</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={toggleExpandAll}
+                  className="text-[11px] text-white/50 hover:text-white shrink-0"
+                >
+                  {allExpanded ? 'Collapse all' : 'Expand all'}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {openTables.map((table) => {
+                  const isActive = table.active !== false
+                  const expanded = expandedTables.has(table.id)
+                  const seatsSorted = [...table.seats].sort((a, b) => a.seatNumber - b.seatNumber)
+                  return (
+                    <div
+                      key={table.id}
+                      className={'bg-felt-800 border rounded-lg p-4 ' + (isActive ? 'border-white/5' : 'border-amber-500/20 opacity-70')}
+                    >
+                      {/* Header: table number + occupancy */}
+                      <div className="flex items-center justify-between mb-2 gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-display text-lg text-gold-300">Table {table.tableNumber}</span>
+                          {!isActive && (
+                            <span className="text-[9px] font-mono uppercase tracking-widest text-amber-300/80 bg-amber-500/10 rounded px-1.5 py-0.5">
+                              deactivated
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                          {occupiedSeatCount(table)}/{table.seatCount}
+                        </span>
+                      </div>
+
+                      {/* Table-level actions + expand toggle */}
+                      <div className="flex items-center gap-2 mb-3">
+                        {canEdit && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleSetActive(table.id, !isActive)}
+                              disabled={busy}
+                              className={
+                                'px-2 py-0.5 rounded text-[10px] font-medium disabled:opacity-30 ' +
+                                (isActive
+                                  ? 'text-amber-300/80 bg-amber-500/10 hover:bg-amber-500/20'
+                                  : 'text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25')
+                              }
+                            >
+                              {isActive ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBreakTableId(table.id)}
+                              disabled={busy || !canBreakTable(openTables, table.id)}
+                              title={
+                                canBreakTable(openTables, table.id)
+                                  ? 'Close this table (move any players to the other active tables)'
+                                  : 'Nowhere to move the players — activate another table first'
+                              }
+                              className="px-2 py-0.5 rounded text-[10px] font-medium text-red-300/80 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-30"
+                            >
+                              Close
+                            </button>
+                          </>
                         )}
-                      </div>
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
-                        {occupiedSeatCount(table)}/{table.seatCount}
-                      </span>
-                    </div>
-                    {canEdit && (
-                      <div className="flex items-center gap-2 mb-2">
                         <button
                           type="button"
-                          onClick={() => handleSetActive(table.id, !isActive)}
-                          disabled={busy}
-                          className={
-                            'px-2 py-0.5 rounded text-[10px] font-medium disabled:opacity-30 ' +
-                            (isActive
-                              ? 'text-amber-300/80 bg-amber-500/10 hover:bg-amber-500/20'
-                              : 'text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25')
-                          }
+                          onClick={() => toggleExpand(table.id)}
+                          className="ml-auto text-[10px] font-mono uppercase tracking-wider text-white/40 hover:text-white/80"
                         >
-                          {isActive ? 'Deactivate' : 'Activate'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setBreakTableId(table.id)}
-                          disabled={busy || !canBreakTable(openTables, table.id)}
-                          title={
-                            canBreakTable(openTables, table.id)
-                              ? 'Close this table (move any players to the other active tables)'
-                              : 'Nowhere to move the players — activate another table first'
-                          }
-                          className="px-2 py-0.5 rounded text-[10px] font-medium text-red-300/80 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-30"
-                        >
-                          Close
+                          {expanded ? 'Hide seats' : 'Show seats'}
                         </button>
                       </div>
-                    )}
-                    <ul className="space-y-1">
-                      {table.seats
-                        .slice()
-                        .sort((a, b) => a.seatNumber - b.seatNumber)
-                        .map((seat) => {
+
+                      {/* At-a-glance ✓/✗ seat map (always shown). Click a seat to pick up
+                          a player or drop the held one — same as the named list below. */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {seatsSorted.map((seat) => {
                           const occupied = !!seat.entryId
                           const isSel = occupied && seat.entryId === selectedEntryId
                           // Deactivated tables aren't a placement target: empty seats are
-                          // display-only, but you can still pick up a seated player to move.
+                          // display-only, but a seated player can still be picked up to move.
                           const interactive = canEdit && (occupied || isActive)
+                          const pipClass = isSel
+                            ? 'bg-gold-500/30 text-gold-100 border-gold-400/50'
+                            : occupied
+                              ? 'bg-white/10 text-white/80 border-white/10 hover:bg-white/15'
+                              : isActive && selectedEntry
+                                ? 'bg-emerald-500/10 text-emerald-200/90 border-emerald-500/30 hover:bg-emerald-500/20'
+                                : 'bg-felt-900/40 text-white/25 border-white/5'
                           return (
-                            <li key={seat.seatNumber}>
-                              <button
-                                type="button"
-                                onClick={() => interactive && handleSeatClick(table, seat)}
-                                disabled={!interactive || busy}
-                                className={
-                                  'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left disabled:opacity-60 ' +
-                                  (occupied
-                                    ? isSel
-                                      ? 'bg-gold-500/30 text-gold-100'
-                                      : 'bg-felt-900/60 text-white/90 hover:bg-white/10'
-                                    : isActive && selectedEntry
-                                      ? 'bg-emerald-500/10 text-emerald-200/90 hover:bg-emerald-500/20'
-                                      : 'bg-felt-900/40 text-white/30')
-                                }
-                              >
-                                <span className="text-[10px] font-mono text-white/40 w-4 shrink-0">{seat.seatNumber}</span>
-                                <span className="truncate flex-1">
-                                  {occupied ? nameForEntry(entriesById[seat.entryId]) : isActive && selectedEntry ? 'seat here' : 'empty'}
-                                </span>
-                              </button>
-                            </li>
+                            <button
+                              key={seat.seatNumber}
+                              type="button"
+                              onClick={() => interactive && handleSeatClick(table, seat)}
+                              disabled={!interactive || busy}
+                              title={occupied ? nameForEntry(entriesById[seat.entryId]) : `Seat ${seat.seatNumber} — empty`}
+                              className={'w-9 rounded border flex flex-col items-center justify-center py-1 disabled:cursor-default ' + pipClass}
+                            >
+                              <span className="text-[9px] font-mono leading-none opacity-70">{seat.seatNumber}</span>
+                              <span className="text-sm leading-none mt-0.5">{occupied ? '✓' : '✗'}</span>
+                            </button>
                           )
                         })}
-                    </ul>
-                  </div>
-                )
-              })}
-            </div>
+                      </div>
+
+                      {/* Drill-down: the named seat list, for reading who's where + moves */}
+                      {expanded && (
+                        <ul className="mt-3 pt-3 border-t border-white/5 space-y-1">
+                          {seatsSorted.map((seat) => {
+                            const occupied = !!seat.entryId
+                            const isSel = occupied && seat.entryId === selectedEntryId
+                            const interactive = canEdit && (occupied || isActive)
+                            return (
+                              <li key={seat.seatNumber}>
+                                <button
+                                  type="button"
+                                  onClick={() => interactive && handleSeatClick(table, seat)}
+                                  disabled={!interactive || busy}
+                                  className={
+                                    'w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left disabled:opacity-60 ' +
+                                    (occupied
+                                      ? isSel
+                                        ? 'bg-gold-500/30 text-gold-100'
+                                        : 'bg-felt-900/60 text-white/90 hover:bg-white/10'
+                                      : isActive && selectedEntry
+                                        ? 'bg-emerald-500/10 text-emerald-200/90 hover:bg-emerald-500/20'
+                                        : 'bg-felt-900/40 text-white/30')
+                                  }
+                                >
+                                  <span className="text-[10px] font-mono text-white/40 w-4 shrink-0">{seat.seatNumber}</span>
+                                  <span className="truncate flex-1">
+                                    {occupied ? nameForEntry(entriesById[seat.entryId]) : isActive && selectedEntry ? 'seat here' : 'empty'}
+                                  </span>
+                                </button>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
           )}
 
           {/* Seat list (printable data) */}
