@@ -63,35 +63,71 @@ function auditFields(daysBack) {
   return { createdAt: ts(daysBack), updatedAt: ts(daysBack), createdBy: 'seed-script', archivedAt: null }
 }
 
+// --- PlayLive canonical blind ladder -----------------------------------------
+// The venue runs ONE blind ladder across every event (weekly Sixhundy Sunday,
+// the Winter Championship Opening + Main Events, etc.). Templates differ only by
+// LEVEL DURATION, not by the blind numbers. BB-ante = big blind at every level.
+// Source: managers' Sixhundy Sunday sheet + Winter Championship structure cards
+// (1 July 2026). Breaks land after levels 6/12/17/22/28 (the Sixhundy cadence).
+const LADDER = [
+  [100, 200], [200, 400], [300, 600], [400, 800], [500, 1_000], [600, 1_200],
+  [800, 1_600], [1_000, 2_000], [1_200, 2_400], [1_500, 3_000], [2_000, 4_000], [2_500, 5_000],
+  [3_000, 6_000], [4_000, 8_000], [5_000, 10_000], [6_000, 12_000], [8_000, 16_000],
+  [10_000, 20_000], [12_000, 24_000], [15_000, 30_000], [20_000, 40_000], [25_000, 50_000],
+  [30_000, 60_000], [40_000, 80_000], [50_000, 100_000], [60_000, 120_000], [75_000, 150_000], [100_000, 200_000],
+  [125_000, 250_000], [150_000, 300_000], [200_000, 400_000], [250_000, 500_000],
+]
+
+const BREAK_AFTER = [6, 12, 17, 22, 28] // blindNumbers a 15-minute break follows
+
+// Build the canonical ladder at a given per-level duration. `durationFor` is
+// either a number (uniform) or a fn(blindNumber) -> minutes (escalating).
+function buildLadder(durationFor, { breakAfter = BREAK_AFTER, breakMinutes = 15 } = {}) {
+  const durOf = typeof durationFor === 'function' ? durationFor : () => durationFor
+  const entries = []
+  LADDER.forEach(([sb, bb], i) => {
+    const blindNumber = i + 1
+    entries.push(level(blindNumber, sb, bb, durOf(blindNumber), bb)) // ante = big blind
+    if (breakAfter.includes(blindNumber)) entries.push(brk(breakMinutes, 'Break', false))
+  })
+  return entries
+}
+
 const STRUCTURE_TEMPLATES = [
   {
     id: 'st-turbo',
     name: 'Turbo (15-min)',
-    description: 'Fast structure for evening turbos.',
-    levels: [
-      level(1, 100, 200, 15),
-      level(2, 200, 400, 15),
-      level(3, 300, 600, 15),
-      brk(10, 'Break', false),
-      level(4, 400, 800, 15, 800),
-      level(5, 600, 1200, 15, 1200),
-    ],
+    description: 'Canonical PlayLive ladder at 15-minute levels. Evening turbos.',
+    levels: buildLadder(15),
     ...auditFields(30),
   },
   {
-    id: 'st-deepstack',
-    name: 'Deepstack (30-min)',
-    description: 'Slow blinds for marquee events.',
-    levels: [
-      level(1, 100, 200, 30),
-      level(2, 200, 400, 30),
-      brk(15, 'Break', false),
-      level(3, 300, 600, 30),
-      level(4, 500, 1000, 30, 1000),
-      brk(15, 'Color-up break', true),
-      level(5, 800, 1600, 30, 1600),
-    ],
-    ...auditFields(45),
+    id: 'st-20min',
+    name: '20-minute levels',
+    description: 'Canonical PlayLive ladder at 20-minute levels.',
+    levels: buildLadder(20),
+    ...auditFields(30),
+  },
+  {
+    id: 'st-30min',
+    name: '30-minute levels',
+    description: 'Canonical PlayLive ladder at 30-minute levels (Sixhundy Sunday back-half cadence).',
+    levels: buildLadder(30),
+    ...auditFields(30),
+  },
+  {
+    id: 'st-40min',
+    name: '40-minute levels',
+    description: 'Canonical PlayLive ladder at 40-minute levels.',
+    levels: buildLadder(40),
+    ...auditFields(30),
+  },
+  {
+    id: 'st-mainevent',
+    name: 'Main Event (40 → 60-min)',
+    description: 'Winter Championship Main Event: 40-minute levels through L12, then 60-minute from L13.',
+    levels: buildLadder((bn) => (bn <= 12 ? 40 : 60)),
+    ...auditFields(30),
   },
 ]
 
@@ -117,7 +153,7 @@ const TOURNAMENT_TEMPLATES = [
       hospitalityCost: 15_00,
       guarantee: 5_000_00,
       houseConsumption: 10_00,
-      structureTemplateId: 'st-deepstack',
+      structureTemplateId: 'st-30min',
       startingStack: 30_000,
       reentryConfig: reentry('reentry', { maxReentries: 2 }),
       hasUpperDeckMainDeck: false,
@@ -163,7 +199,7 @@ const TOURNAMENT_TEMPLATES = [
       hospitalityCost: 20_00,
       guarantee: 20_000_00,
       houseConsumption: 15_00,
-      structureTemplateId: 'st-deepstack',
+      structureTemplateId: 'st-40min',
       startingStack: 40_000,
       reentryConfig: reentry('freezeout'),
       hasUpperDeckMainDeck: true,
