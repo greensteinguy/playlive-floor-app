@@ -30,6 +30,10 @@ import { emptyPlayerForm, validatePlayerForm, buildPlayerArgs } from '../../lib/
 import { Money, Text, EmptyState } from '../../components/FormFields'
 import PlayerProfileFields from '../../components/PlayerProfileFields'
 
+// The player picker shows the whole base (alphabetical) and filters as you type,
+// mirroring the /desk/players search flow (A3).
+const RESULT_LIMIT = 100
+
 const METHODS = [
   { id: 'cash', label: 'Cash' },
   { id: 'eftpos', label: 'EFTPOS' },
@@ -104,7 +108,9 @@ export default function Deposit() {
     }
   }, [preselectId])
 
-  const results = q.trim() ? searchPlayers(players.players, q, { limit: 8 }) : []
+  // Empty query returns the whole base sorted by name (searchPlayers), so the
+  // list shows everyone alphabetically and narrows as the cashier types (A3).
+  const results = searchPlayers(players.players, q, { limit: RESULT_LIMIT })
 
   function resetPayment() {
     setAmountStr('')
@@ -312,31 +318,42 @@ export default function Deposit() {
                     + New player
                   </button>
                 </div>
-                {q.trim() === '' ? (
-                  <p className="text-xs text-white/40 mt-3">Start typing to find a player, or add a new one.</p>
+                {players.players.length === 0 ? (
+                  <p className="text-xs text-white/40 mt-3">No players yet. Add one with + New player.</p>
                 ) : results.length === 0 ? (
                   <p className="text-xs text-white/40 mt-3">No players match "{q}". Add them with + New player.</p>
                 ) : (
-                  <ul className="mt-3 divide-y divide-white/5">
-                    {results.map((p) => (
-                      <li key={p.id} className="flex items-center justify-between py-2">
-                        <div>
-                          <div className="text-sm text-white/90">{playerDisplayName(p)}</div>
-                          <div className="text-xs text-white/40">
-                            {p.phone}
-                            {p.email ? ` · ${p.email}` : ''} · Wallet {formatMoney(p.walletBalance)}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => selectPlayer(p)}
-                          className="px-3 py-1.5 rounded text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
-                        >
-                          Select →
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <div className="text-[11px] font-mono uppercase tracking-widest text-white/30 mt-3 mb-1">
+                      {results.length}
+                      {results.length === RESULT_LIMIT ? '+' : ''} {results.length === 1 ? 'player' : 'players'}
+                      {q.trim() === '' ? ' · alphabetical' : ''}
+                    </div>
+                    {/* Whole base, alphabetical, filtering as you type (A3); each
+                        row is fully clickable — no separate Select button (A4). */}
+                    <ul className="divide-y divide-white/5 max-h-72 overflow-y-auto rounded-lg border border-white/5">
+                      {results.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => selectPlayer(p)}
+                            className="w-full flex items-center justify-between gap-3 text-left px-3 py-2.5 hover:bg-white/5 active:bg-white/10"
+                          >
+                            <span className="min-w-0">
+                              <span className="block text-sm text-white/90 truncate">{playerDisplayName(p)}</span>
+                              <span className="block text-xs text-white/40 truncate">
+                                {p.phone}
+                                {p.email ? ` · ${p.email}` : ''} · Wallet {formatMoney(p.walletBalance)}
+                              </span>
+                            </span>
+                            <span aria-hidden className="text-xs text-white/30 shrink-0">
+                              Select →
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </>
             )}

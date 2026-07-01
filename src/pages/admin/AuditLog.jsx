@@ -11,6 +11,9 @@ import { useToast } from '../../shell/useToast'
 import { downloadCsv, csvFilename } from '../../lib/csv'
 import { WELL_KNOWN_ACTION_TYPES } from '../../lib/schema'
 
+// Action-type options for the filter dropdown, sorted alphabetically (A6).
+const SORTED_ACTION_TYPES = [...WELL_KNOWN_ACTION_TYPES].sort((a, b) => a.localeCompare(b))
+
 const DATE_PRESETS = [
   { id: 'all',  label: 'All time',  days: null },
   { id: '24h',  label: 'Last 24h',  days: 1 },
@@ -58,20 +61,36 @@ export default function AuditLog() {
     [datePresetId, customFrom, customTo]
   )
 
-  const filters = useMemo(
+  // Server-side filters (indexed): action type (exact) + date range.
+  const serverFilters = useMemo(
     () => ({
       actionType: actionType.trim() || null,
-      actorId:    actorId.trim()    || null,
-      targetType: targetType.trim() || null,
-      targetId:   targetId.trim()   || null,
       since,
       until,
     }),
-    [actionType, actorId, targetType, targetId, since, until]
+    [actionType, since, until]
+  )
+
+  // Client-side substring filters (case-insensitive). Firestore can't do
+  // substring/"contains" queries, and the old exact `==` match meant nothing
+  // showed until the value was typed in full. These now filter as-you-type over
+  // the fetched rows instead (A5, floor feedback).
+  const textFilters = useMemo(
+    () => ({
+      actorId:    actorId.trim().toLowerCase(),
+      targetType: targetType.trim().toLowerCase(),
+      targetId:   targetId.trim().toLowerCase(),
+    }),
+    [actorId, targetType, targetId]
   )
 
   const { entries, loading, error, mockMode, hasMore, loadMore, exportAll } =
-    useAuditLog(filters)
+    useAuditLog(serverFilters)
+
+  const visibleEntries = useMemo(
+    () => entries.filter((e) => matchesTextFilters(e, textFilters)),
+    [entries, textFilters]
+  )
 
   const [expandedId, setExpandedId] = useState(null)
   const [exporting, setExporting] = useState(false)
@@ -81,15 +100,17 @@ export default function AuditLog() {
     setExporting(true)
     try {
       const { rows, truncated, limit } = await exportAll()
-      if (rows.length === 0) {
+      // Apply the same client-side substring filters as the table (A5).
+      const filtered = rows.filter((e) => matchesTextFilters(e, textFilters))
+      if (filtered.length === 0) {
         toast.info('Nothing to export — current filters returned no rows.')
         return
       }
-      downloadCsv(rows, CSV_COLUMNS, csvFilename('audit-log'))
+      downloadCsv(filtered, CSV_COLUMNS, csvFilename('audit-log'))
       if (truncated) {
         toast.info(`Export capped at ${limit} rows. Narrow the date or filters to see the rest.`)
       } else {
-        toast.success(`Exported ${rows.length} row${rows.length === 1 ? '' : 's'} to CSV.`)
+        toast.success(`Exported ${filtered.length} row${filtered.length === 1 ? '' : 's'} to CSV.`)
       }
     } catch (e) {
       toast.error(`Export failed: ${e.message}`)
@@ -201,7 +222,7 @@ export default function AuditLog() {
               className="bg-felt-900 border border-white/10 rounded px-2 py-1.5 text-sm"
             >
               <option value="">All actions</option>
-              {WELL_KNOWN_ACTION_TYPES.map((t) => (
+              {SORTED_ACTION_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
@@ -256,14 +277,14 @@ export default function AuditLog() {
           body={error.message}
           tone="error"
         />
-      ) : entries.length === 0 && !loading ? (
+      ) : visibleEntries.length === 0 && !loading ? (
         <EmptyState
           title="No entries match the current filters."
           body="Try widening the date range or clearing the filters."
         />
       ) : (
         <EntriesTable
-          entries={entries}
+          entries={visibleEntries}
           expandedId={expandedId}
           onToggleExpand={(id) => setExpandedId((curr) => (curr === id ? null : id))}
         />
@@ -305,6 +326,16 @@ function deriveDateRange(presetId, customFromIso, customToIso) {
   const since = new Date()
   since.setDate(since.getDate() - preset.days)
   return { since, until: undefined }
+}
+
+// Case-insensitive substring match for the free-text filters (A5). Firestore
+// has no `contains` operator, so these are applied client-side over the fetched
+// rows — filtering as the manager types rather than requiring an exact value.
+function matchesTextFilters(entry, { actorId, targetType, targetId }) {
+  if (actorId && !String(entry.actorId ?? '').toLowerCase().includes(actorId)) return false
+  if (targetType && !String(entry.targetType ?? '').toLowerCase().includes(targetType)) return false
+  if (targetId && !String(entry.targetId ?? '').toLowerCase().includes(targetId)) return false
+  return true
 }
 
 function EmptyState({ title, body, tone = 'neutral' }) {

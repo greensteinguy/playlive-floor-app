@@ -54,6 +54,43 @@ function fmtDateTime(ts) {
   })
 }
 
+// Sortable columns (A1). Default landing sort is alphabetical by name; clicking a
+// header sorts by it, clicking again flips direction. Each column has a sensible
+// first-click direction — buy-in / scheduled / entries lead high→low (biggest /
+// newest first), text columns lead A→Z. Status sorts by lifecycle order.
+const STATUS_ORDER = ['draft', 'scheduled', 'lateRegOpen', 'lateRegClosed', 'finished', 'cancelled']
+
+function toMillis(ts) {
+  if (!ts) return 0
+  if (typeof ts.toMillis === 'function') return ts.toMillis()
+  if (typeof ts.toDate === 'function') return ts.toDate().getTime()
+  if (ts instanceof Date) return ts.getTime()
+  return 0
+}
+
+const SORT_COLUMNS = [
+  { key: 'name',               label: 'Name',      type: 'text', align: 'left',  defaultDir: 'asc',  get: (t) => t.name ?? '' },
+  { key: 'gameType',           label: 'Type',      type: 'text', align: 'left',  defaultDir: 'asc',  get: (t) => GAME_TYPE_LABEL[t.gameType] ?? t.gameType ?? '' },
+  { key: 'buyIn',              label: 'Buy-in',    type: 'num',  align: 'left',  defaultDir: 'desc', get: (t) => t.buyIn ?? 0 },
+  { key: 'scheduledStartTime', label: 'Scheduled', type: 'num',  align: 'left',  defaultDir: 'desc', get: (t) => toMillis(t.scheduledStartTime) },
+  { key: 'status',             label: 'Status',    type: 'num',  align: 'left',  defaultDir: 'asc',  get: (t) => STATUS_ORDER.indexOf(t.status) },
+  { key: 'entryCount',         label: 'Entries',   type: 'num',  align: 'right', defaultDir: 'desc', get: (t) => t.entryCount ?? 0 },
+]
+
+function sortTournaments(rows, sortKey, sortDir) {
+  const col = SORT_COLUMNS.find((c) => c.key === sortKey) ?? SORT_COLUMNS[0]
+  const mul = sortDir === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => {
+    const va = col.get(a)
+    const vb = col.get(b)
+    let cmp
+    if (col.type === 'text') cmp = String(va).localeCompare(String(vb), 'en', { sensitivity: 'base' })
+    else cmp = va < vb ? -1 : va > vb ? 1 : 0
+    if (cmp === 0) cmp = String(a.name ?? '').localeCompare(String(b.name ?? '')) // stable tiebreak by name
+    return cmp * mul
+  })
+}
+
 export default function Tournaments() {
   const { role } = useAuth()
   const toast = useToast()
@@ -75,12 +112,30 @@ export default function Tournaments() {
     return c
   }, [tournaments])
 
+  // Sort state (A1). Default: alphabetical by name.
+  const [sortKey, setSortKey] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
+
+  const sortedVisible = useMemo(
+    () => sortTournaments(visible, sortKey, sortDir),
+    [visible, sortKey, sortDir]
+  )
+
+  function handleSort(col) {
+    if (col.key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(col.key)
+      setSortDir(col.defaultDir)
+    }
+  }
+
   function handleExport() {
-    if (visible.length === 0) {
+    if (sortedVisible.length === 0) {
       toast.info('Nothing to export — no tournaments in this view.')
       return
     }
-    const rows = visible.map((t) => ({
+    const rows = sortedVisible.map((t) => ({
       id: t.id,
       name: t.name,
       gameType: GAME_TYPE_LABEL[t.gameType] ?? t.gameType,
@@ -176,16 +231,35 @@ export default function Tournaments() {
               <table className="w-full text-sm">
                 <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
                   <tr>
-                    <th className="text-left px-4 py-2">Name</th>
-                    <th className="text-left px-4 py-2 whitespace-nowrap">Type</th>
-                    <th className="text-left px-4 py-2 whitespace-nowrap">Buy-in</th>
-                    <th className="text-left px-4 py-2 whitespace-nowrap">Scheduled</th>
-                    <th className="text-left px-4 py-2 whitespace-nowrap">Status</th>
-                    <th className="text-right px-4 py-2 whitespace-nowrap">Entries</th>
+                    {SORT_COLUMNS.map((col) => {
+                      const active = sortKey === col.key
+                      return (
+                        <th
+                          key={col.key}
+                          className={'px-4 py-2 whitespace-nowrap ' + (col.align === 'right' ? 'text-right' : 'text-left')}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSort(col)}
+                            aria-label={`Sort by ${col.label}`}
+                            className={
+                              'inline-flex items-center gap-1 uppercase tracking-widest hover:text-white/70 active:text-white ' +
+                              (active ? 'text-gold-300 ' : '') +
+                              (col.align === 'right' ? 'flex-row-reverse' : '')
+                            }
+                          >
+                            {col.label}
+                            <span aria-hidden className="w-2 text-gold-300">
+                              {active ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+                            </span>
+                          </button>
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((t) => (
+                  {sortedVisible.map((t) => (
                     <tr
                       key={t.id}
                       className="relative border-t border-white/5 hover:bg-white/[0.04] cursor-pointer transition-colors"
