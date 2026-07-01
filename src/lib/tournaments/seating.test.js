@@ -23,7 +23,14 @@ vi.mock('../players', () => ({
   playerDisplayName: (p) => p.displayName ?? `${p.firstName} ${p.lastName}`.trim(),
 }))
 
+// eliminateEntry recounts the tournament counters via registration; stub it so the
+// seating tests stay focused on the seat/entry writes (recount has its own tests).
+vi.mock('./registration', () => ({
+  recountTournamentEntries: vi.fn().mockResolvedValue({ remainingPlayerCount: 0 }),
+}))
+
 import { runValidatedTransaction, runValidatedBatch, validatedSet, tables as tablesApi, auditLog } from '../firestore'
+import { recountTournamentEntries } from './registration'
 import {
   isSeatable,
   seatableEntries,
@@ -37,6 +44,7 @@ import {
   clearSeating,
   seatEntry,
   unseatEntry,
+  eliminateEntry,
   balanceTables,
   breakTable,
   seatNextAlternate,
@@ -58,6 +66,7 @@ import {
   SeatOccupiedError,
   SeatOutOfRangeError,
   EntryNotSeatableError,
+  AlreadyBustedError,
   CannotBreakTableError,
   NoAlternatesError,
   NoOpenSeatError,
@@ -233,6 +242,7 @@ describe('seating ops', () => {
     runValidatedBatch.mockImplementation(async (fn) => fn(mockState.tx))
     tablesApi.listTables.mockResolvedValue([])
     auditLog.writeAuditLogSafe.mockClear()
+    recountTournamentEntries.mockClear()
   })
 
   describe('drawSeats', () => {
@@ -372,6 +382,60 @@ describe('seating ops', () => {
       expect(tableWrite.data.seats.find((s) => s.seatNumber === 4).entryId).toBeNull()
       const entryWrite = mockState.calls.update.find((c) => c.path[3] === 'e1')
       expect(entryWrite.partial).toMatchObject({ currentTableId: null, currentSeatNumber: null })
+    })
+  })
+
+  describe('eliminateEntry', () => {
+    it('busts a seated entry: frees the seat, marks busted, recounts, audits', async () => {
+      mockState.seed(
+        tablePath('t1', 'table-1'),
+        makeTable({ id: 'table-1', seats: emptySeats(9).map((s) => (s.seatNumber === 4 ? { ...s, entryId: 'e1' } : s)) })
+      )
+      const entry = makeEntry({ id: 'e1', currentTableId: 'table-1', currentSeatNumber: 4 })
+
+      const res = await eliminateEntry({ tournament, entry, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+
+      expect(res).toEqual({ ok: true })
+      // seat freed on the table
+      const tableWrite = mockState.calls.set.find((c) => c.path[3] === 'table-1')
+      expect(tableWrite.data.seats.find((s) => s.seatNumber === 4).entryId).toBeNull()
+      // entry marked busted, seat fields cleared (invariants held in one write)
+      const entryWrite = mockState.calls.update.find((c) => c.path[3] === 'e1')
+      expect(entryWrite.partial).toMatchObject({
+        currentTableId: null,
+        currentSeatNumber: null,
+        bustedInSessionId: 'session-1',
+      })
+      expect(entryWrite.partial.bustedAt).toBeTruthy()
+      // counters refreshed + audited
+      expect(recountTournamentEntries).toHaveBeenCalledWith({ tournamentId: 't1' })
+      expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(
+        expect.objectContaining({ actionType: 'entry.busted', targetId: 'e1' })
+      )
+    })
+
+    it('busts an unseated live entry with no table write', async () => {
+      const entry = makeEntry({ id: 'e9', currentTableId: null, currentSeatNumber: null })
+
+      await eliminateEntry({ tournament, entry, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+
+      expect(mockState.calls.set.filter((c) => c.path[2] === 'tables')).toHaveLength(0)
+      const entryWrite = mockState.calls.update.find((c) => c.path[3] === 'e9')
+      expect(entryWrite.partial.bustedAt).toBeTruthy()
+      expect(entryWrite.partial.bustedInSessionId).toBe('session-1')
+      expect(recountTournamentEntries).toHaveBeenCalledTimes(1)
+    })
+
+    it('refuses to eliminate an already-busted entry', async () => {
+      await expect(
+        eliminateEntry({ tournament, entry: makeEntry({ bustedAt: Timestamp.now() }), sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(AlreadyBustedError)
+    })
+
+    it('refuses to eliminate a voided entry', async () => {
+      await expect(
+        eliminateEntry({ tournament, entry: makeEntry({ voidedAt: Timestamp.now() }), sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(EntryNotSeatableError)
     })
   })
 
