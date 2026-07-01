@@ -10,14 +10,14 @@
 
 ---
 
-## A. Quick code wins — buildable now, no external input
+## A. Quick code wins — ✅ ALL DONE & live-verified 1 July 2026 (branch `feature/floor-feedback-quick-wins`)
 
-- [ ] **A1 — Tournament list: clickable column sorting.** `/td/tournaments` (`src/pages/td/Tournaments.jsx`, `src/hooks/useTournaments.js`). Default sort **alphabetical by name**; click a column header to sort; **buy-in** sorts **high→low** on first click. Make name / buy-in / date / status / entries all sortable (per default assumption). Client-side sort over the already-fetched rows; keep CSV export honouring the active sort.
-- [ ] **A2 — Open-table button prominence + batch open.** `/td/tables` (`src/pages/td/Tables.jsx`, `src/lib/tournaments/seating.js` `openTable`). Make **"+ Open table"** bigger/clearer (it's too small and subtle). Add **batch open** — open N tables in one action (count input or "open all needed"). Tables still start deactivated per the existing lifecycle. *(The deeper seat-flow rework is B2.)*
-- [ ] **A3 — Deposit flow: alphabetical player dropdown.** `/desk/deposit` (`src/pages/desk/Deposit.jsx`). In addition to the search bar, show a **dropdown/list of the player base in alphabetical order** that filters down as you type (or scroll). **Reuse the `/desk/players` search flow pattern as-is** (Guy: "can copy the player search flow exactly").
-- [ ] **A4 — Deposit player-picker: whole row clickable.** Same screen. Remove the awkward separate **"Select"** button — the **entire player asset (name + details) should be clickable** to pick them. (The list rows on `/desk/players` are already whole-row clickable from the reskin — mirror that here.)
-- [ ] **A5 — Audit log filter search is buggy (incremental match).** `/admin/audit` (`src/pages/admin/AuditLog.jsx`, `src/hooks/useAuditLog.js`). Searching e.g. "player" in **Target type** shows nothing until the word is **fully typed** — should filter **incrementally (substring/prefix, case-insensitive)** as you type. Bug fix.
-- [ ] **A6 — Audit log "all actions" dropdown: alphabetical order.** Same screen. The action-type dropdown is in **random order** — sort it **alphabetically** (sort `WELL_KNOWN_ACTION_TYPES` for display).
+- [x] **A1 — Tournament list: clickable column sorting.** `/td/tournaments` (`src/pages/td/Tournaments.jsx`, `src/hooks/useTournaments.js`). Default sort **alphabetical by name**; click a column header to sort; **buy-in** sorts **high→low** on first click. Make name / buy-in / date / status / entries all sortable (per default assumption). Client-side sort over the already-fetched rows; keep CSV export honouring the active sort.
+- [x] **A2 — Open-table button prominence + batch open.** `/td/tables` (`src/pages/td/Tables.jsx`, `src/lib/tournaments/seating.js` `openTable`). Make **"+ Open table"** bigger/clearer (it's too small and subtle). Add **batch open** — open N tables in one action (count input or "open all needed"). Tables still start deactivated per the existing lifecycle. *(The deeper seat-flow rework is B2.)*
+- [x] **A3 — Deposit flow: alphabetical player dropdown.** `/desk/deposit` (`src/pages/desk/Deposit.jsx`). In addition to the search bar, show a **dropdown/list of the player base in alphabetical order** that filters down as you type (or scroll). **Reuse the `/desk/players` search flow pattern as-is** (Guy: "can copy the player search flow exactly").
+- [x] **A4 — Deposit player-picker: whole row clickable.** Same screen. Remove the awkward separate **"Select"** button — the **entire player asset (name + details) should be clickable** to pick them. (The list rows on `/desk/players` are already whole-row clickable from the reskin — mirror that here.)
+- [x] **A5 — Audit log filter search is buggy (incremental match).** `/admin/audit` (`src/pages/admin/AuditLog.jsx`, `src/hooks/useAuditLog.js`). Searching e.g. "player" in **Target type** shows nothing until the word is **fully typed** — should filter **incrementally (substring/prefix, case-insensitive)** as you type. Bug fix.
+- [x] **A6 — Audit log "all actions" dropdown: alphabetical order.** Same screen. The action-type dropdown is in **random order** — sort it **alphabetically** (sort `WELL_KNOWN_ACTION_TYPES` for display).
 
 ## B. Needs manager input / collaborative design
 

@@ -99,6 +99,7 @@ export default function Tables() {
   const [confirmBalance, setConfirmBalance] = useState(false)
   const [breakTableId, setBreakTableId] = useState(null)
   const [showSeatList, setShowSeatList] = useState(false)
+  const [openCount, setOpenCount] = useState(1) // batch open-table count (A2)
   const [confirmEliminate, setConfirmEliminate] = useState(false)
   // Per-table drill-down: tables collapse to an at-a-glance ✓/✗ seat map by default;
   // expanding one reveals its named seat list. Set of expanded table ids.
@@ -237,10 +238,21 @@ export default function Tables() {
     })
   }
 
-  async function handleOpenTable() {
+  async function handleOpenTables() {
     await run(async () => {
-      const res = await openTable({ tournament, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
-      toast.success(`Opened Table ${res.tableNumber} — deactivated; activate it when you're ready to fill it.`)
+      // openTable reads the current max tableNumber then writes; call it
+      // sequentially so each sees the previous table and numbers don't collide
+      // (A2 batch open — a parallel loop would race on the next table number).
+      const opened = []
+      for (let i = 0; i < openCount; i++) {
+        const res = await openTable({ tournament, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
+        opened.push(res.tableNumber)
+      }
+      const label =
+        opened.length === 1
+          ? `Opened Table ${opened[0]}`
+          : `Opened ${opened.length} tables (T${opened[0]}–T${opened[opened.length - 1]})`
+      toast.success(`${label} — deactivated; activate when you're ready to fill.`)
       seating.reload()
     })
   }
@@ -427,21 +439,44 @@ export default function Tables() {
             title="Seating"
             right={
               canEdit && (
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {/* Batch open (A2): stepper + a prominent button. Tables start
+                      deactivated — activate when ready to fill. */}
+                  <div className="flex items-center rounded-lg border border-white/10 bg-felt-900 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setOpenCount((c) => Math.max(1, c - 1))}
+                      disabled={busy || openCount <= 1}
+                      aria-label="Fewer tables"
+                      className="px-2.5 py-2 text-white/60 hover:text-white hover:bg-white/5 disabled:opacity-30"
+                    >
+                      −
+                    </button>
+                    <span className="w-6 text-center text-sm tabular-nums text-white/90">{openCount}</span>
+                    <button
+                      type="button"
+                      onClick={() => setOpenCount((c) => Math.min(12, c + 1))}
+                      disabled={busy || openCount >= 12}
+                      aria-label="More tables"
+                      className="px-2.5 py-2 text-white/60 hover:text-white hover:bg-white/5 disabled:opacity-30"
+                    >
+                      +
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={handleOpenTable}
+                    onClick={handleOpenTables}
                     disabled={busy}
-                    title="Open a new table (starts deactivated — activate it when ready to fill)"
-                    className="text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:opacity-40"
+                    title="Open new tables (they start deactivated — activate when ready to fill)"
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30 active:bg-emerald-500/40 disabled:opacity-40"
                   >
-                    + Open table
+                    {busy ? 'Opening…' : openCount === 1 ? '+ Open table' : `+ Open ${openCount} tables`}
                   </button>
                   {openTables.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setShowSeatList((v) => !v)}
-                      className="text-[11px] text-white/50 hover:text-white"
+                      className="px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
                     >
                       {showSeatList ? 'Hide seat list' : 'Seat list'}
                     </button>
