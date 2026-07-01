@@ -70,9 +70,9 @@ export function ToastProvider({ children }) {
 }
 
 const VARIANT_CLASSES = {
-  success: 'bg-felt-800 border-emerald-500/30 text-emerald-200',
-  error:   'bg-felt-800 border-red-500/40 text-red-200',
-  info:    'bg-felt-800 border-gold-500/30 text-gold-200',
+  success: 'glass border-l-2 border-l-emerald-400 text-emerald-100',
+  error:   'glass border-l-2 border-l-brand-500 text-brand-100',
+  info:    'glass border-l-2 border-l-white/50 text-white/90',
 }
 
 function ToastViewport({ toasts, onDismiss }) {
@@ -83,7 +83,7 @@ function ToastViewport({ toasts, onDismiss }) {
         <div
           key={t.id}
           role="status"
-          className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg text-sm ${
+          className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl text-sm ${
             VARIANT_CLASSES[t.variant] ?? VARIANT_CLASSES.info
           }`}
         >

@@ -46,20 +46,9 @@ const NAV_ITEMS = [
     icon: '↘',
     allowedRoles: ['cashier'],
   },
-  {
-    section: 'desk',
-    to: '/desk/withdrawals',
-    label: 'Withdrawals',
-    icon: '↗',
-    allowedRoles: ['cashier'],
-  },
-  {
-    section: 'desk',
-    to: '/desk/tickets',
-    label: 'Tickets',
-    icon: '✦',
-    allowedRoles: ['cashier'],
-  },
+  // NOTE: Withdrawals (/desk/withdrawals) + Tickets (/desk/tickets) are Phase-4
+  // placeholders — removed from the sidebar so floor staff don't hit dead-ends.
+  // Re-add a row here when the real pages land. Routes still exist in App.jsx.
 
   // ── Tournament Floor ─────────────────────────────────────────────────────
   {
@@ -92,32 +81,15 @@ const NAV_ITEMS = [
   },
   {
     section: 'td',
-    to: '/td/clock',
-    label: 'Live clock',
-    icon: '◷',
-    allowedRoles: ['td', 'readonly'],
-  },
-  {
-    section: 'td',
     to: '/td/tables',
     label: 'Tables & seating',
     icon: '⊞',
     allowedRoles: ['td'],
   },
-  {
-    section: 'td',
-    to: '/td/bounty',
-    label: 'Mystery bounty',
-    icon: '☆',
-    allowedRoles: ['td'],
-  },
-  {
-    section: 'td',
-    to: '/td/payouts',
-    label: 'Payouts',
-    icon: '◆',
-    allowedRoles: ['td', 'cashier'],
-  },
+  // NOTE: the standalone Live clock (/td/clock) is gone — the clock is run
+  // per-tournament (Tournaments → open → Open clock), so a separate sidebar
+  // entry was a redundant dead-end. Mystery bounty (/td/bounty) + Payouts
+  // (/td/payouts) are Phase-4 placeholders, removed until the real pages land.
 
   // ── Admin (manager-only) ─────────────────────────────────────────────────
   {
@@ -134,13 +106,8 @@ const NAV_ITEMS = [
     icon: '⇌',
     allowedRoles: [], // manager-only
   },
-  {
-    section: 'admin',
-    to: '/admin/reconcile',
-    label: 'Reconciliation',
-    icon: '∑',
-    allowedRoles: [], // manager-only
-  },
+  // NOTE: Reconciliation (/admin/reconcile) is a Phase-4 placeholder — removed
+  // from the sidebar until the end-of-day reconciliation view is built.
 ]
 
 export const NAV_SECTIONS = [

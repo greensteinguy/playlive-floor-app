@@ -36,7 +36,7 @@ export default function AppShell() {
   }, [drawerOpen])
 
   return (
-    <div className="min-h-screen bg-felt-950 text-white font-body flex">
+    <div className="min-h-screen text-white font-body flex">
       {/* Desktop sidebar — always visible on md+ */}
       <div className="hidden md:flex">
         <Sidebar />
@@ -60,16 +60,18 @@ export default function AppShell() {
       {/* Main column */}
       <main className="flex-1 min-w-0 flex flex-col">
         {/* Mobile/iPad header with hamburger. 44×44 button per iOS HIG. */}
-        <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-white/5 bg-felt-900">
+        <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-white/10 glass-rail sticky top-0 z-20">
           <button
             type="button"
             aria-label="Open menu"
             onClick={() => setDrawerOpen(true)}
-            className="w-11 h-11 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 active:bg-white/15 text-xl"
+            className="w-11 h-11 flex items-center justify-center rounded-xl titanium text-xl text-white/80 hover:text-white active:translate-y-px transition"
           >
             ☰
           </button>
-          <span className="font-display text-lg text-gold-400">PlayLive</span>
+          <span className="font-brand text-base tracking-[0.2em] text-brand-400 [text-shadow:0_0_18px_rgba(239,43,43,0.55)]">
+            PLAYLIVE
+          </span>
         </header>
 
         <div className="flex-1 min-w-0">

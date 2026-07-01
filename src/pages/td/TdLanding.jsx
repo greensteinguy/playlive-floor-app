@@ -24,33 +24,14 @@ const TILES = [
     badge: 'Phase 2',
   },
   {
-    navPath: '/td/clock',
-    icon: '◷',
-    label: 'Live clock',
-    description: 'Run the level clock, manage breaks, and post tournament status.',
-    badge: 'Phase 2',
-  },
-  {
     navPath: '/td/tables',
     icon: '⊞',
     label: 'Tables & seating',
     description: 'Open tables, seat players, balance, and break.',
-    badge: 'Phase 2',
+    badge: 'Phase 3',
   },
-  {
-    navPath: '/td/bounty',
-    icon: '☆',
-    label: 'Mystery bounty',
-    description: 'Record draws and confirm bounty winners.',
-    badge: 'Phase 4',
-  },
-  {
-    navPath: '/td/payouts',
-    icon: '◆',
-    label: 'Payouts',
-    description: 'Confirm and post tournament payouts and last-longer settlements.',
-    badge: 'Phase 4',
-  },
+  // Live clock tile removed — the clock runs per-tournament (open a tournament →
+  // Open clock). Mystery bounty + Payouts are Phase-4 placeholders, removed for now.
 ]
 
 export default function TdLanding() {

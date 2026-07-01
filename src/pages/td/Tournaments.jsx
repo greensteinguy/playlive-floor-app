@@ -182,14 +182,23 @@ export default function Tournaments() {
                     <th className="text-left px-4 py-2 whitespace-nowrap">Scheduled</th>
                     <th className="text-left px-4 py-2 whitespace-nowrap">Status</th>
                     <th className="text-right px-4 py-2 whitespace-nowrap">Entries</th>
-                    <th className="px-4 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {visible.map((t) => (
-                    <tr key={t.id} className="border-t border-white/5 hover:bg-white/[0.03]">
+                    <tr
+                      key={t.id}
+                      className="relative border-t border-white/5 hover:bg-white/[0.04] cursor-pointer transition-colors"
+                    >
                       <td className="px-4 py-3 text-white/90">
-                        {t.name}
+                        {/* Stretched link — makes the whole row clickable while staying a real
+                            anchor (keyboard, middle-click / open-in-new-tab). */}
+                        <Link
+                          to={`/td/tournaments/${t.id}`}
+                          className="font-medium text-white/90 hover:text-white after:absolute after:inset-0 after:content-['']"
+                        >
+                          {t.name}
+                        </Link>
                         {(t.isMultiDay || t.isMultiFlight) && (
                           <span className="ml-2 text-[10px] font-mono uppercase tracking-wider text-white/30">
                             {t.isMultiFlight ? 'multi-flight' : 'multi-day'}
@@ -203,14 +212,6 @@ export default function Tournaments() {
                       <td className="px-4 py-3 text-white/70 whitespace-nowrap">{fmtDateTime(t.scheduledStartTime)}</td>
                       <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                       <td className="px-4 py-3 text-right text-white/70 tabular-nums">{t.entryCount}</td>
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          to={`/td/tournaments/${t.id}`}
-                          className="px-3 py-1.5 rounded text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white active:bg-white/15"
-                        >
-                          Open →
-                        </Link>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
