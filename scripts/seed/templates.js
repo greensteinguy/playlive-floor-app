@@ -129,6 +129,20 @@ const STRUCTURE_TEMPLATES = [
     levels: buildLadder((bn) => (bn <= 12 ? 40 : 60)),
     ...auditFields(30),
   },
+  {
+    id: 'st-sixhundy',
+    name: 'Sixhundy Sunday (24 → 30-min)',
+    description: 'Weekly $600 Sixhundy Sunday — exact venue structure: 24-minute levels through L12, then 30-minute from L13.',
+    levels: buildLadder((bn) => (bn <= 12 ? 24 : 30)),
+    ...auditFields(30),
+  },
+  {
+    id: 'st-opening',
+    name: 'Championship Opening (30 → 40-min)',
+    description: 'Winter Championship Opening Event: 30-minute levels through L12, then 40-minute from L13.',
+    levels: buildLadder((bn) => (bn <= 12 ? 30 : 40)),
+    ...auditFields(30),
+  },
 ]
 
 function reentry(
@@ -139,6 +153,78 @@ function reentry(
 }
 
 const TOURNAMENT_TEMPLATES = [
+  // ── Real venue events (from the Winter Championship cards + Sixhundy sheet,
+  //    1 July 2026). Money fields marked ⚑ are estimates — not on the source. ──
+  {
+    id: 'tt-wc-opening',
+    name: 'Winter Championship — Opening Event',
+    description: 'Multi-day Opening Event. $325 entry, $75 hospo, 30k stack (from the structure card).',
+    config: {
+      name: 'Winter Championship Opening Event',
+      shortDescription: 'Opening Event — Day 1 into Day 2.',
+      isMultiDay: true,
+      isMultiFlight: false,
+      gameType: 'nlh',
+      buyIn: 325_00,
+      hospitalityCost: 75_00,
+      guarantee: 0, // ⚑ not on the card — set per instance at create time
+      houseConsumption: 0,
+      structureTemplateId: 'st-opening',
+      startingStack: 30_000,
+      // "Players who bag more than once…" → multi-entry (re-entry, unlimited).
+      reentryConfig: reentry('reentry', { maxReentries: null }),
+      hasUpperDeckMainDeck: false,
+      satelliteConfig: null,
+      bountyPoolConfig: null,
+    },
+    ...auditFields(15),
+  },
+  {
+    id: 'tt-wc-mainevent',
+    name: 'Winter Championship — Main Event',
+    description: 'Multi-day Main Event. $1,300 entry, $200 hospo, 100k stack (from the structure card).',
+    config: {
+      name: 'Winter Championship Main Event',
+      shortDescription: 'Main Event — Day 1 through the final table.',
+      isMultiDay: true,
+      isMultiFlight: false,
+      gameType: 'mainEvent',
+      buyIn: 1_300_00,
+      hospitalityCost: 200_00,
+      guarantee: 0, // ⚑ not on the card
+      houseConsumption: 0,
+      structureTemplateId: 'st-mainevent',
+      startingStack: 100_000,
+      reentryConfig: reentry('reentry', { maxReentries: null }),
+      hasUpperDeckMainDeck: false,
+      satelliteConfig: null,
+      bountyPoolConfig: null,
+    },
+    ...auditFields(15),
+  },
+  {
+    id: 'tt-sixhundy',
+    name: 'Sixhundy Sunday',
+    description: 'Weekly $600 Sunday. Buy-in + structure are real; stack/hospo/guarantee are ⚑ estimates — confirm with managers.',
+    config: {
+      name: 'Sixhundy Sunday',
+      shortDescription: 'Weekly $600 Sunday deepstack.',
+      isMultiDay: false,
+      isMultiFlight: false,
+      gameType: 'nlh',
+      buyIn: 600_00,
+      hospitalityCost: 0, // ⚑ estimate — not provided
+      guarantee: 0, // ⚑ estimate
+      houseConsumption: 0,
+      structureTemplateId: 'st-sixhundy',
+      startingStack: 30_000, // ⚑ estimate — not provided
+      reentryConfig: reentry('reentry', { maxReentries: null }),
+      hasUpperDeckMainDeck: false,
+      satelliteConfig: null,
+      bountyPoolConfig: null,
+    },
+    ...auditFields(10),
+  },
   {
     id: 'tt-friday-nlh',
     name: 'Friday $100 NLH',

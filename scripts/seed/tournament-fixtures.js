@@ -84,7 +84,7 @@ function buildLevels(count, { durationMinutes, anteFromLevel = 5, breakEvery = 4
 // 5 reusable structure templates, every one > 10 levels (12, 14, 15, 18, 20).
 const STRUCTURE_TEMPLATES = [
   {
-    id: 'st-mainevent',
+    id: 'st-me-showcase',
     name: 'Main Event (45-min, 20 levels)',
     description: 'Slow, deep structure for the multi-day Championship and Mega Stack.',
     levels: buildLevels(20, { durationMinutes: 45, anteFromLevel: 5, breakEvery: 4, breakMinutes: 20 }),
@@ -357,7 +357,7 @@ const TOURNAMENT_SPECS = [
     shortDescription: '3-day Main Event. Day 1 → Day 2 → Day 3 final table.',
     gameType: 'mainEvent',
     buyIn: 1_100_00, hospitalityCost: 100_00, guarantee: 100_000_00, houseConsumption: 100_00,
-    structureTemplateId: 'st-mainevent', startingStack: 50_000,
+    structureTemplateId: 'st-me-showcase', startingStack: 50_000,
     payoutStructure: PAYOUT_TOP9, lateRegCutoffLevel: 8,
     reentryConfig: reentry('reentry', { maxReentries: 1 }), // single Day-1 re-entry
     status: 'scheduled', start: [10, 12],
@@ -403,7 +403,7 @@ const TOURNAMENT_SPECS = [
     shortDescription: 'Day 1A–D → Day 2A–B → Day 3 final. WSOP-style funnel.',
     gameType: 'nlh',
     buyIn: 400_00, hospitalityCost: 30_00, guarantee: 50_000_00, houseConsumption: 25_00,
-    structureTemplateId: 'st-mainevent', startingStack: 50_000,
+    structureTemplateId: 'st-me-showcase', startingStack: 50_000,
     payoutStructure: PAYOUT_TOP9, lateRegCutoffLevel: 8,
     reentryConfig: reentry('reentry', { maxReentries: 1 }),
     status: 'scheduled', start: [12, 12],
