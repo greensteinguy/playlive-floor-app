@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "playlive-25a17"
+  },
+  "targets": {
+    "playlive-25a17": {
+      "hosting": {
+        "floor": ["playlive-floor"]
+      }
+    }
+  }
+}
