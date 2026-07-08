@@ -3,6 +3,8 @@ dist
 .env
 .env.local
 .env.*.local
+# Real Firebase web config for deployed builds — never committed (see .env.example).
+.env.production
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
