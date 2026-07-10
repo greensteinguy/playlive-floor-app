@@ -37,6 +37,15 @@ export {
   verifyBalanceMatchesLedger,
 } from './reconciliation'
 
+// End-of-day reconciliation report (pure categorization — task 4.9)
+export {
+  buildReconciliationReport,
+  summaryCsvRows,
+  reconDateRange,
+  RECON_DATE_PRESETS,
+  EXTERNAL_METHODS,
+} from './reconciliationReport'
+
 // Signed wallet-balance effect of a ledger row (SSOT shared by reconciliation
 // and the per-player ledger view — task 3.11).
 export { walletTxDelta } from './_shared'
