@@ -36,6 +36,8 @@ export const WELL_KNOWN_ACTION_TYPES = /** @type {const} */ ([
   'tournament.structureEdited',
   'tournament.payoutEdited',
   'tournament.dealEntered',
+  'tournament.lastLongerSettled',
+  'tournament.lastLongerUnsettled',
   // structure template
   'structureTemplate.created',
   'structureTemplate.updated',

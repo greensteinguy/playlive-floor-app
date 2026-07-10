@@ -27,6 +27,7 @@ import {
   registrationOpen,
   registrableSessions,
   planEntry,
+  lastLongerDeckLabel,
   TournamentError,
 } from '../../lib/tournaments'
 import { WalletError } from '../../lib/wallet'
@@ -91,6 +92,7 @@ export default function TournamentRegister() {
   const [topUpMethod, setTopUpMethod] = useState('cash')
   const [topUpRef, setTopUpRef] = useState('')
   const [overrideReason, setOverrideReason] = useState('')
+  const [deck, setDeck] = useState('') // '' | 'upper' | 'main' — last-longer side bet (optional)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -141,6 +143,7 @@ export default function TournamentRegister() {
     setTopUpMethod('cash')
     setTopUpRef('')
     setOverrideReason('')
+    setDeck('')
     setConfirming(false)
   }
   function selectPlayer(p) {
@@ -209,12 +212,18 @@ export default function TournamentRegister() {
           method === 'ticket' && shortfall > 0 && shortfallMode === 'override'
             ? { reason: overrideReason.trim() }
             : null,
+        lastLongerDeck: tournament.hasUpperDeckMainDeck && deck ? deck : null,
         actorId: user.uid,
         actorRole: role,
       })
       toast.success(
         `Registered ${playerDisplayName(selectedPlayer)} — entry #${res.entryNumber}, ${formatMoney(res.totalCost)} via ${methodLabel(method)}.`
       )
+      if (res.lastLongerDeckApplied === false) {
+        toast.error(
+          `The buy-in went through, but the ${lastLongerDeckLabel(res.lastLongerDeck)} pick wasn't recorded — check the connection and note it manually.`
+        )
+      }
       resetForNext()
       reload()
     } catch (e) {
@@ -531,6 +540,36 @@ export default function TournamentRegister() {
                       )}
                     </div>
                   )}
+
+                  {tournament.hasUpperDeckMainDeck && (
+                    <div className="mt-4 pt-3 border-t border-white/5 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                        Last longer (optional)
+                      </span>
+                      <div className="flex gap-1">
+                        {[
+                          ['', 'None'],
+                          ['upper', 'Upper Deck'],
+                          ['main', 'Main Deck'],
+                        ].map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setDeck(value)}
+                            disabled={busy}
+                            className={
+                              'px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 ' +
+                              (deck === value
+                                ? 'bg-gold-500/20 text-gold-200'
+                                : 'bg-white/5 text-white/60 hover:bg-white/10')
+                            }
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </Panel>
               )}
 
@@ -566,6 +605,9 @@ export default function TournamentRegister() {
                           : ''}
                         {method === 'ticket' && shortfall > 0 && shortfallMode === 'override'
                           ? ' (manager override — ticket below value)'
+                          : ''}
+                        {tournament.hasUpperDeckMainDeck && deck
+                          ? ` · ${lastLongerDeckLabel(deck)} last longer`
                           : ''}
                       </p>
                       <div className="flex items-center justify-end gap-3">

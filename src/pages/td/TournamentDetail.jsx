@@ -38,6 +38,8 @@ import { useEntries } from '../../hooks/useEntries'
 import { usePlayers } from '../../hooks/usePlayers'
 import { playerDisplayName } from '../../lib/players'
 import { paymentMethodLabel, entryTypeLabel, entryResultLabel } from '../../lib/entryDisplay'
+import { lastLongerDeckLabel } from '../../lib/tournaments'
+import LastLongerPanel from '../../components/LastLongerPanel'
 import { downloadCsv, csvFilename } from '../../lib/csv'
 
 const TABS = [
@@ -698,7 +700,7 @@ function SaveBar({ onSave, saving, label }) {
 }
 
 function PlayersTab({ t }) {
-  const { entries, loading, error, mockMode } = useEntries(t.id)
+  const { entries, loading, error, mockMode, reload } = useEntries(t.id)
   const players = usePlayers()
   const nameById = useMemo(() => {
     const m = {}
@@ -756,6 +758,9 @@ function PlayersTab({ t }) {
         />
       ) : (
         <>
+          {t.hasUpperDeckMainDeck && (
+            <LastLongerPanel tournament={t} entries={entries} nameOf={nameOf} onChanged={reload} />
+          )}
           <div className="flex justify-end">
             <button
               type="button"
@@ -779,7 +784,24 @@ function PlayersTab({ t }) {
               <tbody>
                 {rows.map((e) => (
                   <tr key={e.id} className="border-t border-white/5">
-                    <td className="px-4 py-2.5 text-white/90">{nameOf(e)}</td>
+                    <td className="px-4 py-2.5 text-white/90">
+                      {nameOf(e)}
+                      {t.hasUpperDeckMainDeck && e.lastLongerDeck && (
+                        <span
+                          className={
+                            'ml-2 align-middle text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded ' +
+                            (e.isLastLongerWinner
+                              ? 'bg-emerald-500/15 text-emerald-300'
+                              : e.lastLongerDeck === 'upper'
+                                ? 'bg-sky-500/10 text-sky-300/80'
+                                : 'bg-violet-500/10 text-violet-300/80')
+                          }
+                        >
+                          {lastLongerDeckLabel(e.lastLongerDeck)}
+                          {e.isLastLongerWinner ? ' · winner' : ''}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">
                       {entryTypeLabel(e.entryType)} #{e.entryNumber}
                     </td>
