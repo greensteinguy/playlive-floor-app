@@ -20,6 +20,11 @@ import {
   doc,
   setDoc,
   getDoc,
+  collectionGroup,
+  query,
+  where,
+  orderBy,
+  getDocs,
   setLogLevel,
 } from 'firebase/firestore'
 
@@ -157,6 +162,72 @@ describe('firestore.rules — per-role write access', () => {
         } else {
           await assertFails(setDoc(doc(db, ...pathParts), { x: 1 }))
         }
+      })
+    })
+  }
+})
+
+// ── Collection-group queries ───────────────────────────────────────────────
+// Rules v2: nested matches don't authorize collectionGroup() queries — the
+// explicit {path=**} blocks in firestore.rules do. Queries below mirror the
+// app's real collection-group queries (entries.js, tickets.js,
+// walletTransactions.js). The emulator doesn't enforce composite indexes,
+// so these exercise rules only; index coverage lives in firestore.indexes.json.
+
+describe('firestore.rules — collection-group queries', () => {
+  const groups = [
+    {
+      name: 'entries',
+      seedDocs: [
+        { pathParts: ['tournaments', 't1', 'entries', 'e1'], data: { playerId: 'p1', registeredAt: 1 } },
+        { pathParts: ['tournaments', 't2', 'entries', 'e2'], data: { playerId: 'p1', registeredAt: 2 } },
+      ],
+      // listEntriesByPlayer()
+      buildQuery: (db) =>
+        query(collectionGroup(db, 'entries'), where('playerId', '==', 'p1'), orderBy('registeredAt', 'desc')),
+    },
+    {
+      name: 'tickets',
+      seedDocs: [
+        { pathParts: ['players', 'p1', 'tickets', 'tk1'], data: { state: 'unused' } },
+        { pathParts: ['players', 'p2', 'tickets', 'tk2'], data: { state: 'unused' } },
+      ],
+      // listAllUnusedTickets()
+      buildQuery: (db) => query(collectionGroup(db, 'tickets'), where('state', '==', 'unused')),
+    },
+    {
+      name: 'walletTransactions',
+      seedDocs: [
+        { pathParts: ['players', 'p1', 'walletTransactions', 'wt1'], data: { type: 'deposit', timestamp: 1 } },
+        { pathParts: ['players', 'p2', 'walletTransactions', 'wt2'], data: { type: 'deposit', timestamp: 2 } },
+      ],
+      // listAllWalletTransactions()
+      buildQuery: (db) => query(collectionGroup(db, 'walletTransactions'), orderBy('timestamp', 'desc')),
+    },
+  ]
+
+  for (const { name, seedDocs, buildQuery } of groups) {
+    describe(`collectionGroup('${name}')`, () => {
+      beforeEach(async () => {
+        for (const { pathParts, data } of seedDocs) {
+          await seed(pathParts, data)
+        }
+      })
+
+      it.each(ALL)('role=%s can query', async (role) => {
+        await assertSucceeds(getDocs(buildQuery(ctxFor(role))))
+      })
+
+      it('unauthenticated user cannot query', async () => {
+        await assertFails(getDocs(buildQuery(ctxFor(null))))
+      })
+
+      it('authenticated user with no role claim cannot query', async () => {
+        await assertFails(getDocs(buildQuery(ctxNoRole())))
+      })
+
+      it('authenticated user with an unknown role claim cannot query', async () => {
+        await assertFails(getDocs(buildQuery(ctxFor('intern'))))
       })
     })
   }

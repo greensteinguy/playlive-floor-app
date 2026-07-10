@@ -32,15 +32,34 @@
         { "fieldPath": "playerId",     "order": "ASCENDING" },
         { "fieldPath": "registeredAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "walletTransactions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "type",      "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
+    {
+      "collectionGroup": "tickets",
+      "fieldPath": "state",
+      "indexes": [
+        { "queryScope": "COLLECTION", "order": "ASCENDING" },
+        { "queryScope": "COLLECTION", "order": "DESCENDING" },
+        { "queryScope": "COLLECTION", "arrayConfig": "CONTAINS" },
+        { "queryScope": "COLLECTION_GROUP", "order": "ASCENDING" }
+      ]
+    },
     {
       "collectionGroup": "walletTransactions",
       "fieldPath": "timestamp",
       "indexes": [
         { "queryScope": "COLLECTION", "order": "ASCENDING" },
         { "queryScope": "COLLECTION", "order": "DESCENDING" },
+        { "queryScope": "COLLECTION", "arrayConfig": "CONTAINS" },
         { "queryScope": "COLLECTION_GROUP", "order": "ASCENDING" },
         { "queryScope": "COLLECTION_GROUP", "order": "DESCENDING" }
       ]
