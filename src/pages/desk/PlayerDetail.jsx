@@ -384,12 +384,20 @@ function WalletTab({ player, canRegister }) {
       <div className="flex items-center justify-between gap-3 mb-3">
         <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Transaction ledger</h3>
         {canRegister && (
-          <Link
-            to={`/desk/deposit?playerId=${player.id}`}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35 whitespace-nowrap"
-          >
-            + Record a deposit
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/desk/deposit?playerId=${player.id}`}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35 whitespace-nowrap"
+            >
+              + Record a deposit
+            </Link>
+            <Link
+              to={`/desk/withdrawals?playerId=${player.id}`}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-white/70 hover:bg-white/10 active:bg-white/15 whitespace-nowrap"
+            >
+              ↖ New withdrawal
+            </Link>
+          </div>
         )}
       </div>
 
@@ -479,7 +487,11 @@ function WalletTab({ player, canRegister }) {
           <p className="text-xs text-white/30 mt-4">
             Running <span className="text-white/50">Balance</span> is the wallet balance after each
             transaction; rows with no wallet effect (a cash buy-in, a ticket used, a withdrawal
-            request) leave it unchanged. The withdrawal queue is Phase 4.
+            request) leave it unchanged. Withdrawals live in the{' '}
+            <Link to="/desk/withdrawals" className="underline hover:text-white/60">
+              withdrawal queue
+            </Link>
+            .
           </p>
         </>
       )}

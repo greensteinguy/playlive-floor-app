@@ -46,9 +46,18 @@ const NAV_ITEMS = [
     icon: '↘',
     allowedRoles: ['cashier'],
   },
-  // NOTE: Withdrawals (/desk/withdrawals) + Tickets (/desk/tickets) are Phase-4
-  // placeholders — removed from the sidebar so floor staff don't hit dead-ends.
-  // Re-add a row here when the real pages land. Routes still exist in App.jsx.
+  {
+    section: 'desk',
+    to: '/desk/withdrawals',
+    label: 'Withdrawals',
+    icon: '↖',
+    // Money-out mirrors money-in: cashier + (implicit) manager, like Wallet
+    // deposit. Not readonly/td — the route is cashier+manager gated in App.jsx.
+    allowedRoles: ['cashier'],
+  },
+  // NOTE: Tickets (/desk/tickets) is a Phase-4 placeholder — removed from the
+  // sidebar so floor staff don't hit dead-ends. Re-add a row here when the real
+  // page lands. The route still exists in App.jsx.
 
   // ── Tournament Floor ─────────────────────────────────────────────────────
   {

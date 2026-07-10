@@ -33,7 +33,14 @@ const TILES = [
     description: 'Record cash / EFTPOS / PayID added to a player wallet.',
     badge: 'Phase 3',
   },
-  // Withdrawals + Tickets tiles removed — those pages are Phase-4 placeholders.
+  {
+    navPath: '/desk/withdrawals',
+    icon: '↖',
+    label: 'Withdrawals',
+    description: 'Queue withdrawal requests; a manager completes them once the money is paid out.',
+    badge: 'Phase 4',
+  },
+  // Tickets tile removed — that page is a Phase-4 placeholder.
 ]
 
 export default function DeskLanding() {
