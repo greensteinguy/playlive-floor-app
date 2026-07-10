@@ -123,4 +123,23 @@ export {
   NotSatelliteError,
 } from './satellite'
 
+export {
+  aliveEntries,
+  recordedWinner,
+  isWinningsPaid,
+  isWinningsStaged,
+  buildPayoutRows,
+  payoutRowsTotal,
+  recordWinner,
+  revertWinner,
+  enterDeal,
+  PayoutsError,
+  MultiplePlayersRemainError,
+  WinnerAlreadyRecordedError,
+  NoWinnerRecordedError,
+  WinnerRevertBlockedError,
+  DealRowAlreadyPaidError,
+  DealTotalMismatchError,
+} from './payouts'
+
 export { TournamentError } from './errors'

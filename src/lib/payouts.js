@@ -75,3 +75,48 @@ export function applyRounding(cents, rounding) {
   if (rounding === 'nearest10') return Math.round(cents / 1000) * 1000
   return Math.round(cents)
 }
+
+/**
+ * Materialize a tournament's payoutStructure against the ACTUAL prize pool into
+ * a per-place cash table (task 4.4). Returns `[{ place, amount }]` (integer
+ * cents), sorted place-ascending.
+ *
+ * byPercent: each place gets pool × percent, rounded per the structure's
+ * rounding rule; the rounding residue (pool − sum of rounded places) is then
+ * allocated to 1st place — the poker-room convention — so the table distributes
+ * the pool EXACTLY. Consequence: 1st place may sit off the rounding step;
+ * every other place obeys it. (The residue can be negative when rounding
+ * over-allocates; 1st absorbs that too.) Residue redistribution only happens
+ * when the structure's percents sum to ~100% (the editor's ±0.5% tolerance) —
+ * a deliberately partial structure keeps its per-place rounded amounts and the
+ * unallocated remainder is simply not distributed.
+ *
+ * byPlace: the stored absolute payouts pass through unchanged — they were
+ * entered exactly, so no rounding and no residue handling. The table's total
+ * may legitimately differ from the pool; the payouts screen surfaces that delta.
+ *
+ * @param {{type:'byPlace'|'byPercent', rounding:'nearest5'|'nearest10'|'none',
+ *          positions:Array<{place:number, payout:number, percent:number|null}>}} payoutStructure
+ * @param {number} prizePoolCents  the tournament's actual prize pool (integer cents)
+ * @returns {Array<{place:number, amount:number}>}
+ */
+export function materializePayouts(payoutStructure, prizePoolCents) {
+  if (!payoutStructure || !Array.isArray(payoutStructure.positions)) return []
+  const positions = [...payoutStructure.positions].sort((a, b) => a.place - b.place)
+
+  if (payoutStructure.type === 'byPlace') {
+    return positions.map((p) => ({ place: p.place, amount: p.payout ?? 0 }))
+  }
+
+  const pool = Number.isFinite(prizePoolCents) && prizePoolCents > 0 ? prizePoolCents : 0
+  const rows = positions.map((p) => ({
+    place: p.place,
+    amount: applyRounding(pool * (p.percent ?? 0), payoutStructure.rounding),
+  }))
+  const percentSum = positions.reduce((sum, p) => sum + (p.percent ?? 0), 0)
+  if (rows.length > 0 && Math.abs(percentSum - 1) <= 0.005) {
+    const residue = pool - rows.reduce((sum, r) => sum + r.amount, 0)
+    rows[0].amount += residue // rows are place-sorted, so [0] is 1st place
+  }
+  return rows
+}
