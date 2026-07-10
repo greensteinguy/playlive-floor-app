@@ -142,4 +142,15 @@ export {
   DealTotalMismatchError,
 } from './payouts'
 
+export {
+  entryTypeCounts,
+  guaranteeStatus,
+  resultPaidState,
+  RESULT_PAID_STATE_LABEL,
+  RESULTS_GROUP_LABEL,
+  buildResultsStandings,
+  flattenStandings,
+  latestDealFromAudit,
+} from './results'
+
 export { TournamentError } from './errors'
