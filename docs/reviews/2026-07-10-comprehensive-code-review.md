@@ -2,6 +2,8 @@
 
 Six parallel review agents each read one area of the app in full (source + tests) and graded it independently. This document is the compiled result. Requested by Guy to see how the current model (Claude Fable 5) evaluates the app built with a prior model, with emphasis on **table management** and **clock management**.
 
+> **Scope note:** the review ran against commit `0be511b` (the session's checkout). `main` had three newer merges the agents did not see: **4.1 bust-out recording with undo elimination**, **4.8 withdrawal-request queue UI**, and **4.9 end-of-day reconciliation view**. Those partially address three findings below: the "no un-bust" recovery-path gap (re-verify the new undo covers the seating-review scenario), and the "Withdrawals/Reconciliation pages are placeholders" notes. Everything else — including both urgent rules findings and all concurrency/idempotency findings — is unaffected, since none of those merges touched the rules file, the wallet ops' idempotency, or the transaction guards.
+
 ## Scorecard
 
 | Area | Grade | One-line verdict |
