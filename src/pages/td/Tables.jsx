@@ -36,19 +36,36 @@ import {
   fillableTables,
   tableSizes,
   seatableEntries,
+  isSeatable,
   occupiedSeatCount,
   buildSeatList,
   SeatingError,
+  TournamentError,
+  drawBounty,
+  isMysteryBounty,
+  remainingBountySummary,
+  bountyBoardRows,
+  reachSatelliteMilestone,
+  isSatellite,
+  satelliteMilestoneThreshold,
+  isMilestoneWinner,
 } from '../../lib/tournaments'
 import { ValidationError, WriteTimeoutError } from '../../lib/firestore'
 import { playerDisplayName } from '../../lib/players'
+import { formatMoney } from '../../lib/money'
+import { useBountyDraws } from '../../hooks/useBountyDraws'
 import { ordinal } from '../../lib/entryDisplay'
 import { downloadCsv, csvFilename } from '../../lib/csv'
 import { Select, EmptyState } from '../../components/FormFields'
 import StatusBadge from '../../components/StatusBadge'
 
 function friendlyError(e) {
-  if (e instanceof SeatingError || e instanceof ValidationError || e instanceof WriteTimeoutError) {
+  if (
+    e instanceof SeatingError ||
+    e instanceof TournamentError ||
+    e instanceof ValidationError ||
+    e instanceof WriteTimeoutError
+  ) {
     return e.message
   }
   return `Something went wrong: ${e.message}`
@@ -103,12 +120,23 @@ export default function Tables() {
   const [showSeatList, setShowSeatList] = useState(false)
   const [openCount, setOpenCount] = useState(1) // batch open-table count (A2)
   const [confirmEliminate, setConfirmEliminate] = useState(false)
+  // Satellite: inline confirm for the "milestone reached" action (task 4.2).
+  const [confirmMilestone, setConfirmMilestone] = useState(false)
+  // Mystery Bounty (task 4.2): the post-elimination "who knocked them out?"
+  // prompt ({ eliminatedEntryId } — null id = the standalone "record a draw"
+  // flow, which asks for the knockout first) and the drawn-amount reveal.
+  const [bountyPrompt, setBountyPrompt] = useState(null)
+  const [bountyReveal, setBountyReveal] = useState(null)
   // Per-table drill-down: tables collapse to an at-a-glance ✓/✗ seat map by default;
   // expanding one reveals its named seat list. Set of expanded table ids.
   const [expandedTables, setExpandedTables] = useState(() => new Set())
 
   const seating = useSeating(tournamentId)
   const { tournament, sessions, tables, entries } = seating
+
+  const isMB = isMysteryBounty(tournament)
+  const isSat = isSatellite(tournament)
+  const bounty = useBountyDraws(isMB ? tournamentId : '')
 
   const canEdit = role === 'manager' || role === 'td'
   const activeSessionId = sessionId || sessions[0]?.id || ''
@@ -153,6 +181,40 @@ export default function Tables() {
   // preview; the op recomputes from fresh reads inside its transaction).
   const nextPlace = useMemo(() => nextFinishingPlace(entries), [entries])
 
+  // ── Mystery Bounty derivations (task 4.2) ─────────────────────────────────
+  const bountySummary = useMemo(
+    () => (isMB ? remainingBountySummary(tournament, bounty.draws) : null),
+    [isMB, tournament, bounty.draws]
+  )
+  const bountyRows = useMemo(
+    () => (isMB ? bountyBoardRows({ draws: bounty.draws, entriesById, playersById }) : []),
+    [isMB, bounty.draws, entriesById, playersById]
+  )
+  const drawnAgainst = useMemo(() => new Set(bounty.draws.map((d) => d.knockedOutEntryId)), [bounty.draws])
+  // Eliminator picker: currently seated, still-alive players.
+  const eliminatorCandidates = useMemo(
+    () => entries.filter((e) => isSeatable(e) && seatedIds.has(e.id)),
+    [entries, seatedIds]
+  )
+  // Standalone "record draw": knockouts that don't have a bounty drawn yet.
+  const undrawnKnockouts = useMemo(
+    () => entries.filter((e) => e.voidedAt === null && e.bustedAt !== null && !drawnAgainst.has(e.id)),
+    [entries, drawnAgainst]
+  )
+
+  // ── Satellite derivations (task 4.2) ──────────────────────────────────────
+  const milestoneThreshold = isSat ? satelliteMilestoneThreshold(tournament) : null
+  const ticketReward = isSat ? tournament.satelliteConfig.ticketReward : null
+  // Milestone winners in this session — shown beside the "out" count (they left
+  // the field as WINNERS, not bust-outs).
+  const sessionTicketWinners = useMemo(
+    () =>
+      isSat
+        ? entries.filter((e) => e.originSessionId === activeSessionId && isMilestoneWinner(e)).length
+        : 0,
+    [isSat, entries, activeSessionId]
+  )
+
   const nameForEntry = (entry) => {
     const p = entry ? playersById[entry.playerId] : null
     return p ? playerDisplayName(p) : '—'
@@ -165,6 +227,9 @@ export default function Tables() {
     setConfirmClear(false)
     setConfirmBalance(false)
     setConfirmEliminate(false)
+    setConfirmMilestone(false)
+    setBountyPrompt(null)
+    setBountyReveal(null)
     setBreakTableId(null)
     setShowSeatList(false)
     setExpandedTables(new Set())
@@ -175,6 +240,9 @@ export default function Tables() {
     setConfirmClear(false)
     setConfirmBalance(false)
     setConfirmEliminate(false)
+    setConfirmMilestone(false)
+    setBountyPrompt(null)
+    setBountyReveal(null)
     setBreakTableId(null)
     setExpandedTables(new Set())
   }
@@ -271,6 +339,7 @@ export default function Tables() {
 
   async function handleSeatClick(table, seat) {
     setConfirmEliminate(false)
+    setConfirmMilestone(false)
     if (seat.entryId) {
       // Occupied — pick this player up to move (toggle).
       setSelectedEntryId((cur) => (cur === seat.entryId ? null : seat.entryId))
@@ -302,6 +371,7 @@ export default function Tables() {
       toast.success(`Unseated ${nameForEntry(entry)}.`)
       setSelectedEntryId(null)
       setConfirmEliminate(false)
+      setConfirmMilestone(false)
       seating.reload()
     })
   }
@@ -311,6 +381,56 @@ export default function Tables() {
       const res = await eliminateEntry({ tournament, entry, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
       toast.success(`Eliminated ${nameForEntry(entry)} in ${ordinal(res.finishingPlace)} place.`)
       setConfirmEliminate(false)
+      setSelectedEntryId(null)
+      seating.reload()
+      // Mystery Bounty: every knockout triggers a draw — prompt for the
+      // eliminator as a FOLLOW-UP (skippable; never blocks the elimination).
+      if (isMB) setBountyPrompt({ eliminatedEntryId: entry.id })
+    })
+  }
+
+  // Mystery Bounty: draw for the knockout in `bountyPrompt` against the picked
+  // eliminator, then show the reveal. The op is race-safe against concurrent
+  // draws; the wallet credit happens at the cashier's confirm (task 4.7).
+  async function handleDrawBounty(eliminatorEntry) {
+    const eliminatedEntryId = bountyPrompt?.eliminatedEntryId
+    if (!eliminatedEntryId) return
+    await run(async () => {
+      const res = await drawBounty({
+        tournament,
+        eliminatorEntryId: eliminatorEntry.id,
+        eliminatedEntryId,
+        actorId: user.uid,
+        actorRole: role,
+      })
+      setBountyPrompt(null)
+      setBountyReveal({
+        amount: res.bountyValue,
+        knockerName: nameForEntry(eliminatorEntry),
+        remainingCount: res.remainingCount,
+        remainingTotal: res.remainingTotal,
+      })
+      bounty.reload()
+      seating.reload() // the eliminator entry's bountyEarnings changed
+    })
+  }
+
+  // Satellite: the TD saw the stack reach the milestone — record the ticket win
+  // and remove the player from the field (the ticket itself is issued when the
+  // cashier confirms, task 4.7).
+  async function handleMilestone(entry) {
+    await run(async () => {
+      const res = await reachSatelliteMilestone({
+        tournament,
+        entry,
+        sessionId: activeSessionId,
+        actorId: user.uid,
+        actorRole: role,
+      })
+      toast.success(
+        `${nameForEntry(entry)} reached the milestone — ${formatMoney(res.ticketReward)} ticket recorded (issued at the cashier).`
+      )
+      setConfirmMilestone(false)
       setSelectedEntryId(null)
       seating.reload()
     })
@@ -436,7 +556,22 @@ export default function Tables() {
             <span className="text-gold-300">
               {pool.length} in field · {seatedIds.size} seated · {unseated.length} unseated
             </span>
-            {eliminatedCount > 0 && <span className="text-white/40">{eliminatedCount} out</span>}
+            {eliminatedCount - sessionTicketWinners > 0 && (
+              <span className="text-white/40">{eliminatedCount - sessionTicketWinners} out</span>
+            )}
+            {isSat && sessionTicketWinners > 0 && (
+              <span className="text-emerald-300">{sessionTicketWinners} ticket{sessionTicketWinners === 1 ? '' : 's'} won</span>
+            )}
+            {isSat && milestoneThreshold != null && (
+              <span className="text-white/40">
+                Milestone {fmtChips(milestoneThreshold)} chips → {formatMoney(ticketReward)} ticket
+              </span>
+            )}
+            {isMB && bountySummary && (
+              <span className="text-white/40">
+                {bountySummary.count} bounties undrawn · {formatMoney(bountySummary.total)}
+              </span>
+            )}
           </div>
 
           {/* Draw / clear / export controls */}
@@ -592,7 +727,7 @@ export default function Tables() {
           {/* Selection hint / actions for the picked-up player */}
           {selectedEntry && (
             <div className="mb-4 bg-gold-500/10 border border-gold-500/30 rounded-lg px-4 py-2.5 text-sm text-gold-200">
-              {!confirmEliminate ? (
+              {!confirmEliminate && !confirmMilestone ? (
                 <div className="flex items-center justify-between gap-3">
                   <span>
                     Holding <span className="font-medium">{nameForEntry(selectedEntry)}</span> — click an empty seat to move them, or{' '}
@@ -613,11 +748,51 @@ export default function Tables() {
                     >
                       eliminate
                     </button>
+                    {isSat && (
+                      <>
+                        {' · '}
+                        <button
+                          type="button"
+                          onClick={() => setConfirmMilestone(true)}
+                          disabled={busy}
+                          className="underline text-emerald-300 hover:text-emerald-200 disabled:no-underline disabled:opacity-40"
+                        >
+                          milestone reached
+                        </button>
+                      </>
+                    )}
                     .
                   </span>
                   <button type="button" onClick={() => setSelectedEntryId(null)} className="text-gold-300/70 hover:text-gold-200 text-xs shrink-0">
                     Cancel
                   </button>
+                </div>
+              ) : confirmMilestone ? (
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <span className="text-white/85">
+                    <span className="font-medium text-white">{nameForEntry(selectedEntry)}</span> reached the milestone
+                    {milestoneThreshold != null && <> ({fmtChips(milestoneThreshold)} chips)</>}? They leave the field and win a{' '}
+                    <span className="font-medium text-emerald-300">{formatMoney(ticketReward)}</span> ticket — issued when the
+                    cashier confirms.
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleMilestone(selectedEntry)}
+                      disabled={busy}
+                      className="px-3 py-1.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30 active:bg-emerald-500/40 disabled:opacity-40"
+                    >
+                      {busy ? 'Recording…' : 'Yes, milestone reached'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmMilestone(false)}
+                      disabled={busy}
+                      className="px-3 py-1.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -654,6 +829,87 @@ export default function Tables() {
                     </button>
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Mystery Bounty: post-knockout draw prompt (skippable — the draw is a
+              follow-up, never a blocker; the standalone "Record draw…" button on
+              the bounty board reopens it for skipped knockouts). */}
+          {isMB && bountyPrompt && (
+            <div className="mb-4 bg-felt-800 border border-gold-500/40 rounded-lg px-4 py-3 text-sm">
+              {bountyPrompt.eliminatedEntryId === null ? (
+                <>
+                  <p className="text-white/80 mb-2">
+                    <span className="text-gold-300 font-medium">Record a bounty draw</span> — whose knockout is it for?
+                  </p>
+                  {undrawnKnockouts.length === 0 ? (
+                    <p className="text-xs text-white/40 mb-2">Every recorded knockout already has its bounty drawn.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {undrawnKnockouts.map((e) => (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => setBountyPrompt({ eliminatedEntryId: e.id })}
+                          disabled={busy}
+                          className="px-3 py-1.5 rounded-lg text-sm bg-white/5 text-white/80 hover:bg-white/10 disabled:opacity-50"
+                        >
+                          {nameForEntry(e)}
+                          {e.finishingPlace != null && (
+                            <span className="text-[10px] font-mono text-white/40 ml-1.5">{ordinal(e.finishingPlace)}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setBountyPrompt(null)}
+                    disabled={busy}
+                    className="px-3 py-1.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-white/80 mb-2">
+                    <span className="text-gold-300 font-medium">Mystery bounty</span> — who knocked out{' '}
+                    <span className="text-white font-medium">
+                      {nameForEntry(entriesById[bountyPrompt.eliminatedEntryId])}
+                    </span>
+                    ?
+                  </p>
+                  {eliminatorCandidates.length === 0 ? (
+                    <p className="text-xs text-white/40 mb-2">No seated players to pick from.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {eliminatorCandidates.map((e) => (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => handleDrawBounty(e)}
+                          disabled={busy}
+                          className="px-3 py-1.5 rounded-lg text-sm bg-gold-500/15 text-gold-200 hover:bg-gold-500/30 disabled:opacity-50"
+                        >
+                          {nameForEntry(e)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBountyPrompt(null)}
+                      disabled={busy}
+                      className="px-3 py-1.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                    >
+                      Skip — no bounty / unknown eliminator
+                    </button>
+                    <span className="text-[11px] text-white/30">You can record it later from the bounty board.</span>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -743,6 +999,7 @@ export default function Tables() {
                     onClick={() => {
                       if (!canEdit) return
                       setConfirmEliminate(false)
+                      setConfirmMilestone(false)
                       setSelectedEntryId((cur) => (cur === e.id ? null : e.id))
                     }}
                     disabled={!canEdit || busy}
@@ -756,6 +1013,76 @@ export default function Tables() {
                   </button>
                 ))}
               </div>
+            </Panel>
+          )}
+
+          {/* Mystery Bounty board (task 4.2): drawn bounties + the remaining-pool
+              figure. Self-contained; the Phase-5 TV display reuses the same pure
+              derivations (remainingBountySummary / bountyBoardRows). */}
+          {isMB && (
+            <Panel
+              title={`Mystery bounty board${bountySummary ? ` — ${bountySummary.count} of ${bountySummary.count + bountySummary.drawnCount} undrawn` : ''}`}
+              right={
+                canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setBountyPrompt({ eliminatedEntryId: null })}
+                    disabled={busy || undrawnKnockouts.length === 0}
+                    title={
+                      undrawnKnockouts.length === 0
+                        ? 'Every recorded knockout already has its bounty drawn'
+                        : 'Draw a bounty for a knockout that was skipped earlier'
+                    }
+                    className="text-[11px] font-medium text-gold-300 hover:text-gold-200 disabled:text-white/30"
+                  >
+                    Record draw…
+                  </button>
+                )
+              }
+            >
+              {bountySummary && (
+                <p className="text-xs text-white/50 mb-3">
+                  <span className="text-gold-300">{formatMoney(bountySummary.total)}</span> still in the pool
+                  {' · '}
+                  {formatMoney(bountySummary.drawnTotal)} drawn so far
+                </p>
+              )}
+              {bountyRows.length === 0 ? (
+                <p className="text-sm text-white/40">No bounties drawn yet — the first knockout starts the reveals.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                      <tr>
+                        <th className="text-left px-2 py-1.5">Won by</th>
+                        <th className="text-right px-2 py-1.5">Bounty</th>
+                        <th className="text-left px-2 py-1.5">Knocked out</th>
+                        <th className="text-left px-2 py-1.5">When</th>
+                        <th className="text-left px-2 py-1.5">Wallet</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bountyRows.map((r) => (
+                        <tr key={r.id} className="border-t border-white/5">
+                          <td className="px-2 py-1.5 text-white/90">{r.knockerName}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-gold-300">{formatMoney(r.bountyValue)}</td>
+                          <td className="px-2 py-1.5 text-white/70">{r.knockedOutName}</td>
+                          <td className="px-2 py-1.5 text-white/50">
+                            {r.drawnAt?.toDate?.().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) ?? '—'}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            {r.isCredited ? (
+                              <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-300/80">credited</span>
+                            ) : (
+                              <span className="text-[10px] font-mono uppercase tracking-wider text-white/30">at cashier</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Panel>
           )}
 
@@ -948,6 +1275,41 @@ export default function Tables() {
                 </table>
               </div>
             </Panel>
+          )}
+          {/* Mystery Bounty reveal — the table-side moment. Full-screen so the
+              amount is unmissable; dismiss by clicking anywhere or "Done". */}
+          {bountyReveal && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Mystery bounty drawn"
+              onClick={() => setBountyReveal(null)}
+            >
+              <div
+                className="bg-felt-800 border border-gold-500/40 rounded-2xl px-8 py-10 md:px-16 md:py-12 text-center max-w-xl w-full shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="text-[11px] font-mono uppercase tracking-[0.3em] text-gold-300/70 mb-3">Mystery bounty</p>
+                <p className="font-display text-6xl md:text-7xl text-gold-300 tabular-nums mb-4">
+                  {formatMoney(bountyReveal.amount)}
+                </p>
+                <p className="text-lg text-white/90 mb-1">
+                  <span className="font-medium">{bountyReveal.knockerName}</span> wins the bounty
+                </p>
+                <p className="text-xs text-white/40 mb-6">
+                  {bountyReveal.remainingCount} bount{bountyReveal.remainingCount === 1 ? 'y' : 'ies'} ·{' '}
+                  {formatMoney(bountyReveal.remainingTotal)} left in the pool · paid when the cashier confirms
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setBountyReveal(null)}
+                  className="px-6 py-2.5 rounded-lg text-sm font-medium bg-gold-500/20 text-gold-200 hover:bg-gold-500/30 active:bg-gold-500/40"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
           )}
         </>
       )}

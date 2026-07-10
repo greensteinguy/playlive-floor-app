@@ -83,4 +83,30 @@ export {
   NoOpenSeatError,
 } from './seating'
 
+export {
+  drawBounty,
+  isMysteryBounty,
+  undrawnBountyValues,
+  undrawnSlotIndexes,
+  remainingBountySummary,
+  bountyBoardRows,
+  slotIndexFromDrawId,
+  drawIdForSlot,
+  BountyError,
+  NotMysteryBountyError,
+  NoBountiesRemainingError,
+  EliminatorNotAliveError,
+  BountyAlreadyDrawnError,
+} from './bounty'
+
+export {
+  reachSatelliteMilestone,
+  isSatellite,
+  satelliteMilestoneThreshold,
+  isMilestoneWinner,
+  milestoneWinners,
+  SatelliteError,
+  NotSatelliteError,
+} from './satellite'
+
 export { TournamentError } from './errors'

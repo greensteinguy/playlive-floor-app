@@ -418,6 +418,8 @@ auditLog/{id}
 | `entry.busted` | Bust-out recorded. `metadata.place`. |
 | `entry.bustReverted` | Bust-out undone — the player returns to the field unseated; later finishers keep their places (a gap in the finishing order is allowed). `metadata.previousPlace`. |
 | `entry.voided` | Entry voided (data-entry error). |
+| `entry.satelliteMilestone` | Satellite milestone reached — the player leaves the field as a ticket winner (bust fields set, `finishingPlace` stays null, `ticketWinnings` recorded; wallet ticket issued at cashier confirm). `metadata.ticketReward`. |
+| `bounty.drawn` | Mystery Bounty drawn on a knockout. `metadata.drawId`, `metadata.bountyValue`, `metadata.knockerEntryId`, `metadata.knockedOutEntryId`. Wallet credit happens at cashier confirm (`wallet.winCredit`). |
 | `wallet.deposit` | Deposit recorded. `metadata.amount`, `metadata.method`. |
 | `wallet.spend` | Spend recorded. `metadata.amount`, `metadata.method`. |
 | `wallet.ticketUse` | Ticket used. |
@@ -795,6 +797,7 @@ tournaments/{tid}/bountyDraws/{id}
 **Notes**
 
 - Drawing logic (Phase 4 task 4.2): on knockout, randomly select an undrawn value from `tournaments/{tid}.bountyPoolConfig.bountyValues`. "Undrawn" = not present in this subcollection. Write the bountyDraw doc; the eliminator's wallet is credited later when the cashier confirms (per Q4 in wallet-design.md — no auto-credit).
+- **Doc ids are slot-addressed, not UUIDs** (the "strong reason" exception in §1): the draw for pool value `bountyValues[i]` lives at `bountyDraws/slot-{i}`, so "value i is drawn" ⟺ its doc exists. The draw op probes its chosen slot doc inside the transaction, which makes two concurrent knockouts drawing the same pool value impossible by construction (`src/lib/tournaments/bounty.js`).
 - "Remaining bounty pool" display = `bountyValues - sum(this subcollection's bountyValue)`.
 
 ---
