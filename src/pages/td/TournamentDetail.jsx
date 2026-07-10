@@ -673,6 +673,12 @@ function TopBar({ t, role }) {
               ¤ Payouts
             </Link>
           )}
+          <Link
+            to={`/td/tournaments/${t.id}/results`}
+            className="text-xs font-medium text-gold-300 hover:text-gold-200 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"
+          >
+            ≡ Results
+          </Link>
         </div>
       </div>
       <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 flex flex-wrap gap-x-8 gap-y-3">

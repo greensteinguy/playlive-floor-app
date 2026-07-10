@@ -38,6 +38,7 @@ import TdTables from './pages/td/Tables'
 import TdBounty from './pages/td/Bounty'
 import TdPayouts from './pages/td/Payouts'
 import TdTournamentPayouts from './pages/td/TournamentPayouts'
+import TdTournamentResults from './pages/td/TournamentResults'
 
 // Admin
 import AdminAudit from './pages/admin/AuditLog'
@@ -173,6 +174,12 @@ export default function App() {
                     </ProtectedRoute>
                   </ErrorBoundary>
                 }
+              />
+              {/* Results is a read-only derived view — every floor role can see
+                  it, matching the detail page's gating (no requiredRoles). */}
+              <Route
+                path="/td/tournaments/:id/results"
+                element={<ErrorBoundary><TdTournamentResults /></ErrorBoundary>}
               />
               <Route path="/td/clock" element={<ErrorBoundary><TdClock /></ErrorBoundary>} />
               <Route
