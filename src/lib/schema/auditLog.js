@@ -47,6 +47,7 @@ export const WELL_KNOWN_ACTION_TYPES = /** @type {const} */ ([
   // entry
   'entry.created',
   'entry.busted',
+  'entry.bustReverted',
   'entry.voided',
   // seating (task 3.7 / 3.8 / 3.9)
   'seating.drawn',

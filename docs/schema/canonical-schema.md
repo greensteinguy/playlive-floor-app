@@ -416,6 +416,7 @@ auditLog/{id}
 | `tournamentTemplate.archived` | Tournament template archived (soft-delete; `archivedAt` set). |
 | `entry.created` | Player registered for a tournament. `metadata.paymentMethod`. |
 | `entry.busted` | Bust-out recorded. `metadata.place`. |
+| `entry.bustReverted` | Bust-out undone — the player returns to the field unseated; later finishers keep their places (a gap in the finishing order is allowed). `metadata.previousPlace`. |
 | `entry.voided` | Entry voided (data-entry error). |
 | `wallet.deposit` | Deposit recorded. `metadata.amount`, `metadata.method`. |
 | `wallet.spend` | Spend recorded. `metadata.amount`, `metadata.method`. |

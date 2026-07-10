@@ -11,6 +11,7 @@ vi.mock('../firestore', () => ({
   runValidatedBatch: vi.fn(),
   validatedSet: vi.fn(),
   tables: { listTables: vi.fn() },
+  entries: { listEntries: vi.fn() },
   generateId: vi.fn(() => nextId()),
   auditLog: { writeAuditLogSafe: vi.fn().mockResolvedValue(undefined) },
   paths: {
@@ -29,7 +30,7 @@ vi.mock('./registration', () => ({
   recountTournamentEntries: vi.fn().mockResolvedValue({ remainingPlayerCount: 0 }),
 }))
 
-import { runValidatedTransaction, runValidatedBatch, validatedSet, tables as tablesApi, auditLog } from '../firestore'
+import { runValidatedTransaction, runValidatedBatch, validatedSet, tables as tablesApi, entries as entriesApi, auditLog } from '../firestore'
 import { recountTournamentEntries } from './registration'
 import {
   isSeatable,
@@ -45,6 +46,9 @@ import {
   seatEntry,
   unseatEntry,
   eliminateEntry,
+  revertElimination,
+  nextFinishingPlace,
+  finishingOrder,
   balanceTables,
   breakTable,
   seatNextAlternate,
@@ -67,12 +71,16 @@ import {
   SeatOutOfRangeError,
   EntryNotSeatableError,
   AlreadyBustedError,
+  NotBustedError,
+  LastPlayerStandingError,
+  RevertBlockedByPayoutError,
   CannotBreakTableError,
   NoAlternatesError,
   NoOpenSeatError,
 } from './seating'
 
 const tablePath = (tid, id) => ['tournaments', tid, 'tables', id]
+const entryPath = (tid, eid) => ['tournaments', tid, 'entries', eid]
 
 function makeEntry(overrides = {}) {
   return {
@@ -81,6 +89,10 @@ function makeEntry(overrides = {}) {
     originSessionId: 'session-1',
     voidedAt: null,
     bustedAt: null,
+    bustedInSessionId: null,
+    finishingPlace: null,
+    cashWinnings: 0,
+    ticketWinnings: 0,
     currentTableId: null,
     currentSeatNumber: null,
     ...overrides,
@@ -231,6 +243,41 @@ describe('buildSeatList', () => {
   })
 })
 
+describe('nextFinishingPlace / finishingOrder (task 4.1)', () => {
+  it('nextFinishingPlace = alive entries (voided never count, busted are out)', () => {
+    const entries = [
+      makeEntry({ id: 'a' }),
+      makeEntry({ id: 'b' }),
+      makeEntry({ id: 'c', bustedAt: Timestamp.now() }),
+      makeEntry({ id: 'd', voidedAt: Timestamp.now() }),
+    ]
+    expect(nextFinishingPlace(entries)).toBe(2)
+    expect(nextFinishingPlace([])).toBe(0)
+    expect(nextFinishingPlace(null)).toBe(0)
+  })
+
+  it('finishingOrder lists busted (non-voided) entries deepest finish first; unplaced legacy busts last by bust time', () => {
+    const busted = (id, place, ms) =>
+      makeEntry({ id, bustedAt: Timestamp.fromMillis(ms), bustedInSessionId: 's1', finishingPlace: place })
+    const entries = [
+      makeEntry({ id: 'alive' }),
+      busted('second', 2, 5000),
+      busted('ninth', 9, 1000),
+      busted('legacyLate', null, 4000),
+      busted('legacyEarly', null, 2000),
+      busted('fifth', 5, 3000),
+      makeEntry({ id: 'void', voidedAt: Timestamp.now(), bustedAt: Timestamp.fromMillis(500) }),
+    ]
+    expect(finishingOrder(entries).map((e) => e.id)).toEqual([
+      'ninth',
+      'fifth',
+      'second',
+      'legacyEarly',
+      'legacyLate',
+    ])
+  })
+})
+
 // ── Impure ops ──────────────────────────────────────────────────────────────
 
 describe('seating ops', () => {
@@ -241,6 +288,7 @@ describe('seating ops', () => {
     runValidatedTransaction.mockImplementation(async (fn) => fn(mockState.tx))
     runValidatedBatch.mockImplementation(async (fn) => fn(mockState.tx))
     tablesApi.listTables.mockResolvedValue([])
+    entriesApi.listEntries.mockResolvedValue([])
     auditLog.writeAuditLogSafe.mockClear()
     recountTournamentEntries.mockClear()
   })
@@ -386,44 +434,102 @@ describe('seating ops', () => {
   })
 
   describe('eliminateEntry', () => {
-    it('busts a seated entry: frees the seat, marks busted, recounts, audits', async () => {
+    // Mirror an entries subcollection: the outside list + the seeded docs the
+    // transaction re-reads.
+    const seedEntries = (list) => {
+      entriesApi.listEntries.mockResolvedValue(list)
+      for (const e of list) mockState.seed(entryPath('t1', e.id), e)
+    }
+    const entrySet = (id) => mockState.calls.set.find((c) => c.path[2] === 'entries' && c.path[3] === id)
+
+    it('busts a seated entry: frees the seat, marks busted with the finishing place, recounts, audits', async () => {
       mockState.seed(
         tablePath('t1', 'table-1'),
         makeTable({ id: 'table-1', seats: emptySeats(9).map((s) => (s.seatNumber === 4 ? { ...s, entryId: 'e1' } : s)) })
       )
       const entry = makeEntry({ id: 'e1', currentTableId: 'table-1', currentSeatNumber: 4 })
+      seedEntries([
+        entry,
+        makeEntry({ id: 'e2' }),
+        makeEntry({ id: 'e3' }),
+        makeEntry({ id: 'out', bustedAt: Timestamp.now(), bustedInSessionId: 'session-1', finishingPlace: 4 }),
+        makeEntry({ id: 'void', voidedAt: Timestamp.now() }),
+      ])
 
       const res = await eliminateEntry({ tournament, entry, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
 
-      expect(res).toEqual({ ok: true })
+      // 3 alive (e1, e2, e3) at the moment of the bust → 3rd place
+      expect(res).toEqual({ ok: true, finishingPlace: 3 })
       // seat freed on the table
       const tableWrite = mockState.calls.set.find((c) => c.path[3] === 'table-1')
       expect(tableWrite.data.seats.find((s) => s.seatNumber === 4).entryId).toBeNull()
-      // entry marked busted, seat fields cleared (invariants held in one write)
-      const entryWrite = mockState.calls.update.find((c) => c.path[3] === 'e1')
-      expect(entryWrite.partial).toMatchObject({
+      // entry marked busted, place assigned, seat fields cleared — one full-doc write
+      const entryWrite = entrySet('e1')
+      expect(entryWrite.data).toMatchObject({
         currentTableId: null,
         currentSeatNumber: null,
         bustedInSessionId: 'session-1',
+        finishingPlace: 3,
       })
-      expect(entryWrite.partial.bustedAt).toBeTruthy()
-      // counters refreshed + audited
+      expect(entryWrite.data.bustedAt).toBeTruthy()
+      // counters refreshed + audited with the place
       expect(recountTournamentEntries).toHaveBeenCalledWith({ tournamentId: 't1' })
       expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(
-        expect.objectContaining({ actionType: 'entry.busted', targetId: 'e1' })
+        expect.objectContaining({
+          actionType: 'entry.busted',
+          targetId: 'e1',
+          metadata: expect.objectContaining({ place: 3 }),
+        })
       )
     })
 
     it('busts an unseated live entry with no table write', async () => {
       const entry = makeEntry({ id: 'e9', currentTableId: null, currentSeatNumber: null })
+      seedEntries([entry, makeEntry({ id: 'e2' })])
 
-      await eliminateEntry({ tournament, entry, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+      const res = await eliminateEntry({ tournament, entry, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
 
+      expect(res.finishingPlace).toBe(2)
       expect(mockState.calls.set.filter((c) => c.path[2] === 'tables')).toHaveLength(0)
-      const entryWrite = mockState.calls.update.find((c) => c.path[3] === 'e9')
-      expect(entryWrite.partial.bustedAt).toBeTruthy()
-      expect(entryWrite.partial.bustedInSessionId).toBe('session-1')
+      const entryWrite = entrySet('e9')
+      expect(entryWrite.data.bustedAt).toBeTruthy()
+      expect(entryWrite.data.bustedInSessionId).toBe('session-1')
       expect(recountTournamentEntries).toHaveBeenCalledTimes(1)
+    })
+
+    it('computes the place from FRESH reads, so back-to-back busts get descending places even with a stale list', async () => {
+      const e1 = makeEntry({ id: 'e1' })
+      const e2 = makeEntry({ id: 'e2' })
+      const e3 = makeEntry({ id: 'e3' })
+      seedEntries([e1, e2, e3])
+
+      const first = await eliminateEntry({ tournament, entry: e1, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+      // listEntries still returns the pre-bust list (stale outside snapshot), but
+      // the store copy of e1 is now busted — the fresh in-transaction reads see it.
+      const second = await eliminateEntry({ tournament, entry: e2, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+
+      expect(first.finishingPlace).toBe(3)
+      expect(second.finishingPlace).toBe(2)
+    })
+
+    it('re-checks the entry inside the transaction: refuses if it was busted concurrently', async () => {
+      const argSnapshot = makeEntry({ id: 'e1' }) // caller believes e1 is alive…
+      entriesApi.listEntries.mockResolvedValue([argSnapshot, makeEntry({ id: 'e2' })])
+      // …but the stored doc is already busted (someone else got there first).
+      mockState.seed(entryPath('t1', 'e1'), makeEntry({ id: 'e1', bustedAt: Timestamp.now(), bustedInSessionId: 'session-1' }))
+      mockState.seed(entryPath('t1', 'e2'), makeEntry({ id: 'e2' }))
+
+      await expect(
+        eliminateEntry({ tournament, entry: argSnapshot, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(AlreadyBustedError)
+    })
+
+    it('refuses to eliminate the last player standing (1st place is the payout flow, not a bust)', async () => {
+      const sole = makeEntry({ id: 'e1' })
+      seedEntries([sole, makeEntry({ id: 'out', bustedAt: Timestamp.now(), bustedInSessionId: 'session-1', finishingPlace: 2 })])
+      await expect(
+        eliminateEntry({ tournament, entry: sole, sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(LastPlayerStandingError)
     })
 
     it('refuses to eliminate an already-busted entry', async () => {
@@ -436,6 +542,103 @@ describe('seating ops', () => {
       await expect(
         eliminateEntry({ tournament, entry: makeEntry({ voidedAt: Timestamp.now() }), sessionId: 'session-1', actorId: 'td-1', actorRole: 'td' })
       ).rejects.toBeInstanceOf(EntryNotSeatableError)
+    })
+  })
+
+  describe('revertElimination (task 4.1 undo)', () => {
+    const bustedEntry = (id, ms, over = {}) =>
+      makeEntry({
+        id,
+        bustedAt: Timestamp.fromMillis(ms),
+        bustedInSessionId: 'session-1',
+        ...over,
+      })
+    const seedEntries = (list) => {
+      entriesApi.listEntries.mockResolvedValue(list)
+      for (const e of list) mockState.seed(entryPath('t1', e.id), e)
+    }
+
+    it('clears the bust fields (player returns unseated), recounts, audits with the previous place', async () => {
+      const entry = bustedEntry('e1', 1000, { finishingPlace: 4 })
+      seedEntries([entry, makeEntry({ id: 'e2' }), bustedEntry('e3', 2000, { finishingPlace: 3 })])
+
+      const res = await revertElimination({ tournament, entry, actorId: 'td-1', actorRole: 'td' })
+
+      expect(res).toEqual({ ok: true, previousPlace: 4 })
+      const entryWrite = mockState.calls.set.find((c) => c.path[2] === 'entries' && c.path[3] === 'e1')
+      expect(entryWrite.data).toMatchObject({
+        bustedAt: null,
+        bustedInSessionId: null,
+        finishingPlace: null,
+        currentTableId: null,
+        currentSeatNumber: null,
+      })
+      // v1: later finishers are NOT renumbered — e3 keeps 3rd (gap at 4th allowed)
+      expect(mockState.calls.set.filter((c) => c.path[2] === 'entries')).toHaveLength(1)
+      expect(recountTournamentEntries).toHaveBeenCalledWith({ tournamentId: 't1' })
+      expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionType: 'entry.bustReverted',
+          targetId: 'e1',
+          metadata: expect.objectContaining({ previousPlace: 4, sessionId: 'session-1' }),
+        })
+      )
+    })
+
+    it('refuses when the entry is not busted', async () => {
+      await expect(
+        revertElimination({ tournament, entry: makeEntry({ id: 'e1' }), actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(NotBustedError)
+    })
+
+    it('refuses when the entry is voided', async () => {
+      await expect(
+        revertElimination({
+          tournament,
+          entry: makeEntry({ id: 'e1', voidedAt: Timestamp.now(), bustedAt: Timestamp.now() }),
+          actorId: 'td-1',
+          actorRole: 'td',
+        })
+      ).rejects.toBeInstanceOf(EntryNotSeatableError)
+    })
+
+    it('re-checks inside the transaction: refuses if the bust was already reverted', async () => {
+      const argSnapshot = bustedEntry('e1', 1000, { finishingPlace: 4 })
+      entriesApi.listEntries.mockResolvedValue([argSnapshot])
+      mockState.seed(entryPath('t1', 'e1'), makeEntry({ id: 'e1' })) // stored doc already alive
+      await expect(
+        revertElimination({ tournament, entry: argSnapshot, actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(NotBustedError)
+    })
+
+    it('refuses when a LATER-busted entry already has recorded winnings', async () => {
+      const entry = bustedEntry('e1', 1000, { finishingPlace: 4 })
+      seedEntries([entry, bustedEntry('paid', 2000, { finishingPlace: 3, cashWinnings: 100_00 })])
+      await expect(revertElimination({ tournament, entry, actorId: 'td-1', actorRole: 'td' })).rejects.toBeInstanceOf(
+        RevertBlockedByPayoutError
+      )
+    })
+
+    it('refuses when the entry ITSELF has recorded winnings', async () => {
+      const entry = bustedEntry('e1', 1000, { finishingPlace: 2, ticketWinnings: 50_00 })
+      seedEntries([entry])
+      await expect(revertElimination({ tournament, entry, actorId: 'td-1', actorRole: 'td' })).rejects.toBeInstanceOf(
+        RevertBlockedByPayoutError
+      )
+    })
+
+    it('allows the revert when only an EARLIER-busted entry has winnings', async () => {
+      const entry = bustedEntry('e1', 2000, { finishingPlace: 3 })
+      seedEntries([entry, bustedEntry('earlier', 1000, { finishingPlace: 5, cashWinnings: 20_00 })])
+      const res = await revertElimination({ tournament, entry, actorId: 'td-1', actorRole: 'td' })
+      expect(res.previousPlace).toBe(3)
+    })
+
+    it('reverts a legacy bust that never had a place (previousPlace null)', async () => {
+      const entry = bustedEntry('e1', 1000) // finishingPlace null (pre-4.1 bust)
+      seedEntries([entry])
+      const res = await revertElimination({ tournament, entry, actorId: 'td-1', actorRole: 'td' })
+      expect(res).toEqual({ ok: true, previousPlace: null })
     })
   })
 

@@ -21,11 +21,12 @@ import {
   runValidatedBatch,
   validatedSet,
   tables as tablesApi,
+  entries as entriesApi,
   generateId,
   auditLog,
   paths,
 } from '../firestore'
-import { Table } from '../schema'
+import { Table, Entry } from '../schema'
 import { playerDisplayName } from '../players'
 import { now } from '../wallet/_shared'
 import { recountTournamentEntries } from './registration'
@@ -74,6 +75,24 @@ export class AlreadyBustedError extends SeatingError {
   constructor() {
     super('This player is already out of the tournament.')
     this.name = 'AlreadyBustedError'
+  }
+}
+export class NotBustedError extends SeatingError {
+  constructor() {
+    super('This player is not busted — there is no elimination to undo.')
+    this.name = 'NotBustedError'
+  }
+}
+export class LastPlayerStandingError extends SeatingError {
+  constructor() {
+    super('This is the last player standing — record them as the winner (payouts), not an elimination.')
+    this.name = 'LastPlayerStandingError'
+  }
+}
+export class RevertBlockedByPayoutError extends SeatingError {
+  constructor() {
+    super('Winnings have already been recorded for this or a later finisher — undo those first.')
+    this.name = 'RevertBlockedByPayoutError'
   }
 }
 export class CannotBreakTableError extends SeatingError {
@@ -443,19 +462,50 @@ export async function unseatEntry({ tournament, entry, actorId, actorRole }) {
   return { ok: true }
 }
 
+// ── Bust-outs & finishing places (task 4.1) ─────────────────────────────────
+
+/**
+ * The finishing place the NEXT bust-out will receive: the number of alive
+ * entries right now (the busting player is one of them, so busting with 5
+ * remaining → 5th place). "Alive" mirrors computeEntryCounters exactly: voided
+ * entries never count; remaining = not-yet-busted. Pure — for UI previews; the
+ * eliminate op recomputes this from fresh reads inside its transaction.
+ */
+export function nextFinishingPlace(entries) {
+  return (entries ?? []).filter((e) => e.voidedAt === null && e.bustedAt === null).length
+}
+
+/**
+ * Busted (non-voided) entries in finishing order for display: deepest finish
+ * first (…10th, 9th, … 2nd). Entries busted before finishing places existed
+ * (finishingPlace null) sort after the placed ones, earliest bust first. Pure.
+ */
+export function finishingOrder(entries) {
+  const ms = (e) => e.bustedAt?.toMillis?.() ?? 0
+  return (entries ?? [])
+    .filter((e) => e.voidedAt === null && e.bustedAt !== null)
+    .sort((a, b) => {
+      if (a.finishingPlace != null && b.finishingPlace != null) return b.finishingPlace - a.finishingPlace
+      if (a.finishingPlace != null) return -1
+      if (b.finishingPlace != null) return 1
+      return ms(a) - ms(b)
+    })
+}
+
 /**
  * Eliminate (bust out) an entry from the tournament — the floor action when a
- * player is knocked out. Frees their seat (if seated) and marks the entry busted:
- * sets bustedAt + bustedInSessionId and clears the seat fields in one write, so the
- * entry's bust/seat invariants hold. Leaves finishingPlace null — finishing places
- * and payouts are assigned in Phase 4; this just removes the player from the live
- * field. One transaction over the table (if seated) + the entry, then a best-effort
- * recount so the tournament's remainingPlayerCount drops by one.
+ * player is knocked out. Frees their seat (if seated), marks the entry busted
+ * (bustedAt + bustedInSessionId + cleared seat fields in one full-doc write, so
+ * the entry's bust/seat invariants re-validate as a whole) and assigns its
+ * finishingPlace = the number of alive entries at the moment of the bust.
+ * The winner's 1st place is NOT assigned here (that's the payout flow's job) —
+ * eliminating the sole survivor is refused. Then a best-effort recount drops
+ * the tournament's remainingPlayerCount.
  *
  * Unlike unseatEntry (which returns the player to the alternates pool), an
  * eliminated entry is no longer seatable and drops off the waitlist.
  *
- * @returns {Promise<{ ok: true }>}
+ * @returns {Promise<{ ok: true, finishingPlace: number }>}
  */
 export async function eliminateEntry({ tournament, entry, sessionId, actorId, actorRole }) {
   requireActor(actorId)
@@ -466,26 +516,55 @@ export async function eliminateEntry({ tournament, entry, sessionId, actorId, ac
   }
   const timestamp = now()
 
-  await runValidatedTransaction(async (tx) => {
-    // Free the seat if the player is seated (clear by entryId, like unseatEntry).
-    if (entry.currentTableId) {
-      const table = await tx.get(paths.tablePath(tournament.id, entry.currentTableId), Table)
-      tx.set(paths.tablePath(tournament.id, entry.currentTableId), Table, {
+  // The finishing place must come from FRESH entry docs read INSIDE the
+  // transaction — the caller's entries array (and the tournament's cached
+  // remainingPlayerCount) can be stale, and two near-simultaneous eliminations
+  // must not receive the same place. A collection query can't run inside a
+  // Firestore transaction, so the entry ids are listed OUTSIDE it and every doc
+  // is re-read INSIDE it: any concurrent eliminate / revert / void touches a doc
+  // in that read set, so Firestore serializes the transactions and the retry
+  // recomputes the place. Only an entry CREATED between the list and the commit
+  // could be missed — acceptable for v1 floor use. Venue field sizes (≲ a few
+  // hundred entries) keep the read set comfortably inside transaction limits.
+  const allEntries = await entriesApi.listEntries(tournament.id)
+
+  const result = await runValidatedTransaction(async (tx) => {
+    const fresh = []
+    for (const e of allEntries) {
+      fresh.push(await tx.get(paths.entryPath(tournament.id, e.id), Entry))
+    }
+    const target = fresh.find((e) => e.id === entry.id)
+    if (!target) throw new SeatingError('This entry no longer exists.')
+    if (target.voidedAt) throw new EntryNotSeatableError()
+    if (target.bustedAt) throw new AlreadyBustedError()
+
+    // Alive follows computeEntryCounters exactly (voided never count; remaining
+    // = not-yet-busted). The busting player is still alive at this moment.
+    const aliveCount = fresh.filter((e) => e.voidedAt === null && e.bustedAt === null).length
+    if (aliveCount <= 1) throw new LastPlayerStandingError()
+    const finishingPlace = aliveCount
+
+    // Free the seat if the player is seated (fresh doc — they may have moved
+    // since the caller's snapshot).
+    if (target.currentTableId) {
+      const table = await tx.get(paths.tablePath(tournament.id, target.currentTableId), Table)
+      tx.set(paths.tablePath(tournament.id, target.currentTableId), Table, {
         ...table,
-        seats: table.seats.map((s) => (s.entryId === entry.id ? { ...s, entryId: null } : s)),
+        seats: table.seats.map((s) => (s.entryId === target.id ? { ...s, entryId: null } : s)),
         updatedAt: timestamp,
       })
     }
-    // bustedAt + bustedInSessionId set together and the seat fields cleared in the
-    // same write keeps the entry's bust/seat invariants intact. finishingPlace is
-    // left untouched (null) — Phase 4 owns finishing order / payouts.
-    tx.update(paths.entryPath(tournament.id, entry.id), {
+
+    tx.set(paths.entryPath(tournament.id, target.id), Entry, {
+      ...target,
       currentTableId: null,
       currentSeatNumber: null,
       bustedAt: timestamp,
       bustedInSessionId: sessionId,
+      finishingPlace,
       updatedAt: timestamp,
     })
+    return { finishingPlace }
   })
 
   // Refresh the tournament's cached counters (remainingPlayerCount drops). Best-effort
@@ -504,10 +583,86 @@ export async function eliminateEntry({ tournament, entry, sessionId, actorId, ac
     targetType: 'entry',
     targetId: entry.id,
     timestamp,
-    metadata: { tournamentId: tournament.id, sessionId },
+    metadata: { tournamentId: tournament.id, sessionId, place: result.finishingPlace },
   })
 
-  return { ok: true }
+  return { ok: true, finishingPlace: result.finishingPlace }
+}
+
+/**
+ * Undo an elimination — the floor action when a bust was recorded by mistake.
+ * Clears bustedAt / bustedInSessionId / finishingPlace in one full-doc write;
+ * the player returns UNSEATED (they surface on the alternates/waitlist for the
+ * TD to re-seat), then a best-effort recount restores remainingPlayerCount.
+ *
+ * v1 renumbering call: if OTHER entries busted after this one, their finishing
+ * places are now off by one. They are deliberately NOT renumbered — the revert
+ * leaves a gap in the finishing order (simplest correct-enough floor behavior;
+ * the audit trail records what happened). The revert IS refused when winnings
+ * have already been recorded on this or a later-busted entry, since those
+ * amounts were derived from the now-shifting places. (Wallet-level win credits
+ * are only detectable once the payout flow writes winnings back onto the entry
+ * — walletTransactions rows aren't queryable from here.)
+ *
+ * @returns {Promise<{ ok: true, previousPlace: number|null }>}
+ */
+export async function revertElimination({ tournament, entry, actorId, actorRole }) {
+  requireActor(actorId)
+  if (entry.voidedAt) throw new EntryNotSeatableError()
+  if (!entry.bustedAt) throw new NotBustedError()
+  const timestamp = now()
+
+  // Best-effort payout guard from a pre-transaction snapshot (see doc comment).
+  const allEntries = await entriesApi.listEntries(tournament.id)
+  const bustedMs = entry.bustedAt.toMillis()
+  const hasRecordedWinnings = (e) => (e.cashWinnings ?? 0) > 0 || (e.ticketWinnings ?? 0) > 0
+  const blocked = allEntries.some(
+    (e) =>
+      e.voidedAt === null &&
+      e.bustedAt !== null &&
+      (e.id === entry.id || e.bustedAt.toMillis() >= bustedMs) &&
+      hasRecordedWinnings(e)
+  )
+  if (blocked) throw new RevertBlockedByPayoutError()
+
+  const result = await runValidatedTransaction(async (tx) => {
+    const target = await tx.get(paths.entryPath(tournament.id, entry.id), Entry)
+    if (target.voidedAt) throw new EntryNotSeatableError()
+    if (target.bustedAt === null) throw new NotBustedError()
+    const previousPlace = target.finishingPlace
+    const previousSessionId = target.bustedInSessionId
+    tx.set(paths.entryPath(tournament.id, target.id), Entry, {
+      ...target,
+      bustedAt: null,
+      bustedInSessionId: null,
+      finishingPlace: null,
+      updatedAt: timestamp,
+    })
+    return { previousPlace, previousSessionId }
+  })
+
+  // Best-effort counter refresh (remainingPlayerCount comes back up).
+  try {
+    await recountTournamentEntries({ tournamentId: tournament.id })
+  } catch {
+    /* counters self-heal on the next recount */
+  }
+
+  await auditLog.writeAuditLogSafe({
+    actorId,
+    actorRole,
+    actionType: 'entry.bustReverted',
+    targetType: 'entry',
+    targetId: entry.id,
+    timestamp,
+    metadata: {
+      tournamentId: tournament.id,
+      sessionId: result.previousSessionId,
+      previousPlace: result.previousPlace,
+    },
+  })
+
+  return { ok: true, previousPlace: result.previousPlace }
 }
 
 // ── Balancing (task 3.8) ─────────────────────────────────────────────────────
