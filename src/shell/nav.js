@@ -95,10 +95,19 @@ const NAV_ITEMS = [
     icon: '⊞',
     allowedRoles: ['td'],
   },
+  {
+    section: 'td',
+    to: '/td/payouts',
+    label: 'Payouts',
+    icon: '¤',
+    // TD stages (winner, deals); cashier confirms the money. The per-tournament
+    // payouts screen this picker links to is gated the same way in App.jsx.
+    allowedRoles: ['td', 'cashier'],
+  },
   // NOTE: the standalone Live clock (/td/clock) is gone — the clock is run
   // per-tournament (Tournaments → open → Open clock), so a separate sidebar
-  // entry was a redundant dead-end. Mystery bounty (/td/bounty) + Payouts
-  // (/td/payouts) are Phase-4 placeholders, removed until the real pages land.
+  // entry was a redundant dead-end. Mystery bounty (/td/bounty) is a Phase-4
+  // placeholder, removed until the real page lands.
 
   // ── Admin (manager-only) ─────────────────────────────────────────────────
   {

@@ -37,6 +37,7 @@ import TdTournamentClock from './pages/td/TournamentClock'
 import TdTables from './pages/td/Tables'
 import TdBounty from './pages/td/Bounty'
 import TdPayouts from './pages/td/Payouts'
+import TdTournamentPayouts from './pages/td/TournamentPayouts'
 
 // Admin
 import AdminAudit from './pages/admin/AuditLog'
@@ -160,6 +161,18 @@ export default function App() {
               <Route
                 path="/td/tournaments/:id/clock"
                 element={<ErrorBoundary><TdTournamentClock /></ErrorBoundary>}
+              />
+              {/* Payouts screen is visible to TD + cashier + manager; the money
+                  confirms inside are additionally gated to cashier + manager. */}
+              <Route
+                path="/td/tournaments/:id/payouts"
+                element={
+                  <ErrorBoundary>
+                    <ProtectedRoute requiredRoles={['td', 'cashier', 'manager']}>
+                      <TdTournamentPayouts />
+                    </ProtectedRoute>
+                  </ErrorBoundary>
+                }
               />
               <Route path="/td/clock" element={<ErrorBoundary><TdClock /></ErrorBoundary>} />
               <Route

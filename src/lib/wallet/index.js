@@ -17,7 +17,7 @@ export {
 } from './withdrawal'
 
 // Winnings credit (cashier-confirmed; no auto-credit per wallet-design.md Q4)
-export { confirmWinCredit, confirmBountyWinCredit } from './winCredit'
+export { confirmWinCredit, confirmEntryWinCredit, confirmBountyWinCredit } from './winCredit'
 
 // Ticket issuance (ticket USE happens inside payViaTicket)
 export { issueTicket } from './ticket'

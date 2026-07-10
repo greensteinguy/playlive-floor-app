@@ -103,4 +103,37 @@ describe('Entry', () => {
       ).not.toThrow()
     })
   })
+
+  describe('winnings paid state (task 4.7)', () => {
+    it('defaults both paid-state fields to null when absent (pre-field docs stay readable)', () => {
+      const parsed = Entry.parse(buildEntry()) // fixture predates the fields
+      expect(parsed.winningsPaidAt).toBeNull()
+      expect(parsed.winningsWalletTransactionId).toBeNull()
+    })
+
+    it('accepts a paid row (both set) and a staged row (cashWinnings only)', () => {
+      expect(() =>
+        Entry.parse(
+          buildEntry({
+            bustedAt: ts(),
+            bustedInSessionId: 'session-1',
+            finishingPlace: 2,
+            cashWinnings: 300_00,
+            winningsPaidAt: ts(),
+            winningsWalletTransactionId: 'wtx-1',
+          })
+        )
+      ).not.toThrow()
+      expect(() => Entry.parse(buildEntry({ cashWinnings: 300_00 }))).not.toThrow()
+    })
+
+    it('accepts winningsPaidAt without a wallet-transaction link (future cash-at-till channel)', () => {
+      expect(() => Entry.parse(buildEntry({ cashWinnings: 300_00, winningsPaidAt: ts() }))).not.toThrow()
+    })
+
+    it('rejects a wallet-transaction link on an unpaid row', () => {
+      const result = Entry.safeParse(buildEntry({ winningsWalletTransactionId: 'wtx-1' }))
+      expect(result.success).toBe(false)
+    })
+  })
 })

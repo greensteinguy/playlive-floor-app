@@ -407,7 +407,7 @@ auditLog/{id}
 | `tournament.cancelled` | Manual cancellation. |
 | `tournament.structureEdited` | Embedded structure edited mid-tournament. `metadata.diff`. |
 | `tournament.payoutEdited` | Embedded payout structure edited. |
-| `tournament.dealEntered` | Manual deal-making entry recorded. `metadata.payouts`. |
+| `tournament.dealEntered` | Manual deal-making entry recorded (task 4.5 — stages each affected entry's `cashWinnings`). `metadata.payouts` (the agreed table: entryId / playerId / place / previousAmount / amount), `metadata.notes`, `metadata.grandTotal` / `prizePool` / `delta`, `metadata.override`. A total ≠ pool additionally emits `manager.override` (`overrideType: 'dealTotalMismatch'`). |
 | `structureTemplate.created` | Blind-structure template created. `metadata.name`, `metadata.levelCount`. |
 | `structureTemplate.updated` | Structure template edited. `metadata.changedFields`. |
 | `structureTemplate.archived` | Structure template archived (soft-delete; `archivedAt` set). |
@@ -418,6 +418,8 @@ auditLog/{id}
 | `entry.busted` | Bust-out recorded. `metadata.place`. |
 | `entry.bustReverted` | Bust-out undone — the player returns to the field unseated; later finishers keep their places (a gap in the finishing order is allowed). `metadata.previousPlace`. |
 | `entry.voided` | Entry voided (data-entry error). |
+| `entry.winnerRecorded` | 1st place assigned to the sole remaining player (the ONLY way 1st is assigned — a bust never does it). `metadata.playerId`, `metadata.place: 1`. |
+| `entry.winnerReverted` | Recorded win undone (refused once winnings are recorded/paid on the winner's entry). |
 | `wallet.deposit` | Deposit recorded. `metadata.amount`, `metadata.method`. |
 | `wallet.spend` | Spend recorded. `metadata.amount`, `metadata.method`. |
 | `wallet.ticketUse` | Ticket used. |
@@ -718,6 +720,16 @@ tournaments/{tid}/entries/{id}
   // Cash winnings (sourced from payout calculator at end of tournament)
   cashWinnings:                integer         (cents)
   ticketWinnings:              integer         (cents; for satellite winners, the value of ticket awarded)
+
+  // Cashier-confirmed payout state (Phase 4 task 4.7). cashWinnings alone is a
+  // STAGED result (set by the payout calculator confirm or a deal); the payout
+  // is PAID only once the cashier confirms the row — winningsPaidAt is stamped
+  // in the same transaction that credits the wallet. winningsWalletTransactionId
+  // links the winCredit ledger row (two-way trace, like withdrawalRequests).
+  // Both nullable and validator-defaulted to null, so entry docs written before
+  // these fields existed stay valid on read.
+  winningsPaidAt:              Timestamp | null
+  winningsWalletTransactionId: string | null
 
   // Last-longer side bet (Upper Deck / Main Deck split)
   lastLongerDeck:              'upper' | 'main' | null   (null when tournament has no split)

@@ -55,6 +55,16 @@ export const Entry = z
     cashWinnings: Money,
     ticketWinnings: Money,
 
+    // Cashier-confirmed payout state (task 4.7). A staged amount (cashWinnings
+    // set by the payout calculator confirm or a deal) is NOT paid until the
+    // cashier confirms — winningsPaidAt is stamped then, in the same transaction
+    // that credits the player's wallet. winningsWalletTransactionId links to
+    // that winCredit walletTransactions row (two-way trace, mirroring
+    // withdrawalRequests.walletTransactionId). `.default(null)` keeps docs
+    // written before these fields existed valid on read.
+    winningsPaidAt: NullableTimestamp.default(null),
+    winningsWalletTransactionId: DocumentRef.nullable().default(null),
+
     // Last-longer side bet
     lastLongerDeck: LastLongerDeck.nullable(),
     isLastLongerWinner: z.boolean(),
@@ -95,6 +105,17 @@ export const Entry = z
         code: z.ZodIssueCode.custom,
         path: ['currentTableId'],
         message: 'currentTableId must be null when entry is busted',
+      })
+    }
+
+    // Paid-state consistency: a wallet-transaction link implies the row is paid.
+    // (The reverse is deliberately NOT required — a future cash-at-till payout
+    // channel would set winningsPaidAt without a wallet credit.)
+    if (e.winningsWalletTransactionId !== null && e.winningsPaidAt === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['winningsWalletTransactionId'],
+        message: 'winningsWalletTransactionId requires winningsPaidAt to be set',
       })
     }
 

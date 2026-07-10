@@ -19,11 +19,14 @@ vi.mock('../firestore', () => ({
     playerPath: (id) => ['players', id],
     walletTransactionPath: (pid, tid) => ['players', pid, 'walletTransactions', tid],
     bountyDrawPath: (tid, did) => ['tournaments', tid, 'bountyDraws', did],
+    entryPath: (tid, eid) => ['tournaments', tid, 'entries', eid],
   },
 }))
 
+import { Timestamp } from 'firebase/firestore'
 import { runValidatedTransaction, auditLog } from '../firestore'
-import { confirmWinCredit, confirmBountyWinCredit } from './winCredit'
+import { confirmWinCredit, confirmEntryWinCredit, confirmBountyWinCredit } from './winCredit'
+import { RoleNotAuthorizedError } from './errors'
 
 beforeEach(() => {
   mockState = makeMockStore()
@@ -70,6 +73,115 @@ describe('confirmWinCredit', () => {
         actorRole: 'cashier',
       })
     ).rejects.toThrow(/amount must be > 0/)
+  })
+})
+
+describe('confirmEntryWinCredit', () => {
+  const entryPath = (tid, eid) => ['tournaments', tid, 'entries', eid]
+
+  function makeEntry(overrides = {}) {
+    return {
+      id: 'entry-1',
+      playerId: 'player-1',
+      tournamentId: 'tournament-1',
+      voidedAt: null,
+      bustedAt: Timestamp.now(),
+      bustedInSessionId: 'session-1',
+      finishingPlace: 2,
+      cashWinnings: 0,
+      ticketWinnings: 0,
+      winningsPaidAt: null,
+      winningsWalletTransactionId: null,
+      ...overrides,
+    }
+  }
+
+  function seed({ entry = {}, walletBalance = 0 } = {}) {
+    mockState.seed(playerPath('player-1'), makePlayer({ walletBalance }))
+    mockState.seed(entryPath('tournament-1', 'entry-1'), makeEntry(entry))
+  }
+
+  const confirmArgs = (overrides = {}) => ({
+    tournamentId: 'tournament-1',
+    entryId: 'entry-1',
+    amount: 300_00,
+    actorId: 'cashier-1',
+    actorRole: 'cashier',
+    ...overrides,
+  })
+
+  it('happy path: one transaction credits the wallet, writes the winCredit row, and marks the entry paid', async () => {
+    seed({ walletBalance: 50_00 })
+
+    const result = await confirmEntryWinCredit(confirmArgs())
+    expect(result.newBalance).toBe(350_00)
+    expect(result.playerId).toBe('player-1')
+
+    // winCredit ledger row related to the entry
+    const wtxCall = mockState.calls.set.find((c) => c.path[2] === 'walletTransactions')
+    expect(wtxCall.data).toMatchObject({
+      type: 'winCredit',
+      amount: 300_00,
+      method: null,
+      relatedDocId: 'entry-1',
+    })
+
+    // wallet balance credited
+    const balanceUpdate = mockState.calls.update.find((c) => c.path.length === 2 && c.path[0] === 'players')
+    expect(balanceUpdate.partial.walletBalance).toBe(350_00)
+
+    // entry marked paid, cashWinnings set to the paid amount, tx linked
+    const entryWrite = mockState.calls.set.find((c) => c.path[2] === 'entries')
+    expect(entryWrite.data).toMatchObject({
+      cashWinnings: 300_00,
+      winningsWalletTransactionId: result.walletTransactionId,
+    })
+    expect(entryWrite.data.winningsPaidAt).not.toBeNull()
+
+    expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: 'wallet.winCredit',
+        targetId: 'player-1',
+        metadata: expect.objectContaining({
+          relatedDocId: 'entry-1',
+          tournamentId: 'tournament-1',
+          source: 'tournamentPayout',
+        }),
+      })
+    )
+  })
+
+  it('overwrites a staged deal amount with the actually-paid amount', async () => {
+    seed({ entry: { cashWinnings: 275_00 } }) // staged via deal
+    await confirmEntryWinCredit(confirmArgs({ amount: 275_00 }))
+    const entryWrite = mockState.calls.set.find((c) => c.path[2] === 'entries')
+    expect(entryWrite.data.cashWinnings).toBe(275_00)
+  })
+
+  it('refuses a double-confirm (winningsPaidAt already set) — nothing written', async () => {
+    seed({ entry: { cashWinnings: 300_00, winningsPaidAt: Timestamp.now(), winningsWalletTransactionId: 'wtx-prior' } })
+    await expect(confirmEntryWinCredit(confirmArgs())).rejects.toThrow(/already paid/)
+    expect(mockState.calls.set).toHaveLength(0)
+    expect(mockState.calls.update).toHaveLength(0)
+  })
+
+  it('refuses a voided entry', async () => {
+    seed({ entry: { voidedAt: Timestamp.now(), voidedBy: 'x', voidReason: 'dup' } })
+    await expect(confirmEntryWinCredit(confirmArgs())).rejects.toThrow(/voided/)
+  })
+
+  it.each([['td'], ['readonly']])('role gate: %s cannot confirm a payout', async (actorRole) => {
+    seed()
+    await expect(confirmEntryWinCredit(confirmArgs({ actorRole }))).rejects.toThrow(
+      RoleNotAuthorizedError
+    )
+  })
+
+  it.each([[0], [-100], [10.5]])('rejects amount %s', async (amount) => {
+    seed()
+    await expect(confirmEntryWinCredit(confirmArgs({ amount }))).rejects.toThrow(
+      /integer cents > 0/
+    )
   })
 })
 
