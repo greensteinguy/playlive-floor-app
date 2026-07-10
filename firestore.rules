@@ -97,6 +97,21 @@ service cloud.firestore {
       allow write: if isTDorManager();
     }
 
+    // ── Collection-group reads ─────────────────────────────────────────────
+    // Rules v2: a nested match like /tournaments/{tid}/entries/{eid} does NOT
+    // authorize collectionGroup('entries') queries — those need explicit
+    // {path=**} blocks. Read-only: all writes must go through the direct
+    // paths above, so no write grants here.
+    match /{path=**}/entries/{eid} {
+      allow read: if canRead();
+    }
+    match /{path=**}/tickets/{ticketId} {
+      allow read: if canRead();
+    }
+    match /{path=**}/walletTransactions/{txId} {
+      allow read: if canRead();
+    }
+
     // ── Audit log ──────────────────────────────────────────────────────────
     // Sensitive. Only managers read (captures all overrides + manager
     // adjustments). Any floor staff can write, since every wallet operation
