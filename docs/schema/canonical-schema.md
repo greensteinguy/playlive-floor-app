@@ -735,6 +735,16 @@ tournaments/{tid}/entries/{id}
   winningsPaidAt:              Timestamp | null
   winningsWalletTransactionId: string | null
 
+  // Cashier-confirmed satellite ticket state (Phase 4 task 4.7, ticket half).
+  // ticketWinnings alone is the RECORD of a milestone win; the wallet-side
+  // ticket exists only once the cashier confirms — ticketIssuedAt is stamped in
+  // the same transaction that creates the players/{pid}/tickets doc and credits
+  // ticketBalance. issuedTicketId links that ticket doc (two-way trace).
+  // Both nullable and validator-defaulted to null (pre-field docs stay valid);
+  // strictly both-or-neither (issuance always creates the ticket doc).
+  ticketIssuedAt:              Timestamp | null
+  issuedTicketId:              string | null   (ref → players/{pid}/tickets/{id})
+
   // Last-longer side bet (Upper Deck / Main Deck split)
   lastLongerDeck:              'upper' | 'main' | null   (null when tournament has no split)
   isLastLongerWinner:          boolean         (false until settled)

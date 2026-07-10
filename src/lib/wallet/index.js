@@ -17,7 +17,12 @@ export {
 } from './withdrawal'
 
 // Winnings credit (cashier-confirmed; no auto-credit per wallet-design.md Q4)
-export { confirmWinCredit, confirmEntryWinCredit, confirmBountyWinCredit } from './winCredit'
+export {
+  confirmWinCredit,
+  confirmEntryWinCredit,
+  confirmEntryTicketWin,
+  confirmBountyWinCredit,
+} from './winCredit'
 
 // Ticket issuance (ticket USE happens inside payViaTicket)
 export { issueTicket } from './ticket'
@@ -56,6 +61,7 @@ export {
   InsufficientWalletBalanceError,
   TicketBelowFaceValueError,
   TicketAlreadyUsedError,
+  TicketAlreadyIssuedError,
   WithdrawalStateError,
   RoleNotAuthorizedError,
   InvalidOverrideError,

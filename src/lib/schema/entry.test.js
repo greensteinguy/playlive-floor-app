@@ -136,4 +136,37 @@ describe('Entry', () => {
       expect(result.success).toBe(false)
     })
   })
+
+  describe('satellite ticket issued state (task 4.7, ticket half)', () => {
+    it('defaults both ticket-issued fields to null when absent (pre-field docs stay readable)', () => {
+      const parsed = Entry.parse(buildEntry()) // fixture predates the fields
+      expect(parsed.ticketIssuedAt).toBeNull()
+      expect(parsed.issuedTicketId).toBeNull()
+    })
+
+    it('accepts an issued row (both set)', () => {
+      expect(() =>
+        Entry.parse(
+          buildEntry({
+            bustedAt: ts(),
+            bustedInSessionId: 'session-1',
+            ticketWinnings: 150_00,
+            ticketIssuedAt: ts(),
+            issuedTicketId: 'ticket-1',
+          })
+        )
+      ).not.toThrow()
+    })
+
+    it('rejects ticketIssuedAt without issuedTicketId (both-or-neither)', () => {
+      const result = Entry.safeParse(buildEntry({ ticketWinnings: 150_00, ticketIssuedAt: ts() }))
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects issuedTicketId without ticketIssuedAt (both-or-neither)', () => {
+      const result = Entry.safeParse(buildEntry({ ticketWinnings: 150_00, issuedTicketId: 'ticket-1' }))
+      expect(result.success).toBe(false)
+      expect(result.error.issues.some((i) => i.path.includes('issuedTicketId'))).toBe(true)
+    })
+  })
 })

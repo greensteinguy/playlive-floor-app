@@ -44,6 +44,24 @@ export class TicketBelowFaceValueError extends WalletError {
   }
 }
 
+/**
+ * Thrown when a cashier tries to confirm a satellite ticket win whose entry
+ * already carries ticketIssuedAt (the idempotency marker stamped in the same
+ * transaction that created the ticket). Re-read inside the transaction, so a
+ * double-confirm — even one racing the first — is refused.
+ */
+export class TicketAlreadyIssuedError extends WalletError {
+  constructor({ entryId, issuedTicketId }) {
+    super(
+      `Entry ${entryId} already has its satellite ticket issued ` +
+      `(ticket ${issuedTicketId}). Cannot issue twice.`
+    )
+    this.name = 'TicketAlreadyIssuedError'
+    this.entryId = entryId
+    this.issuedTicketId = issuedTicketId
+  }
+}
+
 export class TicketAlreadyUsedError extends WalletError {
   constructor(ticketId) {
     super(`Ticket ${ticketId} is already used and cannot be used again.`)

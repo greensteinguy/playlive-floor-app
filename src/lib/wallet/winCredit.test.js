@@ -18,6 +18,7 @@ vi.mock('../firestore', () => ({
   paths: {
     playerPath: (id) => ['players', id],
     walletTransactionPath: (pid, tid) => ['players', pid, 'walletTransactions', tid],
+    ticketPath: (pid, tid) => ['players', pid, 'tickets', tid],
     bountyDrawPath: (tid, did) => ['tournaments', tid, 'bountyDraws', did],
     entryPath: (tid, eid) => ['tournaments', tid, 'entries', eid],
   },
@@ -25,8 +26,13 @@ vi.mock('../firestore', () => ({
 
 import { Timestamp } from 'firebase/firestore'
 import { runValidatedTransaction, auditLog } from '../firestore'
-import { confirmWinCredit, confirmEntryWinCredit, confirmBountyWinCredit } from './winCredit'
-import { RoleNotAuthorizedError } from './errors'
+import {
+  confirmWinCredit,
+  confirmEntryWinCredit,
+  confirmEntryTicketWin,
+  confirmBountyWinCredit,
+} from './winCredit'
+import { RoleNotAuthorizedError, TicketAlreadyIssuedError } from './errors'
 
 beforeEach(() => {
   mockState = makeMockStore()
@@ -182,6 +188,131 @@ describe('confirmEntryWinCredit', () => {
     await expect(confirmEntryWinCredit(confirmArgs({ amount }))).rejects.toThrow(
       /integer cents > 0/
     )
+  })
+})
+
+describe('confirmEntryTicketWin', () => {
+  const entryPath = (tid, eid) => ['tournaments', tid, 'entries', eid]
+
+  // A satellite milestone winner: bust fields set, ticketWinnings recorded,
+  // finishingPlace null (a milestone exit is a win, not a finishing position).
+  function makeEntry(overrides = {}) {
+    return {
+      id: 'entry-1',
+      playerId: 'player-1',
+      tournamentId: 'tournament-1',
+      voidedAt: null,
+      bustedAt: Timestamp.now(),
+      bustedInSessionId: 'session-1',
+      finishingPlace: null,
+      cashWinnings: 0,
+      ticketWinnings: 150_00,
+      winningsPaidAt: null,
+      winningsWalletTransactionId: null,
+      ticketIssuedAt: null,
+      issuedTicketId: null,
+      ...overrides,
+    }
+  }
+
+  function seed({ entry = {}, ticketBalance = 0 } = {}) {
+    mockState.seed(playerPath('player-1'), makePlayer({ ticketBalance }))
+    mockState.seed(entryPath('tournament-1', 'entry-1'), makeEntry(entry))
+  }
+
+  const confirmArgs = (overrides = {}) => ({
+    tournamentId: 'tournament-1',
+    entryId: 'entry-1',
+    actorId: 'cashier-1',
+    actorRole: 'cashier',
+    ...overrides,
+  })
+
+  it('happy path: one transaction creates the ticket, credits ticketBalance, and stamps the entry', async () => {
+    seed({ ticketBalance: 50_00 })
+
+    const result = await confirmEntryTicketWin(confirmArgs())
+    expect(result.faceValue).toBe(150_00)
+    expect(result.newTicketBalance).toBe(200_00)
+    expect(result.playerId).toBe('player-1')
+
+    // the wallet-side ticket doc, issueTicket's exact shape
+    const ticketCall = mockState.calls.set.find((c) => c.path[2] === 'tickets')
+    expect(ticketCall.path).toEqual(['players', 'player-1', 'tickets', result.ticketId])
+    expect(ticketCall.data).toMatchObject({
+      playerId: 'player-1',
+      faceValue: 150_00,
+      state: 'unused',
+      issuedReason: 'satelliteWin',
+      issuedFromTournamentId: 'tournament-1',
+      usedAt: null,
+      usedOnEntryId: null,
+      usedOnTournamentId: null,
+    })
+    expect(ticketCall.data.issuedAt).not.toBeNull()
+
+    // ticketBalance credited (walletBalance untouched)
+    const balanceUpdate = mockState.calls.update.find((c) => c.path.length === 2 && c.path[0] === 'players')
+    expect(balanceUpdate.partial.ticketBalance).toBe(200_00)
+    expect(balanceUpdate.partial.walletBalance).toBeUndefined()
+
+    // entry stamped with the idempotency marker + two-way trace
+    const entryWrite = mockState.calls.set.find((c) => c.path[2] === 'entries')
+    expect(entryWrite.data).toMatchObject({
+      ticketWinnings: 150_00,
+      issuedTicketId: result.ticketId,
+    })
+    expect(entryWrite.data.ticketIssuedAt).not.toBeNull()
+
+    expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: 'wallet.ticketIssued',
+        targetType: 'ticket',
+        targetId: result.ticketId,
+        metadata: expect.objectContaining({
+          playerId: 'player-1',
+          faceValue: 150_00,
+          issuedReason: 'satelliteWin',
+          issuedFromTournamentId: 'tournament-1',
+          entryId: 'entry-1',
+          source: 'tournamentPayout',
+        }),
+      })
+    )
+  })
+
+  it('refuses a double-issue (ticketIssuedAt already set) — typed error, nothing written', async () => {
+    seed({ entry: { ticketIssuedAt: Timestamp.now(), issuedTicketId: 'ticket-prior' } })
+    await expect(confirmEntryTicketWin(confirmArgs())).rejects.toThrow(TicketAlreadyIssuedError)
+    expect(mockState.calls.set).toHaveLength(0)
+    expect(mockState.calls.update).toHaveLength(0)
+    expect(auditLog.writeAuditLogSafe).not.toHaveBeenCalled()
+  })
+
+  it('refuses a voided entry', async () => {
+    seed({ entry: { voidedAt: Timestamp.now(), voidedBy: 'x', voidReason: 'dup' } })
+    await expect(confirmEntryTicketWin(confirmArgs())).rejects.toThrow(/voided/)
+  })
+
+  it('refuses an entry with no ticket winnings recorded', async () => {
+    seed({ entry: { ticketWinnings: 0 } })
+    await expect(confirmEntryTicketWin(confirmArgs())).rejects.toThrow(/no ticket winnings/)
+    expect(mockState.calls.set).toHaveLength(0)
+    expect(mockState.calls.update).toHaveLength(0)
+  })
+
+  it.each([['td'], ['readonly']])('role gate: %s cannot issue a ticket win', async (actorRole) => {
+    seed()
+    await expect(confirmEntryTicketWin(confirmArgs({ actorRole }))).rejects.toThrow(
+      RoleNotAuthorizedError
+    )
+  })
+
+  it('manager can issue', async () => {
+    seed()
+    await expect(
+      confirmEntryTicketWin(confirmArgs({ actorId: 'manager-1', actorRole: 'manager' }))
+    ).resolves.toMatchObject({ faceValue: 150_00 })
   })
 })
 
