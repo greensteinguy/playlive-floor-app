@@ -25,7 +25,15 @@ import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { useTournament } from '../../hooks/useTournament'
 import { useStructureTemplates } from '../../hooks/useTemplates'
-import { updateTournament, setTournamentStatus, registrationOpen, TournamentError } from '../../lib/tournaments'
+import {
+  updateTournament,
+  setTournamentStatus,
+  registrationOpen,
+  revertElimination,
+  finishingOrder,
+  TournamentError,
+  SeatingError,
+} from '../../lib/tournaments'
 import { Structure } from '../../lib/schema'
 import { centsToStr, dollarsToCents, intOrNull, intOf, formatMoney } from '../../lib/money'
 import { payoutCurve, paidPlaceCount, applyRounding } from '../../lib/payouts'
@@ -37,7 +45,7 @@ import { ALL_STATUSES, defaultNextStatuses, statusLabel } from '../../lib/tourna
 import { useEntries } from '../../hooks/useEntries'
 import { usePlayers } from '../../hooks/usePlayers'
 import { playerDisplayName } from '../../lib/players'
-import { paymentMethodLabel, entryTypeLabel, entryResultLabel } from '../../lib/entryDisplay'
+import { paymentMethodLabel, entryTypeLabel, entryResultLabel, ordinal } from '../../lib/entryDisplay'
 import { downloadCsv, csvFilename } from '../../lib/csv'
 
 const TABS = [
@@ -467,7 +475,7 @@ export default function TournamentDetail() {
             </>
           )}
 
-          {tab === 'players' && <PlayersTab t={tournament} />}
+          {tab === 'players' && <PlayersTab t={tournament} onChanged={reload} />}
           {tab === 'payouts' && (
             <>
               <PayoutEditor
@@ -697,9 +705,15 @@ function SaveBar({ onSave, saving, label }) {
   )
 }
 
-function PlayersTab({ t }) {
-  const { entries, loading, error, mockMode } = useEntries(t.id)
+function PlayersTab({ t, onChanged }) {
+  const { user, role } = useAuth()
+  const toast = useToast()
+  const { entries, loading, error, mockMode, reload } = useEntries(t.id)
   const players = usePlayers()
+  const canEdit = role === 'manager' || role === 'td'
+  // Undo-elimination affordance: inline confirm per busted row (manager + TD).
+  const [undoEntryId, setUndoEntryId] = useState(null)
+  const [undoBusy, setUndoBusy] = useState(false)
   const nameById = useMemo(() => {
     const m = {}
     for (const p of players.players) m[p.id] = playerDisplayName(p)
@@ -712,7 +726,26 @@ function PlayersTab({ t }) {
         .sort((a, b) => (a.registeredAt?.toMillis?.() ?? 0) - (b.registeredAt?.toMillis?.() ?? 0)),
     [entries]
   )
+  // Busted entries deepest-finish-first for the finishing-order list.
+  const busted = useMemo(() => finishingOrder(entries), [entries])
   const nameOf = (e) => nameById[e.playerId] ?? `${e.playerId.slice(0, 8)}…`
+
+  async function handleUndoElimination(entry) {
+    setUndoBusy(true)
+    try {
+      const res = await revertElimination({ tournament: t, entry, actorId: user.uid, actorRole: role })
+      toast.success(
+        `Undid ${nameOf(entry)}'s elimination${res.previousPlace ? ` (was ${ordinal(res.previousPlace)})` : ''} — they're back in, unseated.`
+      )
+      setUndoEntryId(null)
+      reload()
+      onChanged?.()
+    } catch (e) {
+      toast.error(e instanceof SeatingError ? e.message : `Undo failed: ${e.message}`)
+    } finally {
+      setUndoBusy(false)
+    }
+  }
 
   function handleExport() {
     const data = rows.map((e) => ({
@@ -787,12 +820,70 @@ function PlayersTab({ t }) {
                     <td className="px-4 py-2.5 text-right text-white/70 tabular-nums whitespace-nowrap">
                       {formatMoney(e.paymentAmount)}
                     </td>
-                    <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">{entryResultLabel(e)}</td>
+                    <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">
+                      {entryResultLabel(e)}
+                      {canEdit &&
+                        e.bustedAt !== null &&
+                        (undoEntryId === e.id ? (
+                          <span className="ml-2 inline-flex items-center gap-1.5">
+                            <span className="text-[11px] text-white/50">Undo elimination?</span>
+                            <button
+                              type="button"
+                              onClick={() => handleUndoElimination(e)}
+                              disabled={undoBusy}
+                              className="px-2 py-0.5 rounded text-[11px] font-medium bg-gold-500/20 text-gold-200 hover:bg-gold-500/30 disabled:opacity-40"
+                            >
+                              {undoBusy ? 'Undoing…' : 'Yes, undo'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setUndoEntryId(null)}
+                              disabled={undoBusy}
+                              className="px-2 py-0.5 rounded text-[11px] text-white/60 hover:text-white hover:bg-white/5"
+                            >
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setUndoEntryId(e.id)}
+                            disabled={undoBusy}
+                            className="ml-2 text-[11px] text-gold-300/80 hover:text-gold-200 underline disabled:opacity-40"
+                          >
+                            undo
+                          </button>
+                        ))}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {/* Finishing order — busted entries deepest finish first (place · player ·
+              bust time). Undoing an elimination leaves a gap here by design (v1:
+              later finishers are not renumbered). */}
+          {busted.length > 0 && (
+            <section>
+              <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">
+                Finishing order — {busted.length} out
+              </h3>
+              <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3">
+                <ul className="space-y-1 text-sm">
+                  {busted.map((e) => (
+                    <li key={e.id} className="flex items-baseline gap-3">
+                      <span className="w-10 text-right font-mono text-gold-300/90 tabular-nums shrink-0">
+                        {e.finishingPlace != null ? ordinal(e.finishingPlace) : '—'}
+                      </span>
+                      <span className="text-white/90 truncate">{nameOf(e)}</span>
+                      <span className="ml-auto text-xs text-white/40 whitespace-nowrap">{fmtDateTime(e.bustedAt)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>

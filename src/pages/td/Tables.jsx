@@ -22,6 +22,7 @@ import {
   seatEntry,
   unseatEntry,
   eliminateEntry,
+  nextFinishingPlace,
   balanceTables,
   breakTable,
   seatNextAlternate,
@@ -41,6 +42,7 @@ import {
 } from '../../lib/tournaments'
 import { ValidationError, WriteTimeoutError } from '../../lib/firestore'
 import { playerDisplayName } from '../../lib/players'
+import { ordinal } from '../../lib/entryDisplay'
 import { downloadCsv, csvFilename } from '../../lib/csv'
 import { Select, EmptyState } from '../../components/FormFields'
 import StatusBadge from '../../components/StatusBadge'
@@ -147,6 +149,9 @@ export default function Tables() {
     () => entries.filter((e) => e.originSessionId === activeSessionId && e.voidedAt === null && e.bustedAt !== null).length,
     [entries, activeSessionId]
   )
+  // The place the next bust-out receives (tournament-wide alive count — a UI
+  // preview; the op recomputes from fresh reads inside its transaction).
+  const nextPlace = useMemo(() => nextFinishingPlace(entries), [entries])
 
   const nameForEntry = (entry) => {
     const p = entry ? playersById[entry.playerId] : null
@@ -303,8 +308,8 @@ export default function Tables() {
 
   async function handleEliminate(entry) {
     await run(async () => {
-      await eliminateEntry({ tournament, entry, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
-      toast.success(`Eliminated ${nameForEntry(entry)}.`)
+      const res = await eliminateEntry({ tournament, entry, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
+      toast.success(`Eliminated ${nameForEntry(entry)} in ${ordinal(res.finishingPlace)} place.`)
       setConfirmEliminate(false)
       setSelectedEntryId(null)
       seating.reload()
@@ -617,14 +622,24 @@ export default function Tables() {
               ) : (
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                   <span className="text-white/85">
-                    Eliminate <span className="font-medium text-white">{nameForEntry(selectedEntry)}</span> from the tournament? They’ll show as{' '}
-                    <span className="font-medium">Busted</span> and leave the field.
+                    {nextPlace > 1 ? (
+                      <>
+                        Eliminate <span className="font-medium text-white">{nameForEntry(selectedEntry)}</span> in{' '}
+                        <span className="font-medium text-white">{ordinal(nextPlace)} place</span>? They’ll leave the field and
+                        show in the finishing order.
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium text-white">{nameForEntry(selectedEntry)}</span> is the last player standing —
+                        record them as the winner via payouts, not an elimination.
+                      </>
+                    )}
                   </span>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => handleEliminate(selectedEntry)}
-                      disabled={busy}
+                      disabled={busy || nextPlace <= 1}
                       className="px-3 py-1.5 rounded text-xs font-medium bg-red-500/20 text-red-200 hover:bg-red-500/30 active:bg-red-500/40 disabled:opacity-40"
                     >
                       {busy ? 'Eliminating…' : 'Yes, eliminate'}
