@@ -19,7 +19,8 @@ src/lib/wallet/
 ├── migration.js            ← recordOpeningBalance  (for Casinoware CSV import)
 ├── adjustment.js           ← writeAdjustment  (compensating ledger entry for fixing mistakes)
 ├── managerAdjustment.js    ← recordManagerCredit / recordManagerDebit  (intentional manager-authorized moves)
-└── reconciliation.js       ← getReconciliationTotals / verifyBalanceMatchesLedger
+├── reconciliation.js       ← getReconciliationTotals / verifyBalanceMatchesLedger
+└── reconciliationReport.js ← buildReconciliationReport / reconDateRange / summaryCsvRows (pure — feeds the end-of-day view)
 ```
 
 ## Operations
@@ -74,8 +75,9 @@ Distinct from `writeAdjustment` — these are deliberate manager actions (comps,
 
 ### Reconciliation
 
-- **`getReconciliationTotals({ since, until })`** — totals by method/type across all players for a window. Feeds the end-of-day reconciliation UI.
+- **`getReconciliationTotals({ since, until })`** — totals by method/type across all players for a window (flat shape; delegates categorization to `buildReconciliationReport`).
 - **`verifyBalanceMatchesLedger(playerId)`** — rebuilds balance from the ledger and reports drift from the cache. Sanity check.
+- **`buildReconciliationReport(transactions)`** — pure categorizer behind the end-of-day view (task 4.9): money IN per external method (deposits + cash/EFTPOS buy-ins), wallet activity, money OUT (withdrawals paid), and the headline per-method external totals. All signs via `walletTxDelta`. Companion helpers: `reconDateRange` (venue-local day boundaries for the date presets) and `summaryCsvRows` (CSV flattening).
 
 ## Invariants
 

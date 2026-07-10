@@ -5,6 +5,7 @@
 
 import { walletTransactions, players } from '../firestore'
 import { walletTxDelta } from './_shared'
+import { buildReconciliationReport } from './reconciliationReport'
 
 /**
  * Aggregate walletTransactions across all players for a time window. Returns
@@ -37,61 +38,36 @@ import { walletTxDelta } from './_shared'
 export async function getReconciliationTotals({ since, until }) {
   const txs = await walletTransactions.listAllWalletTransactions({ since, until })
 
-  const totals = {
-    deposits: { cash: 0, eftpos: 0, payid: 0 },
-    spendsExternal: { cash: 0, eftpos: 0 },
-    spendsFromWallet: 0,
-    ticketUses: 0,
-    winCredits: 0,
-    withdrawalsCompleted: 0,
-    adjustments: { credit: 0, debit: 0 },        // bookkeeping corrections (writeAdjustment)
-    managerCredits: 0,                            // intentional manager-authorized credits
-    managerDebits: 0,                             // intentional manager-authorized debits
-  }
+  // Categorization lives in the pure module (reconciliationReport.js) — one
+  // categorizer shared with the reconciliation page. This function keeps its
+  // original flat shape for existing callers.
+  const report = buildReconciliationReport(txs)
 
-  for (const tx of txs) {
-    switch (tx.type) {
-      case 'deposit':
-        if (tx.method && totals.deposits[tx.method] !== undefined) {
-          totals.deposits[tx.method] += tx.amount
-        }
-        break
-      case 'spend':
-        if (tx.method === 'wallet') {
-          totals.spendsFromWallet += tx.amount
-        } else if (tx.method === 'cash' || tx.method === 'eftpos') {
-          totals.spendsExternal[tx.method] += tx.amount
-        }
-        break
-      case 'ticketUse':
-        totals.ticketUses += tx.amount
-        break
-      case 'winCredit':
-        totals.winCredits += tx.amount
-        break
-      case 'withdrawalComplete':
-        totals.withdrawalsCompleted += tx.amount
-        break
-      case 'adjustment': {
-        if (tx.direction === 'credit') totals.adjustments.credit += tx.amount
-        else if (tx.direction === 'debit') totals.adjustments.debit += tx.amount
-        break
-      }
-      case 'managerCredit':
-        totals.managerCredits += tx.amount
-        break
-      case 'managerDebit':
-        totals.managerDebits += tx.amount
-        break
-      // openingBalance / withdrawalRequest / withdrawalCancel — not relevant for daily recon
-      default:
-        break
-    }
+  const totals = {
+    deposits: {
+      cash: report.moneyIn.deposits.cash.total,
+      eftpos: report.moneyIn.deposits.eftpos.total,
+      payid: report.moneyIn.deposits.payid.total,
+    },
+    spendsExternal: {
+      cash: report.moneyIn.buyIns.cash.total,
+      eftpos: report.moneyIn.buyIns.eftpos.total,
+    },
+    spendsFromWallet: report.walletActivity.walletBuyIns.total,
+    ticketUses: report.walletActivity.ticketBuyIns.total,
+    winCredits: report.walletActivity.winCredits.total,
+    withdrawalsCompleted: report.walletActivity.withdrawalsCompleted.total,
+    adjustments: {
+      credit: report.walletActivity.adjustmentsCredit.total,   // bookkeeping corrections (writeAdjustment)
+      debit: report.walletActivity.adjustmentsDebit.total,
+    },
+    managerCredits: report.walletActivity.managerCredits.total, // intentional manager-authorized credits
+    managerDebits: report.walletActivity.managerDebits.total,   // intentional manager-authorized debits
   }
 
   return {
     totals,
-    transactionCount: txs.length,
+    transactionCount: report.transactionCount,
     periodNote: `from ${since} to ${until}`,
   }
 }

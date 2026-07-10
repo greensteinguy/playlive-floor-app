@@ -214,11 +214,13 @@ export default function App() {
                   </ErrorBoundary>
                 }
               />
+              {/* Reconciliation is cashier + manager (end-of-day close-out) —
+                  matches the nav.js entry for /admin/reconcile. */}
               <Route
                 path="/admin/reconcile"
                 element={
                   <ErrorBoundary>
-                    <ProtectedRoute requiredRoles={['manager']}>
+                    <ProtectedRoute requiredRoles={['cashier', 'manager']}>
                       <AdminReconciliation />
                     </ProtectedRoute>
                   </ErrorBoundary>

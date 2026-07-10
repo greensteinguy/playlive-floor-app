@@ -106,8 +106,17 @@ const NAV_ITEMS = [
     icon: '⇌',
     allowedRoles: [], // manager-only
   },
-  // NOTE: Reconciliation (/admin/reconcile) is a Phase-4 placeholder — removed
-  // from the sidebar until the end-of-day reconciliation view is built.
+  {
+    section: 'admin',
+    to: '/admin/reconcile',
+    label: 'Reconciliation',
+    icon: '⚖',
+    // End-of-day close-out is a cashier/manager activity: the cashier counts
+    // the till and matches the EFTPOS settlement; the manager signs off.
+    // (walletTransactions read is all-staff at the rules layer, so this page
+    // gate is UX scoping, not a security boundary.)
+    allowedRoles: ['cashier'],
+  },
 ]
 
 export const NAV_SECTIONS = [
