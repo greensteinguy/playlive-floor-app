@@ -22,17 +22,14 @@ import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { usePlayers } from '../../hooks/usePlayers'
 import { players as playersApi, ValidationError, WriteTimeoutError } from '../../lib/firestore'
-import { createPlayer, searchPlayers, playerDisplayName, PlayerError } from '../../lib/players'
+import { createPlayer, playerDisplayName, PlayerError } from '../../lib/players'
 import { recordDeposit, WalletError } from '../../lib/wallet'
 import { formatMoney, dollarsToCents } from '../../lib/money'
 import { getVenuePayId } from '../../lib/venuePayId'
 import { emptyPlayerForm, validatePlayerForm, buildPlayerArgs } from '../../lib/playerForm'
 import { Money, Text, EmptyState } from '../../components/FormFields'
 import PlayerProfileFields from '../../components/PlayerProfileFields'
-
-// The player picker shows the whole base (alphabetical) and filters as you type,
-// mirroring the /desk/players search flow (A3).
-const RESULT_LIMIT = 100
+import PlayerPicker from '../../components/PlayerPicker'
 
 const METHODS = [
   { id: 'cash', label: 'Cash' },
@@ -74,7 +71,6 @@ export default function Deposit() {
   const venuePayId = getVenuePayId()
 
   // Selection + form state
-  const [q, setQ] = useState('')
   const [selectedPlayer, setSelectedPlayer] = useState(null)
   const [creating, setCreating] = useState(false)
   const [createForm, setCreateForm] = useState(emptyPlayerForm)
@@ -108,10 +104,6 @@ export default function Deposit() {
     }
   }, [preselectId])
 
-  // Empty query returns the whole base sorted by name (searchPlayers), so the
-  // list shows everyone alphabetically and narrows as the cashier types (A3).
-  const results = searchPlayers(players.players, q, { limit: RESULT_LIMIT })
-
   function resetPayment() {
     setAmountStr('')
     setMethod(null)
@@ -124,8 +116,8 @@ export default function Deposit() {
     resetPayment()
   }
   function resetForNext() {
+    // PlayerPicker owns its query state — it remounts fresh when the selection clears.
     setSelectedPlayer(null)
-    setQ('')
     setCreating(false)
     resetPayment()
   }
@@ -299,17 +291,11 @@ export default function Deposit() {
                 </div>
               </>
             ) : (
-              <>
-                <div className="flex flex-wrap items-center gap-3">
-                  <input
-                    type="search"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search by name, phone, or email…"
-                    autoFocus
-                    aria-label="Search players"
-                    className="flex-1 min-w-[14rem] bg-felt-900 border border-white/10 rounded-lg px-4 py-3 text-sm placeholder:text-white/30"
-                  />
+              <PlayerPicker
+                players={players.players}
+                onSelect={selectPlayer}
+                emptyHint="Add them with + New player."
+                action={
                   <button
                     type="button"
                     onClick={() => setCreating(true)}
@@ -317,45 +303,8 @@ export default function Deposit() {
                   >
                     + New player
                   </button>
-                </div>
-                {players.players.length === 0 ? (
-                  <p className="text-xs text-white/40 mt-3">No players yet. Add one with + New player.</p>
-                ) : results.length === 0 ? (
-                  <p className="text-xs text-white/40 mt-3">No players match "{q}". Add them with + New player.</p>
-                ) : (
-                  <>
-                    <div className="text-[11px] font-mono uppercase tracking-widest text-white/30 mt-3 mb-1">
-                      {results.length}
-                      {results.length === RESULT_LIMIT ? '+' : ''} {results.length === 1 ? 'player' : 'players'}
-                      {q.trim() === '' ? ' · alphabetical' : ''}
-                    </div>
-                    {/* Whole base, alphabetical, filtering as you type (A3); each
-                        row is fully clickable — no separate Select button (A4). */}
-                    <ul className="divide-y divide-white/5 max-h-72 overflow-y-auto rounded-lg border border-white/5">
-                      {results.map((p) => (
-                        <li key={p.id}>
-                          <button
-                            type="button"
-                            onClick={() => selectPlayer(p)}
-                            className="w-full flex items-center justify-between gap-3 text-left px-3 py-2.5 hover:bg-white/5 active:bg-white/10"
-                          >
-                            <span className="min-w-0">
-                              <span className="block text-sm text-white/90 truncate">{playerDisplayName(p)}</span>
-                              <span className="block text-xs text-white/40 truncate">
-                                {p.phone}
-                                {p.email ? ` · ${p.email}` : ''} · Wallet {formatMoney(p.walletBalance)}
-                              </span>
-                            </span>
-                            <span aria-hidden className="text-xs text-white/30 shrink-0">
-                              Select →
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </>
+                }
+              />
             )}
           </Panel>
 
