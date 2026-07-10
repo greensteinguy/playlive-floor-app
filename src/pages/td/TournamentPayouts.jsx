@@ -19,8 +19,9 @@
 // are cashier + manager (also enforced inside the wallet op).
 //
 // Bounty rows (mystery bounty) confirm per DRAW via confirmBountyWinCredit
-// (idempotent on the draw's walletTransactionId). Satellite ticket rows are
-// shown but disabled — ticket issuance is wired in the satellite integration.
+// (idempotent on the draw's walletTransactionId). Satellite ticket rows confirm
+// per ENTRY via confirmEntryTicketWin (idempotent on the entry's
+// ticketIssuedAt) — the confirm IS the wallet-side ticket issuance.
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
@@ -40,7 +41,12 @@ import {
   enterDeal,
   PayoutsError,
 } from '../../lib/tournaments'
-import { confirmEntryWinCredit, confirmBountyWinCredit, WalletError } from '../../lib/wallet'
+import {
+  confirmEntryWinCredit,
+  confirmEntryTicketWin,
+  confirmBountyWinCredit,
+  WalletError,
+} from '../../lib/wallet'
 import { playerDisplayName } from '../../lib/players'
 import { ordinal } from '../../lib/entryDisplay'
 import { formatMoney, centsToStr, dollarsToCents } from '../../lib/money'
@@ -158,7 +164,16 @@ export default function TournamentPayouts() {
           )}
 
           {tournament.gameType === 'satellite' && (
-            <TicketSection entries={entries} nameOf={nameOf} />
+            <TicketSection
+              tournament={tournament}
+              entries={entries}
+              nameOf={nameOf}
+              canConfirm={canConfirm}
+              user={user}
+              role={role}
+              toast={toast}
+              onChanged={reloadEntries}
+            />
           )}
         </>
       )}
@@ -707,13 +722,38 @@ function BountySection({ tournament, entries, nameOf, canConfirm, user, role, to
   )
 }
 
-// ── Satellite tickets (visible, not yet wired) ───────────────────────────────
+// ── Satellite tickets (cashier confirms each entry's ticket win) ─────────────
 
-function TicketSection({ entries, nameOf }) {
+function TicketSection({ tournament, entries, nameOf, canConfirm, user, role, toast, onChanged }) {
+  const [confirmEntryId, setConfirmEntryId] = useState(null)
+  const [busy, setBusy] = useState(false)
+
   const ticketRows = entries.filter((e) => e.voidedAt === null && (e.ticketWinnings ?? 0) > 0)
+
+  async function issueRow(e) {
+    setBusy(true)
+    try {
+      await confirmEntryTicketWin({
+        tournamentId: tournament.id,
+        entryId: e.id,
+        actorId: user.uid,
+        actorRole: role,
+      })
+      toast.success(`${formatMoney(e.ticketWinnings)} ticket issued to ${nameOf(e.playerId)}.`)
+      setConfirmEntryId(null)
+      onChanged()
+    } catch (err) {
+      toast.error(err instanceof WalletError ? err.message : `Ticket issuance failed: ${err.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Satellite tickets</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">
+        Satellite tickets — cashier confirms each win
+      </h3>
       <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3">
         {ticketRows.length === 0 ? (
           <p className="text-sm text-white/40">No ticket winnings recorded on entries yet.</p>
@@ -723,21 +763,38 @@ function TicketSection({ entries, nameOf }) {
               <li key={e.id} className="flex items-center gap-3 flex-wrap">
                 <span className="text-white/90">{nameOf(e.playerId)}</span>
                 <span className="text-white/60 tabular-nums">{formatMoney(e.ticketWinnings)} ticket</span>
-                <button
-                  type="button"
-                  disabled
-                  title="Ticket issuance from this screen is wired in the satellite integration task."
-                  className={btnPlain + ' ml-auto'}
-                >
-                  Issue ticket
-                </button>
+                {e.ticketIssuedAt != null ? (
+                  <span className="ml-auto text-emerald-300">
+                    Issued ✓ <span className="text-white/30 text-xs">{fmtTime(e.ticketIssuedAt)}</span>
+                  </span>
+                ) : canConfirm ? (
+                  confirmEntryId === e.id ? (
+                    <span className="ml-auto inline-flex items-center gap-1.5">
+                      <span className="text-[11px] text-white/50">
+                        Issue a {formatMoney(e.ticketWinnings)} ticket to {nameOf(e.playerId)}?
+                      </span>
+                      <button type="button" disabled={busy} onClick={() => issueRow(e)} className={btnGreen}>
+                        {busy ? 'Issuing…' : 'Yes — issue ticket'}
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => setConfirmEntryId(null)} className={btnPlain}>
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button type="button" disabled={busy} onClick={() => setConfirmEntryId(e.id)} className={btnGreen + ' ml-auto'}>
+                      Issue ticket
+                    </button>
+                  )
+                ) : (
+                  <span className="ml-auto text-white/50">Unissued</span>
+                )}
               </li>
             ))}
           </ul>
         )}
         <p className="text-[11px] text-white/40 mt-2">
-          Ticket issuance (issueTicket → player ticket balance) is confirmed from the satellite flow — the button here
-          activates when that integration lands.
+          Issuing creates the wallet-side ticket and credits the player's ticket balance in one step — each win is
+          confirmed individually by a cashier or manager.
         </p>
       </div>
     </section>

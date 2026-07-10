@@ -65,6 +65,16 @@ export const Entry = z
     winningsPaidAt: NullableTimestamp.default(null),
     winningsWalletTransactionId: DocumentRef.nullable().default(null),
 
+    // Cashier-confirmed satellite ticket state (task 4.7, ticket half). A
+    // ticketWinnings amount recorded at the milestone exit is NOT a wallet-side
+    // ticket until the cashier confirms — ticketIssuedAt is stamped in the same
+    // transaction that creates the tickets/{id} doc and credits the player's
+    // ticketBalance. issuedTicketId links that ticket doc (two-way trace,
+    // mirroring winningsWalletTransactionId). `.default(null)` keeps docs
+    // written before these fields existed valid on read.
+    ticketIssuedAt: NullableTimestamp.default(null),
+    issuedTicketId: DocumentRef.nullable().default(null),
+
     // Last-longer side bet
     lastLongerDeck: LastLongerDeck.nullable(),
     isLastLongerWinner: z.boolean(),
@@ -116,6 +126,17 @@ export const Entry = z
         code: z.ZodIssueCode.custom,
         path: ['winningsWalletTransactionId'],
         message: 'winningsWalletTransactionId requires winningsPaidAt to be set',
+      })
+    }
+
+    // Ticket-issued consistency: issuance always creates the ticket doc in the
+    // same transaction, so — unlike the cash pair, which allows a future
+    // cash-at-till channel — the two fields are strictly both-or-neither.
+    if ((e.ticketIssuedAt === null) !== (e.issuedTicketId === null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['issuedTicketId'],
+        message: 'ticketIssuedAt and issuedTicketId must both be set or both be null',
       })
     }
 
