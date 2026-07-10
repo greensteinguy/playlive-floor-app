@@ -5,7 +5,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('../firestore', () => ({
   entries: { listEntries: vi.fn() },
   runValidatedTransaction: vi.fn(),
-  paths: { tournamentPath: (id) => ['tournaments', id] },
+  paths: {
+    tournamentPath: (id) => ['tournaments', id],
+    entryPath: (tid, eid) => ['tournaments', tid, 'entries', eid],
+  },
 }))
 vi.mock('../wallet', () => ({
   payViaExternalMethod: vi.fn(),
@@ -245,6 +248,72 @@ describe('registerEntry — payment routing', () => {
     const res = await registerEntry({ ...baseArgs, paymentMethod: 'cash' })
     expect(res.entryId).toBe('e-ext')
     expect(res.counters).toBeNull()
+  })
+})
+
+describe('registerEntry — last-longer deck capture', () => {
+  const llTournament = makeTournament({ hasUpperDeckMainDeck: true })
+  const freshEntry = {
+    id: 'e-ext',
+    lastLongerDeck: null,
+    isLastLongerWinner: false,
+    voidedAt: null,
+    updatedAt: {},
+  }
+
+  it('applies the deck pick to the fresh entry after the payment write', async () => {
+    const sets = []
+    runValidatedTransaction.mockImplementation(async (fn) =>
+      fn({
+        get: vi.fn(async (path) => (path[2] === 'entries' ? freshEntry : txGetDoc)),
+        set: vi.fn((path, _schema, data) => sets.push({ path, data })),
+      })
+    )
+    const res = await registerEntry({
+      ...baseArgs,
+      tournament: llTournament,
+      paymentMethod: 'cash',
+      lastLongerDeck: 'upper',
+    })
+    const entrySet = sets.find((s) => s.path[2] === 'entries')
+    expect(entrySet.path).toEqual(['tournaments', 'tour-1', 'entries', 'e-ext'])
+    expect(entrySet.data).toMatchObject({ lastLongerDeck: 'upper', isLastLongerWinner: false })
+    expect(res).toMatchObject({ lastLongerDeck: 'upper', lastLongerDeckApplied: true })
+  })
+
+  it('defaults to no deck: no entry write, lastLongerDeckApplied null', async () => {
+    const res = await registerEntry({ ...baseArgs, tournament: llTournament, paymentMethod: 'cash' })
+    expect(res).toMatchObject({ lastLongerDeck: null, lastLongerDeckApplied: null })
+  })
+
+  it('rejects a deck pick when the tournament has no Upper/Main split (before any payment)', async () => {
+    await expect(
+      registerEntry({ ...baseArgs, paymentMethod: 'cash', lastLongerDeck: 'upper' })
+    ).rejects.toThrow(TournamentError)
+    expect(payViaExternalMethod).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unknown deck value', async () => {
+    await expect(
+      registerEntry({ ...baseArgs, tournament: llTournament, paymentMethod: 'cash', lastLongerDeck: 'middle' })
+    ).rejects.toThrow(TournamentError)
+    expect(payViaExternalMethod).not.toHaveBeenCalled()
+  })
+
+  it('a failed deck write does not undo the registration — flagged for the caller to warn', async () => {
+    // Every transaction fails: the deck application AND the recount — both are
+    // best-effort after the committed payment write.
+    runValidatedTransaction.mockImplementation(async () => {
+      throw new Error('network blip')
+    })
+    const res = await registerEntry({
+      ...baseArgs,
+      tournament: llTournament,
+      paymentMethod: 'cash',
+      lastLongerDeck: 'main',
+    })
+    expect(res.entryId).toBe('e-ext')
+    expect(res.lastLongerDeckApplied).toBe(false)
   })
 })
 

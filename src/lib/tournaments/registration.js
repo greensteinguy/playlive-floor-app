@@ -15,7 +15,7 @@
 // about registration without a renderer.
 
 import { entries as entriesApi, runValidatedTransaction, paths } from '../firestore'
-import { Tournament } from '../schema'
+import { Tournament, Entry } from '../schema'
 import { now } from '../wallet/_shared'
 import { payViaExternalMethod, payViaWallet, payViaTicket } from '../wallet'
 import { TournamentError } from './errors'
@@ -153,6 +153,7 @@ export async function recountTournamentEntries({ tournamentId }) {
  * @param {string|null} [args.ticketId]          — ticket to redeem (ticket method)
  * @param {{method:'cash'|'eftpos', reference:string|null}|null} [args.topUp]  — covers a ticket shortfall
  * @param {{reason:string}|null} [args.managerOverride]  — use a ticket below face value
+ * @param {'upper'|'main'|null} [args.lastLongerDeck]  — optional last-longer deck pick (tournaments with hasUpperDeckMainDeck)
  * @param {string} args.actorId
  * @param {'manager'|'td'|'cashier'} args.actorRole
  */
@@ -166,6 +167,7 @@ export async function registerEntry({
   ticketId = null,
   topUp = null,
   managerOverride = null,
+  lastLongerDeck = null,
   actorId,
   actorRole,
 }) {
@@ -183,6 +185,14 @@ export async function registerEntry({
   }
   if (!registrationOpen(tournament)) {
     throw new TournamentError(`Registration is not open for this tournament (status: ${tournament.status}).`)
+  }
+  if (lastLongerDeck !== null) {
+    if (lastLongerDeck !== 'upper' && lastLongerDeck !== 'main') {
+      throw new TournamentError(`unknown last-longer deck "${lastLongerDeck}"`)
+    }
+    if (!tournament.hasUpperDeckMainDeck) {
+      throw new TournamentError('This tournament does not have the Upper Deck / Main Deck split.')
+    }
   }
 
   const plan = planEntry({ playerEntries: playerEntries ?? [], reentryConfig: tournament.reentryConfig })
@@ -234,6 +244,29 @@ export async function registerEntry({
     throw new TournamentError(`unknown payment method "${paymentMethod}"`)
   }
 
+  // Record the optional last-longer deck pick on the fresh entry. The wallet ops
+  // create every entry with lastLongerDeck: null (payment is their concern, not
+  // the side bet), so the pick is a follow-up validated full-doc write. Best-effort
+  // AFTER the committed registration — a failure here must not look like a failed
+  // buy-in (the desk would re-charge the player); the caller gets
+  // lastLongerDeckApplied: false and can warn instead.
+  let lastLongerDeckApplied = null
+  if (lastLongerDeck !== null) {
+    try {
+      await runValidatedTransaction(async (tx) => {
+        const fresh = await tx.get(paths.entryPath(tournament.id, walletResult.entryId), Entry)
+        tx.set(paths.entryPath(tournament.id, walletResult.entryId), Entry, {
+          ...fresh,
+          lastLongerDeck,
+          updatedAt: now(),
+        })
+      })
+      lastLongerDeckApplied = true
+    } catch {
+      lastLongerDeckApplied = false
+    }
+  }
+
   // Refresh the cached counters from the source of truth. Best-effort.
   let counters = null
   try {
@@ -242,5 +275,13 @@ export async function registerEntry({
     counters = null
   }
 
-  return { ...walletResult, entryType: plan.entryType, entryNumber: plan.entryNumber, totalCost, counters }
+  return {
+    ...walletResult,
+    entryType: plan.entryType,
+    entryNumber: plan.entryNumber,
+    totalCost,
+    counters,
+    lastLongerDeck,
+    lastLongerDeckApplied,
+  }
 }

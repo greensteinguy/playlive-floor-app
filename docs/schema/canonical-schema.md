@@ -408,6 +408,8 @@ auditLog/{id}
 | `tournament.structureEdited` | Embedded structure edited mid-tournament. `metadata.diff`. |
 | `tournament.payoutEdited` | Embedded payout structure edited. |
 | `tournament.dealEntered` | Manual deal-making entry recorded. `metadata.payouts`. |
+| `tournament.lastLongerSettled` | Last-longer (Upper/Main deck) winner recorded on an entry. `metadata.deck` / `winnerEntryId` / `winnerPlayerId` / `participantCount` / `derivedWinnerEntryId` / `override` (true when the TD picked a different winner than the derived one). |
+| `tournament.lastLongerUnsettled` | Last-longer settlement undone (winner flag cleared). `metadata.deck` / `winnerEntryId` / `winnerPlayerId`. |
 | `structureTemplate.created` | Blind-structure template created. `metadata.name`, `metadata.levelCount`. |
 | `structureTemplate.updated` | Structure template edited. `metadata.changedFields`. |
 | `structureTemplate.archived` | Structure template archived (soft-delete; `archivedAt` set). |

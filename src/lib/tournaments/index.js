@@ -83,4 +83,18 @@ export {
   NoOpenSeatError,
 } from './seating'
 
+export {
+  LAST_LONGER_DECKS,
+  lastLongerDeckLabel,
+  lastLongerParticipants,
+  deriveLastLongerStatus,
+  lastLongerReasonLabel,
+  settleLastLonger,
+  unsettleLastLonger,
+  LastLongerError,
+  LastLongerNotDeterminableError,
+  LastLongerAlreadySettledError,
+  LastLongerNotSettledError,
+} from './lastLonger'
+
 export { TournamentError } from './errors'
