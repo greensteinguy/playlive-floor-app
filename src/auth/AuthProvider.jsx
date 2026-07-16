@@ -1,4 +1,5 @@
-// AuthProvider. Wraps the app and exposes { user, role, loading, signIn, signOut }
+// AuthProvider. Wraps the app and exposes
+// { user, role, loading, signIn, signInWithGoogle, signOut }
 // via AuthContext (defined in AuthContext.js).
 //
 // Mock mode: when VITE_USE_MOCK_DATA=true in .env.local, the provider
@@ -9,7 +10,9 @@
 
 import { useEffect, useState } from 'react'
 import {
+  GoogleAuthProvider,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut as fbSignOut,
   onAuthStateChanged,
 } from 'firebase/auth'
@@ -69,20 +72,43 @@ export function AuthProvider({ children }) {
     return () => unsubscribe()
   }, [])
 
-  async function signIn(email, password) {
+  // Shared post-sign-in step: force a token refresh so custom claims (set
+  // out-of-band by scripts/admin/set-role.js) are picked up immediately.
+  async function adoptSignedInUser(firebaseUser) {
+    await firebaseUser.getIdToken(true)
+    const tokenResult = await firebaseUser.getIdTokenResult()
+    const claimRole = tokenResult.claims.role
+    setRole(VALID_ROLES.includes(claimRole) ? claimRole : null)
+    return firebaseUser
+  }
+
+  function assertRealAuth() {
     if (USE_MOCK_DATA) {
       throw new Error(
         'Sign-in is disabled in mock mode (VITE_USE_MOCK_DATA=true). ' +
         'Set VITE_USE_MOCK_DATA=false in .env.local and configure Firebase to test real auth.'
       )
     }
+  }
+
+  async function signIn(email, password) {
+    assertRealAuth()
     const credential = await signInWithEmailAndPassword(auth, email, password)
-    // Force token refresh so custom claims (set out-of-band) are picked up immediately
-    await credential.user.getIdToken(true)
-    const tokenResult = await credential.user.getIdTokenResult()
-    const claimRole = tokenResult.claims.role
-    setRole(VALID_ROLES.includes(claimRole) ? claimRole : null)
-    return credential.user
+    return adoptSignedInUser(credential.user)
+  }
+
+  // Google sign-in (staff Workspace accounts). Any Google account can complete
+  // the popup — access is still gated by the `role` custom claim, so a
+  // first-time / unknown account lands on the "No access" page until a manager
+  // stamps a role on it.
+  async function signInWithGoogle() {
+    assertRealAuth()
+    const provider = new GoogleAuthProvider()
+    // Hint the account chooser toward the venue's Workspace domain. Not an
+    // access control (any account can still be picked) — the role claim is.
+    provider.setCustomParameters({ hd: 'playlive.melbourne', prompt: 'select_account' })
+    const credential = await signInWithPopup(auth, provider)
+    return adoptSignedInUser(credential.user)
   }
 
   async function signOut() {
@@ -108,7 +134,9 @@ export function AuthProvider({ children }) {
     : undefined
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, signIn, signOut, setMockRole }}>
+    <AuthContext.Provider
+      value={{ user, role, loading, signIn, signInWithGoogle, signOut, setMockRole }}
+    >
       {children}
     </AuthContext.Provider>
   )
