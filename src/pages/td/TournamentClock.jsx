@@ -225,7 +225,7 @@ export default function TournamentClock() {
           : 'text-sky-300'
 
   return (
-    <Shell>
+    <Shell id={id}>
       <div className="flex items-baseline justify-between gap-4 flex-wrap mb-4">
         <h1 className="font-display text-xl md:text-2xl text-gold-400">{tournament.name}</h1>
         {sx.list.length > 1 && (
