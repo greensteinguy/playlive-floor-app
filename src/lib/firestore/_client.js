@@ -225,6 +225,17 @@ export async function runValidatedTransaction(fn) {
         if (!snap.exists()) throw new NotFoundError(pathParts)
         return validateOrThrow(pathParts, schema, attachId(snap), 'read')
       },
+      // Like get, but returns null for a missing doc instead of throwing.
+      // The primitive behind idempotency probes ("does this gesture's doc
+      // already exist?") and existence sentinels ("has this session already
+      // been drawn?") — reading the doc puts it in the transaction's read set,
+      // so a concurrent create of the same path forces a retry.
+      getOptional: async (pathParts, schema) => {
+        const ref = doc(db, ...pathParts)
+        const snap = await firestoreTx.get(ref)
+        if (!snap.exists()) return null
+        return validateOrThrow(pathParts, schema, attachId(snap), 'read')
+      },
       set: (pathParts, schema, data) => {
         const id = pathParts[pathParts.length - 1]
         const validated = validateOrThrow(pathParts, schema, { ...data, id }, 'write')

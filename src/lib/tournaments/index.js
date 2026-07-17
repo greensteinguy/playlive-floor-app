@@ -18,6 +18,7 @@ export { validateSessionPlan, deriveFormatFlags, SINGLE_DAY_PLAN } from './sessi
 
 export {
   registerEntry,
+  voidEntry,
   recountTournamentEntries,
   totalEntryCost,
   registrationOpen,

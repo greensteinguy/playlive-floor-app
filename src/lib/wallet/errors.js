@@ -115,3 +115,66 @@ export class InvalidOverrideError extends WalletError {
     this.name = 'InvalidOverrideError'
   }
 }
+
+/**
+ * Thrown when a registration transaction finds an entry doc already at the
+ * deterministic entry id (`{playerId}_{entryNumber}`) and it is NOT a replay of
+ * the same gesture (different actor / payment / amount). Two devices registered
+ * the same player near-simultaneously — the second must NOT charge again.
+ */
+export class DuplicateEntryError extends WalletError {
+  constructor({ entryId, playerId, entryNumber }) {
+    super(
+      `This player's entry #${entryNumber} already exists (${entryId}) — ` +
+      `they were just registered, likely on another device or by an earlier attempt ` +
+      `that actually saved. Refresh and check the roster before charging again.`
+    )
+    this.name = 'DuplicateEntryError'
+    this.entryId = entryId
+    this.playerId = playerId
+    this.entryNumber = entryNumber
+  }
+}
+
+/**
+ * Thrown when the registration transaction re-reads the tournament and finds
+ * registration is no longer open (status changed since the desk's snapshot).
+ */
+export class RegistrationClosedError extends WalletError {
+  constructor({ tournamentId, status }) {
+    super(
+      `Registration is not open for tournament ${tournamentId} ` +
+      `(status is now "${status}"). The tournament changed since this screen loaded — refresh.`
+    )
+    this.name = 'RegistrationClosedError'
+    this.tournamentId = tournamentId
+    this.status = status
+  }
+}
+
+/**
+ * Thrown when voidEntry is asked to void an entry that is already voided by a
+ * DIFFERENT gesture (different actor or reason). A same-gesture retry replays
+ * successfully instead.
+ */
+export class EntryAlreadyVoidedError extends WalletError {
+  constructor({ entryId }) {
+    super(`Entry ${entryId} is already voided.`)
+    this.name = 'EntryAlreadyVoidedError'
+    this.entryId = entryId
+  }
+}
+
+/**
+ * Thrown when an entry cannot be voided: it is busted (undo the elimination
+ * first if the whole entry was a mistake) or money has already flowed out of
+ * it (winnings paid / ticket issued / staged winnings / bounty earnings).
+ */
+export class EntryNotVoidableError extends WalletError {
+  constructor({ entryId, reason }) {
+    super(`Entry ${entryId} cannot be voided: ${reason}`)
+    this.name = 'EntryNotVoidableError'
+    this.entryId = entryId
+    this.reason = reason
+  }
+}

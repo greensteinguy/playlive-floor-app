@@ -81,11 +81,17 @@ export function buildReconciliationReport(transactions) {
     moneyIn: {
       deposits: { cash: bucket(), eftpos: bucket(), payid: bucket() },
       buyIns: { cash: bucket(), eftpos: bucket() },
+      // Voided-entry refunds paid back out of the till / EFTPOS terminal
+      // (type=entryRefund with an external method). Netted OUT of the
+      // externalTotals headline — the till physically returned this money.
+      buyInRefunds: { cash: bucket(), eftpos: bucket() },
       total: 0,
     },
     walletActivity: {
       walletBuyIns: bucket(),
       ticketBuyIns: bucket(),
+      walletBuyInRefunds: bucket(),  // voided wallet-paid entries — balance credited back
+      ticketBuyInRefunds: bucket(),  // voided ticket-paid entries — ticket reinstated (informational)
       winCredits: bucket(),
       withdrawalsCompleted: bucket(),
       managerCredits: bucket(),
@@ -129,6 +135,16 @@ export function buildReconciliationReport(transactions) {
       case 'ticketUse':
         add(report.walletActivity.ticketBuyIns, tx.amount)
         break
+      case 'entryRefund':
+        if (tx.method === 'wallet') {
+          add(report.walletActivity.walletBuyInRefunds, tx.amount)
+        } else if (tx.method === 'ticket') {
+          add(report.walletActivity.ticketBuyInRefunds, tx.amount)
+        } else if (report.moneyIn.buyInRefunds[tx.method] !== undefined) {
+          // cash / eftpos — money physically handed back at the desk
+          add(report.moneyIn.buyInRefunds[tx.method], tx.amount)
+        }
+        break
       case 'winCredit':
         add(report.walletActivity.winCredits, tx.amount)
         break
@@ -168,12 +184,16 @@ export function buildReconciliationReport(transactions) {
   }
 
   // Headline external totals: everything that physically entered via each
-  // method today. Withdrawals are money OUT and are reported separately —
-  // the ledger doesn't record which channel paid them (typically bank
-  // transfer via the stored BSB/account), so they can't be netted per method.
+  // method today, NET of voided-entry refunds handed back through the same
+  // channel (the till count reflects both). Withdrawals are money OUT and are
+  // reported separately — the ledger doesn't record which channel paid them
+  // (typically bank transfer via the stored BSB/account), so they can't be
+  // netted per method.
   for (const method of EXTERNAL_METHODS) {
     report.externalTotals[method] =
-      report.moneyIn.deposits[method].total + (report.moneyIn.buyIns[method]?.total ?? 0)
+      report.moneyIn.deposits[method].total +
+      (report.moneyIn.buyIns[method]?.total ?? 0) -
+      (report.moneyIn.buyInRefunds[method]?.total ?? 0)
   }
   report.moneyIn.total =
     report.externalTotals.cash + report.externalTotals.eftpos + report.externalTotals.payid
@@ -273,9 +293,13 @@ export function summaryCsvRows(report) {
   push('Money in', 'Deposits — PayID', report.moneyIn.deposits.payid)
   push('Money in', 'Buy-ins — cash', report.moneyIn.buyIns.cash)
   push('Money in', 'Buy-ins — EFTPOS', report.moneyIn.buyIns.eftpos)
+  push('Money in', 'Buy-in refunds — cash (paid back)', report.moneyIn.buyInRefunds.cash)
+  push('Money in', 'Buy-in refunds — EFTPOS (paid back)', report.moneyIn.buyInRefunds.eftpos)
 
   push('Wallet activity', 'Wallet-paid buy-ins', report.walletActivity.walletBuyIns)
   push('Wallet activity', 'Ticket-paid buy-ins', report.walletActivity.ticketBuyIns)
+  push('Wallet activity', 'Buy-in refunds — wallet', report.walletActivity.walletBuyInRefunds)
+  push('Wallet activity', 'Buy-in refunds — ticket reinstated', report.walletActivity.ticketBuyInRefunds)
   push('Wallet activity', 'Win credits', report.walletActivity.winCredits)
   push('Wallet activity', 'Withdrawals completed', report.walletActivity.withdrawalsCompleted)
   push('Wallet activity', 'Manager credits', report.walletActivity.managerCredits)

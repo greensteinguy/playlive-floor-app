@@ -11,6 +11,13 @@ import { now, balanceDelta, wrapWalletErrors } from './_shared'
 /**
  * Record a deposit to a player's wallet.
  *
+ * Idempotency: pass `walletTransactionId` generated when the confirm screen is
+ * shown (one id per cashier gesture). The transaction probes that id first —
+ * if the row already exists the earlier attempt actually committed (e.g. the
+ * 10s write timeout fired on a slow network and the cashier retried), so the
+ * call returns the existing row's result instead of double-crediting. Omitting
+ * the id preserves the old behaviour (a fresh id per call, no replay window).
+ *
  * @param {object} args
  * @param {string} args.playerId
  * @param {number} args.amount   integer cents, > 0
@@ -19,8 +26,9 @@ import { now, balanceDelta, wrapWalletErrors } from './_shared'
  * @param {string} args.actorId   auth uid of the cashier who entered the deposit
  * @param {'manager'|'td'|'cashier'} args.actorRole
  * @param {string|null} [args.notes]
+ * @param {string|null} [args.walletTransactionId]  gesture-scoped idempotency key
  *
- * @returns {Promise<{ walletTransactionId: string, newBalance: number }>}
+ * @returns {Promise<{ walletTransactionId: string, newBalance: number, alreadyRecorded?: true }>}
  */
 export async function recordDeposit({
   playerId,
@@ -30,6 +38,7 @@ export async function recordDeposit({
   actorId,
   actorRole,
   notes = null,
+  walletTransactionId: providedTransactionId = null,
 }) {
   return wrapWalletErrors('recordDeposit', async () => {
     if (amount <= 0) {
@@ -39,11 +48,20 @@ export async function recordDeposit({
       throw new Error(`method must be one of cash/eftpos/payid (got "${method}").`)
     }
 
-    const walletTransactionId = generateId()
+    const walletTransactionId = providedTransactionId ?? generateId()
     const timestamp = now()
 
     const result = await runValidatedTransaction(async (tx) => {
+      // Idempotency probe — a doc at this id means this exact gesture already
+      // committed. Return its result; write nothing.
+      const existing = await tx.getOptional(
+        paths.walletTransactionPath(playerId, walletTransactionId),
+        WalletTransaction
+      )
       const player = await tx.get(paths.playerPath(playerId), Player)
+      if (existing) {
+        return { walletTransactionId, newBalance: player.walletBalance, alreadyRecorded: true }
+      }
       const delta = balanceDelta({ type: 'deposit', amount })
       const newBalance = player.walletBalance + delta
 
@@ -68,6 +86,9 @@ export async function recordDeposit({
 
       return { walletTransactionId, newBalance }
     })
+
+    // A replayed gesture already wrote its audit row the first time.
+    if (result.alreadyRecorded) return result
 
     // Audit log — best-effort, outside the transaction.
     await auditLog.writeAuditLogSafe({

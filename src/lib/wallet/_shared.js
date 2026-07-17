@@ -64,6 +64,11 @@ export function balanceDelta({ type, amount, method }) {
     case 'spend':
       // Only wallet-method spends touch the balance.
       return method === 'wallet' ? -amount : 0
+    case 'entryRefund':
+      // Mirror of spend: only a wallet-paid entry's refund credits the balance.
+      // Cash/EFTPOS refunds move money externally (till / terminal); a ticket
+      // refund reinstates the ticket (ticketBalance, not walletBalance).
+      return method === 'wallet' ? amount : 0
     case 'withdrawalComplete':
     case 'managerDebit':
       return -amount

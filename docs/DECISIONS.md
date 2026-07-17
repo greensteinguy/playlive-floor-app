@@ -6,6 +6,26 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 16 July 2026 — Before-real-money hardening: gesture idempotency, deterministic ids, transactional guards, voidEntry
+
+The 10-July review's "before first real-money tournament" tier, in one session. Five linked calls:
+
+**1. Deterministic entry ids (`{playerId}_{entryNumber}`) are the duplicate AND idempotency gate.** Two devices registering the same player compute the same next number and collide on the same doc path inside the payment transaction — Firestore serializes them, the loser re-reads, and `payVia*` refuses with `DuplicateEntryError` before charging again. The SAME mechanism makes the write-timeout → cashier-retry path safe: a retry of the same gesture finds its own committed entry (same registrar/method/amount, not voided) and **replays** the original result with zero new writes. Consequence: `planEntry` now numbers from the **max entry number including voided entries** (a voided doc still occupies its id, so its number is retired forever), not the count of live ones.
+
+**2. Business-rule guards re-run on fresh reads INSIDE the committing transaction.** `registerEntry` passes an `inTransactionGuard` into the wallet payment op: it re-reads the tournament (status still open — closes the stale-page/late-reg race) and the player's known entries (re-runs `planEntry`; a bust-revert or void since the desk's snapshot vetoes the charge). Seat ops (`seatEntry`/`unseatEntry`) re-read the entry and **refuse on seat drift** (`StaleSeatStateError`) rather than silently acting on a stale position — the TD decided that move looking at a map that no longer holds. `drawSeats` became a transaction with deterministic table ids (`{sessionId}_t{n}`): table 1's id is the draw-once sentinel (two TDs tapping Draw within a second → one full table set, not two), and the pool is re-read fresh so a just-busted player is never drawn into a seat. `openTable` allocates numbers by probing the deterministic ids upward — two concurrent opens take consecutive numbers instead of two "Table 5"s.
+
+**3. Deposits get a gesture-scoped idempotency key.** The Deposit page mints one `walletTransactionId` per cashier gesture (reset when player/amount/method changes) and `recordDeposit` probes it in-transaction — a retry after the 10s timeout replays instead of double-crediting, with a distinct "had already saved" toast. This was the review's "duplicate money invisible to reconciliation" hole. (Payout confirms and withdrawal completion were already idempotent via their in-transaction markers; withdrawal *request* creation can still duplicate on retry — visible and cancellable, accepted for v1.)
+
+**4. `voidEntry` = void + refund in ONE transaction, with a new `entryRefund` ledger type.** Method mirrors the original payment: wallet → balance credited back; cash/EFTPOS → the row documents the till/terminal paying it back externally (reconciliation NETS it out of the day's takings headline — the alternative, reusing `adjustment`, would have made cash refunds invisible to the till count); ticket → the ticket is reinstated + any top-up refunded as its own row. Refused once the entry is busted ("undo the elimination first"), or once winnings/bounties are staged or paid. Idempotent via the void triple (same actor+reason replays). Voiding is allowed for **manager, td, and cashier** (whoever can take a buy-in can reverse their own mistake; every void is audited `entry.voided` with the refund breakdown) — tighten to manager-only if the floor prefers. UI: an inline "void" affordance with a required reason on the Players-tab roster. **NB `entryRefund` is a shared-schema addition** — canonical-schema §4.1 updated; analytics reads this collection and should learn the type before go-live.
+
+**5. New data-layer primitive `tx.getOptional`.** Like `tx.get` but null on missing — the building block for every idempotency probe and existence sentinel above; the read puts the doc in the transaction's read set, which is what makes the probes race-safe.
+
+**Verified:** 873 tests (619→873 across Phase 4 + this), lint/build clean, live emulator browser pass (deterministic entry id REST-confirmed; void → refund row + counter drop + recon netting to $0 cash; draw/open-table deterministic ids; seat move under the new fresh-read path; zero console errors).
+
+**Decider:** Claude per the 10-July review roadmap; Guy to ratify the two flagged product calls (void role breadth; cash-refund-channel wording on the recon page).
+
+---
+
 ## 16 July 2026 — Staging auth: 4 shared per-role accounts (not per-person) for the feedback round
 
 **Decided:** For the stakeholder-feedback round on staging (`playlive-floor.web.app`), the team uses **four shared accounts, one per role** — manager / td / cashier / readonly — created as real mailboxes (Workspace on `playlive.melbourne`). Per-person named accounts are deferred; "nothing too official" for now.

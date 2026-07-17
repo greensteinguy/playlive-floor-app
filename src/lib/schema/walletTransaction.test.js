@@ -184,4 +184,38 @@ describe('WalletTransaction', () => {
       }
     )
   })
+
+  describe('entryRefund (voided-entry payment reversal)', () => {
+    function refund(overrides = {}) {
+      return buildWalletTransaction({
+        type: 'entryRefund',
+        method: 'cash',
+        relatedDocId: 'entry-1',
+        notes: 'wrong player selected',
+        ...overrides,
+      })
+    }
+
+    it.each([['cash'], ['eftpos'], ['wallet'], ['ticket']])('accepts method=%s', (method) => {
+      expect(WalletTransaction.safeParse(refund({ method })).success).toBe(true)
+    })
+
+    it('requires a method (the original payment channel)', () => {
+      const r = WalletTransaction.safeParse(refund({ method: null }))
+      expect(r.success).toBe(false)
+      expect(r.error.issues.some((i) => i.path.includes('method'))).toBe(true)
+    })
+
+    it('requires relatedDocId (the voided entry)', () => {
+      const r = WalletTransaction.safeParse(refund({ relatedDocId: null }))
+      expect(r.success).toBe(false)
+      expect(r.error.issues.some((i) => i.path.includes('relatedDocId'))).toBe(true)
+    })
+
+    it('requires notes (the void reason)', () => {
+      const r = WalletTransaction.safeParse(refund({ notes: '  ' }))
+      expect(r.success).toBe(false)
+      expect(r.error.issues.some((i) => i.path.includes('notes'))).toBe(true)
+    })
+  })
 })

@@ -30,7 +30,7 @@ vi.mock('./registration', () => ({
   recountTournamentEntries: vi.fn().mockResolvedValue({ remainingPlayerCount: 0 }),
 }))
 
-import { runValidatedTransaction, runValidatedBatch, validatedSet, tables as tablesApi, entries as entriesApi, auditLog } from '../firestore'
+import { runValidatedTransaction, runValidatedBatch, tables as tablesApi, entries as entriesApi, auditLog } from '../firestore'
 import { recountTournamentEntries } from './registration'
 import {
   isSeatable,
@@ -70,6 +70,7 @@ import {
   SeatOccupiedError,
   SeatOutOfRangeError,
   EntryNotSeatableError,
+  StaleSeatStateError,
   AlreadyBustedError,
   NotBustedError,
   LastPlayerStandingError,
@@ -294,6 +295,12 @@ describe('seating ops', () => {
   })
 
   describe('drawSeats', () => {
+    // The op re-reads the pool fresh inside the transaction, so pool entries
+    // must exist in the mock store as well as in the caller's snapshot.
+    const seedPool = (list) => {
+      for (const e of list) mockState.seed(entryPath('t1', e.id), e)
+    }
+
     it('creates the tables and seats every seatable entry, atomically', async () => {
       const entries = [
         ...Array.from({ length: 5 }, (_, i) => makeEntry({ id: `e${i}` })),
@@ -301,6 +308,7 @@ describe('seating ops', () => {
         makeEntry({ id: 'voided', voidedAt: Timestamp.now() }),
         makeEntry({ id: 'other', originSessionId: 'session-2' }),
       ]
+      seedPool(entries)
 
       const res = await drawSeats({
         tournament,
@@ -313,9 +321,11 @@ describe('seating ops', () => {
 
       expect(res).toEqual({ tableCount: 1, seatedCount: 5 })
 
+      // Deterministic table id: {sessionId}_t{n} — the draw-once sentinel.
       const tableSets = mockState.calls.set.filter((c) => c.path[2] === 'tables')
       expect(tableSets).toHaveLength(1)
-      expect(Table.safeParse({ ...tableSets[0].data, id: 'table-1' }).success).toBe(true)
+      expect(tableSets[0].path[3]).toBe('session-1_t1')
+      expect(Table.safeParse({ ...tableSets[0].data, id: 'session-1_t1' }).success).toBe(true)
       expect(occupiedSeatCount(tableSets[0].data)).toBe(5)
 
       // exactly the 5 alive entries got a seat, with both seat fields set
@@ -323,7 +333,7 @@ describe('seating ops', () => {
       expect(entryUpdates).toHaveLength(5)
       expect(entryUpdates.map((c) => c.path[3]).sort()).toEqual(['e0', 'e1', 'e2', 'e3', 'e4'])
       for (const u of entryUpdates) {
-        expect(u.partial.currentTableId).toBe('table-1')
+        expect(u.partial.currentTableId).toBe('session-1_t1')
         expect(typeof u.partial.currentSeatNumber).toBe('number')
       }
 
@@ -337,6 +347,37 @@ describe('seating ops', () => {
       await expect(
         drawSeats({ tournament, sessionId: 'session-1', entries: [makeEntry()], actorId: 'td-1', actorRole: 'td' })
       ).rejects.toBeInstanceOf(TablesExistError)
+    })
+
+    it('refuses inside the transaction when a concurrent draw already wrote table 1 (sentinel)', async () => {
+      // The pre-listing saw no tables (stale), but the deterministic t1 doc
+      // exists by the time the transaction reads it — the other TD's draw won.
+      const entries = [makeEntry({ id: 'e0' })]
+      seedPool(entries)
+      mockState.seed(tablePath('t1', 'session-1_t1'), makeTable({ id: 'session-1_t1', sessionId: 'session-1' }))
+      await expect(
+        drawSeats({ tournament, sessionId: 'session-1', entries, actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(TablesExistError)
+      expect(mockState.calls.set).toHaveLength(0)
+    })
+
+    it('drops pool entries that busted or voided since the snapshot (fresh re-read)', async () => {
+      const alive = [makeEntry({ id: 'e0' }), makeEntry({ id: 'e1' })]
+      const nowBusted = makeEntry({ id: 'e2' }) // snapshot says alive…
+      seedPool(alive)
+      mockState.seed(entryPath('t1', 'e2'), { ...nowBusted, bustedAt: Timestamp.now() }) // …store says busted
+
+      const res = await drawSeats({
+        tournament,
+        sessionId: 'session-1',
+        entries: [...alive, nowBusted],
+        actorId: 'td-1',
+        actorRole: 'td',
+        rng: () => 0,
+      })
+      expect(res.seatedCount).toBe(2)
+      const entryUpdates = mockState.calls.update.filter((c) => c.path[2] === 'entries')
+      expect(entryUpdates.map((c) => c.path[3]).sort()).toEqual(['e0', 'e1'])
     })
 
     it('refuses to draw when there are no seatable entries', async () => {
@@ -356,6 +397,7 @@ describe('seating ops', () => {
     it('seats an unseated entry into an empty seat (table seat + entry both written)', async () => {
       mockState.seed(tablePath('t1', 'table-1'), makeTable({ id: 'table-1' }))
       const entry = makeEntry({ id: 'e1' })
+      mockState.seed(entryPath('t1', 'e1'), entry)
 
       const res = await seatEntry({
         tournament,
@@ -381,15 +423,19 @@ describe('seating ops', () => {
         tablePath('t1', 'table-1'),
         makeTable({ id: 'table-1', seats: emptySeats(9).map((s) => (s.seatNumber === 3 ? { ...s, entryId: 'someone' } : s)) })
       )
+      const entry = makeEntry({ id: 'e1' })
+      mockState.seed(entryPath('t1', 'e1'), entry)
       await expect(
-        seatEntry({ tournament, entry: makeEntry({ id: 'e1' }), targetTableId: 'table-1', targetSeatNumber: 3, actorId: 'td-1', actorRole: 'td' })
+        seatEntry({ tournament, entry, targetTableId: 'table-1', targetSeatNumber: 3, actorId: 'td-1', actorRole: 'td' })
       ).rejects.toBeInstanceOf(SeatOccupiedError)
     })
 
     it('rejects a seat number that does not exist on the table', async () => {
       mockState.seed(tablePath('t1', 'table-1'), makeTable({ id: 'table-1' }))
+      const entry = makeEntry({ id: 'e1' })
+      mockState.seed(entryPath('t1', 'e1'), entry)
       await expect(
-        seatEntry({ tournament, entry: makeEntry({ id: 'e1' }), targetTableId: 'table-1', targetSeatNumber: 99, actorId: 'td-1', actorRole: 'td' })
+        seatEntry({ tournament, entry, targetTableId: 'table-1', targetSeatNumber: 99, actorId: 'td-1', actorRole: 'td' })
       ).rejects.toBeInstanceOf(SeatOutOfRangeError)
     })
 
@@ -400,6 +446,7 @@ describe('seating ops', () => {
       )
       mockState.seed(tablePath('t1', 'table-2'), makeTable({ id: 'table-2', tableNumber: 2 }))
       const entry = makeEntry({ id: 'e1', currentTableId: 'table-1', currentSeatNumber: 2 })
+      mockState.seed(entryPath('t1', 'e1'), entry)
 
       await seatEntry({ tournament, entry, targetTableId: 'table-2', targetSeatNumber: 5, actorId: 'td-1', actorRole: 'td' })
 
@@ -414,6 +461,27 @@ describe('seating ops', () => {
         seatEntry({ tournament, entry: makeEntry({ bustedAt: Timestamp.now() }), targetTableId: 'table-1', targetSeatNumber: 1, actorId: 'td-1', actorRole: 'td' })
       ).rejects.toBeInstanceOf(EntryNotSeatableError)
     })
+
+    it('refuses when the fresh entry is no longer seatable (busted on another device)', async () => {
+      mockState.seed(tablePath('t1', 'table-1'), makeTable({ id: 'table-1' }))
+      const entry = makeEntry({ id: 'e1' }) // caller snapshot: alive
+      mockState.seed(entryPath('t1', 'e1'), { ...entry, bustedAt: Timestamp.now() }) // store: busted
+      await expect(
+        seatEntry({ tournament, entry, targetTableId: 'table-1', targetSeatNumber: 3, actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(EntryNotSeatableError)
+      expect(mockState.calls.set).toHaveLength(0)
+    })
+
+    it('refuses when the entry moved seats since the snapshot (stale seat state)', async () => {
+      mockState.seed(tablePath('t1', 'table-1'), makeTable({ id: 'table-1' }))
+      const entry = makeEntry({ id: 'e1', currentTableId: null, currentSeatNumber: null })
+      mockState.seed(entryPath('t1', 'e1'), { ...entry, currentTableId: 'table-9', currentSeatNumber: 4 })
+      await expect(
+        seatEntry({ tournament, entry, targetTableId: 'table-1', targetSeatNumber: 3, actorId: 'td-1', actorRole: 'td' })
+      ).rejects.toBeInstanceOf(StaleSeatStateError)
+      expect(mockState.calls.set).toHaveLength(0)
+      expect(mockState.calls.update).toHaveLength(0)
+    })
   })
 
   describe('unseatEntry', () => {
@@ -423,6 +491,7 @@ describe('seating ops', () => {
         makeTable({ id: 'table-1', seats: emptySeats(9).map((s) => (s.seatNumber === 4 ? { ...s, entryId: 'e1' } : s)) })
       )
       const entry = makeEntry({ id: 'e1', currentTableId: 'table-1', currentSeatNumber: 4 })
+      mockState.seed(entryPath('t1', 'e1'), entry)
 
       await unseatEntry({ tournament, entry, actorId: 'td-1', actorRole: 'td' })
 
@@ -430,6 +499,16 @@ describe('seating ops', () => {
       expect(tableWrite.data.seats.find((s) => s.seatNumber === 4).entryId).toBeNull()
       const entryWrite = mockState.calls.update.find((c) => c.path[3] === 'e1')
       expect(entryWrite.partial).toMatchObject({ currentTableId: null, currentSeatNumber: null })
+    })
+
+    it('refuses when the player already moved on another device (stale seat state)', async () => {
+      const entry = makeEntry({ id: 'e1', currentTableId: 'table-1', currentSeatNumber: 4 })
+      mockState.seed(entryPath('t1', 'e1'), { ...entry, currentTableId: 'table-2', currentSeatNumber: 1 })
+      await expect(unseatEntry({ tournament, entry, actorId: 'td-1', actorRole: 'td' })).rejects.toBeInstanceOf(
+        StaleSeatStateError
+      )
+      expect(mockState.calls.set).toHaveLength(0)
+      expect(mockState.calls.update).toHaveLength(0)
     })
   })
 
@@ -1012,6 +1091,7 @@ describe('alternates (task 3.10)', () => {
       const tB = tableWith({ id: 'tB', tableNumber: 2, occupied: [1, 2] })
       mockState.seed(tablePath('t1', 'tA'), tA) // rng=0 → the first empty seat among the fillable tables (tA seat 6)
       const entries = [altEntry('early', 100), altEntry('late', 200)]
+      for (const e of entries) mockState.seed(entryPath('t1', e.id), e) // seatEntry re-reads the entry fresh
 
       const res = await seatNextAlternate({
         tournament,
@@ -1124,8 +1204,9 @@ describe('table lifecycle + random seating', () => {
       runValidatedTransaction.mockImplementation(async (fn) => fn(mockState.tx))
       tablesApi.listTables.mockResolvedValue([])
       auditLog.writeAuditLogSafe.mockClear()
-      validatedSet.mockClear()
     })
+
+    const tableSetCall = () => mockState.calls.set.find((c) => c.path[2] === 'tables')
 
     it('opens a DEACTIVATED table with the next number and the tournament seat count', async () => {
       tablesApi.listTables.mockResolvedValue([tableWith({ id: 'x', tableNumber: 2 })])
@@ -1136,8 +1217,9 @@ describe('table lifecycle + random seating', () => {
         actorRole: 'td',
       })
       expect(res.tableNumber).toBe(3)
-      const [path, , data] = validatedSet.mock.calls[0]
-      expect(path).toEqual(['tournaments', 't1', 'tables', 'new-1'])
+      const { path, data } = tableSetCall()
+      // Deterministic id — the concurrent-open collision gate.
+      expect(path).toEqual(['tournaments', 't1', 'tables', 'session-1_t3'])
       expect(data).toMatchObject({ tableNumber: 3, seatCount: 8, status: 'open', active: false })
       expect(data.seats).toHaveLength(8)
       expect(data.seats.every((s) => s.entryId === null)).toBe(true)
@@ -1153,7 +1235,21 @@ describe('table lifecycle + random seating', () => {
         actorRole: 'td',
       })
       expect(res.tableNumber).toBe(1)
-      expect(validatedSet.mock.calls[0][2].active).toBe(true)
+      expect(tableSetCall().data.active).toBe(true)
+    })
+
+    it('probes past a number taken by a concurrent open (deterministic id occupied)', async () => {
+      // The listing said the next number is 1, but session-1_t1 exists by the
+      // time the transaction probes it — another device just opened it.
+      mockState.seed(tablePath('t1', 'session-1_t1'), tableWith({ id: 'session-1_t1', tableNumber: 1 }))
+      const res = await openTable({
+        tournament: { id: 't1', maxSeatsPerTable: 9 },
+        sessionId: 'session-1',
+        actorId: 'td-1',
+        actorRole: 'td',
+      })
+      expect(res.tableNumber).toBe(2)
+      expect(res.tableId).toBe('session-1_t2')
     })
   })
 

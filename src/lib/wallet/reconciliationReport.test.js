@@ -316,3 +316,51 @@ describe('summaryCsvRows', () => {
     expect(net.count).toBe('')
   })
 })
+
+describe('buildReconciliationReport — entryRefund (voided entries)', () => {
+  const refund = (method, amount) => ({
+    type: 'entryRefund',
+    method,
+    amount,
+    direction: null,
+    relatedDocId: 'entry-1',
+  })
+
+  it('nets cash/EFTPOS refunds out of the externalTotals headline', () => {
+    const report = buildReconciliationReport([
+      { type: 'spend', method: 'cash', amount: 100_00, direction: null },
+      { type: 'deposit', method: 'cash', amount: 50_00, direction: null },
+      refund('cash', 100_00),
+      { type: 'spend', method: 'eftpos', amount: 80_00, direction: null },
+      refund('eftpos', 30_00),
+    ])
+    expect(report.moneyIn.buyInRefunds.cash).toEqual({ count: 1, total: 100_00 })
+    expect(report.moneyIn.buyInRefunds.eftpos).toEqual({ count: 1, total: 30_00 })
+    // cash: 100 buy-in + 50 deposit − 100 refund = 50; eftpos: 80 − 30 = 50
+    expect(report.externalTotals.cash).toBe(50_00)
+    expect(report.externalTotals.eftpos).toBe(50_00)
+  })
+
+  it('counts wallet refunds in walletActivity and in netWalletChange', () => {
+    const report = buildReconciliationReport([
+      { type: 'spend', method: 'wallet', amount: 100_00, direction: null },
+      refund('wallet', 100_00),
+    ])
+    expect(report.walletActivity.walletBuyInRefunds).toEqual({ count: 1, total: 100_00 })
+    expect(report.walletActivity.netWalletChange).toBe(0) // −100 buy-in +100 refund
+    expect(report.externalTotals.cash).toBe(0)
+  })
+
+  it('ticket refunds are informational (no external, no wallet effect)', () => {
+    const report = buildReconciliationReport([refund('ticket', 60_00)])
+    expect(report.walletActivity.ticketBuyInRefunds).toEqual({ count: 1, total: 60_00 })
+    expect(report.walletActivity.netWalletChange).toBe(0)
+    expect(report.externalTotals).toEqual({ cash: 0, eftpos: 0, payid: 0 })
+  })
+
+  it('summaryCsvRows carries the refund lines', () => {
+    const rows = summaryCsvRows(buildReconciliationReport([refund('cash', 100_00)]))
+    const line = rows.find((r) => r.line === 'Buy-in refunds — cash (paid back)')
+    expect(line).toMatchObject({ section: 'Money in', count: 1, amount: '100.00' })
+  })
+})

@@ -221,12 +221,38 @@ export default function Reconciliation() {
               <SummaryRow label="Deposits — PayID" bucket={report.moneyIn.deposits.payid} />
               <SummaryRow label="Buy-ins — cash" bucket={report.moneyIn.buyIns.cash} />
               <SummaryRow label="Buy-ins — EFTPOS" bucket={report.moneyIn.buyIns.eftpos} />
+              {/* Voided-entry refunds paid back from the till / terminal — shown
+                  only when they happened; already netted out of the totals. */}
+              {report.moneyIn.buyInRefunds.cash.count > 0 && (
+                <SummaryRow
+                  label="Buy-in refunds — cash (paid back)"
+                  bucket={report.moneyIn.buyInRefunds.cash}
+                />
+              )}
+              {report.moneyIn.buyInRefunds.eftpos.count > 0 && (
+                <SummaryRow
+                  label="Buy-in refunds — EFTPOS (paid back)"
+                  bucket={report.moneyIn.buyInRefunds.eftpos}
+                />
+              )}
               <TotalRow label="Total external in" cents={report.moneyIn.total} />
             </SummaryCard>
 
             <SummaryCard title="Wallet activity">
               <SummaryRow label="Wallet-paid buy-ins" bucket={report.walletActivity.walletBuyIns} />
               <SummaryRow label="Ticket-paid buy-ins" bucket={report.walletActivity.ticketBuyIns} />
+              {report.walletActivity.walletBuyInRefunds.count > 0 && (
+                <SummaryRow
+                  label="Buy-in refunds — wallet"
+                  bucket={report.walletActivity.walletBuyInRefunds}
+                />
+              )}
+              {report.walletActivity.ticketBuyInRefunds.count > 0 && (
+                <SummaryRow
+                  label="Buy-in refunds — ticket reinstated"
+                  bucket={report.walletActivity.ticketBuyInRefunds}
+                />
+              )}
               <SummaryRow label="Win credits" bucket={report.walletActivity.winCredits} />
               <SummaryRow
                 label="Withdrawals completed"

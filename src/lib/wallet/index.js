@@ -55,6 +55,9 @@ export {
 // and the per-player ledger view — task 3.11).
 export { walletTxDelta } from './_shared'
 
+// Voiding a mistaken entry (void + refund, atomically)
+export { voidEntryWithRefund } from './voidEntry'
+
 // Typed errors (for catch blocks)
 export {
   WalletError,
@@ -65,4 +68,8 @@ export {
   WithdrawalStateError,
   RoleNotAuthorizedError,
   InvalidOverrideError,
+  DuplicateEntryError,
+  RegistrationClosedError,
+  EntryAlreadyVoidedError,
+  EntryNotVoidableError,
 } from './errors'

@@ -26,6 +26,7 @@ export const LEDGER_TYPE_LABELS = {
   openingBalance: 'Opening balance',
   managerCredit: 'Manager credit',
   managerDebit: 'Manager debit',
+  entryRefund: 'Buy-in refund',
 }
 
 /** Human label per payment method. */
@@ -77,7 +78,7 @@ export function ledgerAmountTone(delta) {
 export const LEDGER_FILTERS = [
   { id: 'all', label: 'All', types: null },
   { id: 'deposits', label: 'Deposits', types: ['deposit', 'openingBalance'] },
-  { id: 'buyins', label: 'Buy-ins', types: ['spend', 'ticketUse'] },
+  { id: 'buyins', label: 'Buy-ins', types: ['spend', 'ticketUse', 'entryRefund'] },
   { id: 'winnings', label: 'Winnings', types: ['winCredit'] },
   {
     id: 'withdrawals',
