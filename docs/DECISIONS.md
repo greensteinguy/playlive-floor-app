@@ -6,7 +6,16 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
-## 10 July 2026 — Phase 4 (payouts, results & withdrawals) built via parallel agents; key domain calls
+## 16 July 2026 — Staging auth: 4 shared per-role accounts (not per-person) for the feedback round
+
+**Decided:** For the stakeholder-feedback round on staging (`playlive-floor.web.app`), the team uses **four shared accounts, one per role** — manager / td / cashier / readonly — created as real mailboxes (Workspace on `playlive.melbourne`). Per-person named accounts are deferred; "nothing too official" for now.
+
+**Why:** Minimal setup friction for a feedback round; the four accounts double as a clean way to exercise all four role views on real auth (which has only ever been tested with mocked auth). Login supports both paths already (Google button + email/password) so the shared accounts work either way.
+
+**Consequences / revisit before go-live:** (1) The audit log will attribute every staging action to the shared role account, not a person — acceptable for testing, NOT for production; per-person accounts (ideally Google SSO on Workspace, already built) should land at rollout. (2) Shared Google-account passwords circulate among testers — fine for staging-only accounts that hold no real data access beyond their role.
+
+**Decider:** Guy + team.
+
 
 The whole of Phase 4 except the ICM stretch (4.6, parked per the plan's end-of-phase decision point) landed in one session: 8 parallel agents across 3 waves, each on its own feature branch in an isolated worktree, merged sequentially into `main` with a full-suite run after each merge. 619 → **817 tests**. Key product/architecture calls, each made by the building agent and ratified at merge:
 
