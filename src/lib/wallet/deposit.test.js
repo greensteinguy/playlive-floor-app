@@ -98,3 +98,66 @@ describe('recordDeposit', () => {
     ).rejects.toThrow(/method must be one of cash\/eftpos\/payid/)
   })
 })
+
+describe('recordDeposit idempotency (gesture-scoped walletTransactionId)', () => {
+  it('uses the provided id for the ledger row', async () => {
+    mockState.seed(playerPath('player-1'), makePlayer({ walletBalance: 0 }))
+    const result = await recordDeposit({
+      playerId: 'player-1',
+      amount: 2_000,
+      method: 'cash',
+      reference: 'cash',
+      actorId: 'cashier-1',
+      actorRole: 'cashier',
+      walletTransactionId: 'gesture-42',
+    })
+    expect(result.walletTransactionId).toBe('gesture-42')
+    const wtxCall = mockState.calls.set.find((c) => c.path[2] === 'walletTransactions')
+    expect(wtxCall.path).toEqual(walletTransactionPath('player-1', 'gesture-42'))
+  })
+
+  it('replays a committed gesture without double-crediting or re-auditing', async () => {
+    // The row from the "first" attempt already exists (write committed after
+    // the 10s timeout fired); balance already includes it.
+    mockState.seed(playerPath('player-1'), makePlayer({ walletBalance: 2_000, totalDeposited: 2_000 }))
+    mockState.seed(walletTransactionPath('player-1', 'gesture-42'), {
+      id: 'gesture-42',
+      playerId: 'player-1',
+      type: 'deposit',
+      amount: 2_000,
+    })
+
+    const result = await recordDeposit({
+      playerId: 'player-1',
+      amount: 2_000,
+      method: 'cash',
+      reference: 'cash',
+      actorId: 'cashier-1',
+      actorRole: 'cashier',
+      walletTransactionId: 'gesture-42',
+    })
+
+    expect(result).toEqual({
+      walletTransactionId: 'gesture-42',
+      newBalance: 2_000, // the CURRENT balance — already credited once
+      alreadyRecorded: true,
+    })
+    expect(mockState.calls.set).toHaveLength(0)
+    expect(mockState.calls.update).toHaveLength(0)
+    expect(auditLog.writeAuditLogSafe).not.toHaveBeenCalled()
+  })
+
+  it('still generates a fresh id when none is provided (back-compat)', async () => {
+    mockState.seed(playerPath('player-1'), makePlayer({ walletBalance: 0 }))
+    const result = await recordDeposit({
+      playerId: 'player-1',
+      amount: 1_000,
+      method: 'eftpos',
+      reference: 'APPR-1',
+      actorId: 'cashier-1',
+      actorRole: 'cashier',
+    })
+    expect(result.walletTransactionId).toBe('mock-id-1')
+    expect(result.alreadyRecorded).toBeUndefined()
+  })
+})

@@ -30,10 +30,12 @@ import {
   setTournamentStatus,
   registrationOpen,
   revertElimination,
+  voidEntry,
   finishingOrder,
   TournamentError,
   SeatingError,
 } from '../../lib/tournaments'
+import { WalletError } from '../../lib/wallet'
 import { Structure } from '../../lib/schema'
 import { centsToStr, dollarsToCents, intOrNull, intOf, formatMoney } from '../../lib/money'
 import { payoutCurve, paidPlaceCount, applyRounding } from '../../lib/payouts'
@@ -730,6 +732,13 @@ function PlayersTab({ t, onChanged }) {
   // Undo-elimination affordance: inline confirm per busted row (manager + TD).
   const [undoEntryId, setUndoEntryId] = useState(null)
   const [undoBusy, setUndoBusy] = useState(false)
+  // Void-entry affordance: inline confirm + required reason per live row.
+  // Cashiers can void too (they take the buy-ins); the op refuses once the
+  // entry is busted or paid out.
+  const canVoid = role === 'manager' || role === 'td' || role === 'cashier'
+  const [voidEntryId, setVoidEntryId] = useState(null)
+  const [voidReason, setVoidReason] = useState('')
+  const [voidBusy, setVoidBusy] = useState(false)
   const nameById = useMemo(() => {
     const m = {}
     for (const p of players.players) m[p.id] = playerDisplayName(p)
@@ -760,6 +769,41 @@ function PlayersTab({ t, onChanged }) {
       toast.error(e instanceof SeatingError ? e.message : `Undo failed: ${e.message}`)
     } finally {
       setUndoBusy(false)
+    }
+  }
+
+  // Plain-language summary of what the void refunded, per method.
+  function refundSummary(refunds, ticketReinstatedId) {
+    const parts = refunds.map((r) => {
+      if (r.method === 'wallet') return `${formatMoney(r.amount)} credited back to their wallet`
+      if (r.method === 'ticket') return 'their ticket reinstated'
+      return `${formatMoney(r.amount)} to hand back by ${r.method === 'cash' ? 'cash from the till' : 'EFTPOS refund'}`
+    })
+    if (parts.length === 0 && ticketReinstatedId) parts.push('their ticket reinstated')
+    return parts.join(' + ')
+  }
+
+  async function handleVoidEntry(entry) {
+    const reason = voidReason.trim()
+    if (!reason) {
+      toast.error('A void reason is required — it goes on the ledger and the audit trail.')
+      return
+    }
+    setVoidBusy(true)
+    try {
+      const res = await voidEntry({ tournament: t, entry, reason, actorId: user.uid, actorRole: role })
+      const summary = res.alreadyVoided ? 'it was already voided' : refundSummary(res.refunds, res.ticketReinstatedId)
+      toast.success(`Voided ${nameOf(entry)}'s entry #${entry.entryNumber}${summary ? ` — ${summary}.` : '.'}`)
+      setVoidEntryId(null)
+      setVoidReason('')
+      reload()
+      onChanged?.()
+    } catch (e) {
+      toast.error(
+        e instanceof WalletError || e instanceof TournamentError ? e.message : `Void failed: ${e.message}`
+      )
+    } finally {
+      setVoidBusy(false)
     }
   }
 
@@ -888,6 +932,52 @@ function PlayersTab({ t, onChanged }) {
                             className="ml-2 text-[11px] text-gold-300/80 hover:text-gold-200 underline disabled:opacity-40"
                           >
                             undo
+                          </button>
+                        ))}
+                      {canVoid &&
+                        e.bustedAt === null &&
+                        (voidEntryId === e.id ? (
+                          <span className="ml-2 inline-flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={voidReason}
+                              onChange={(ev) => setVoidReason(ev.target.value)}
+                              placeholder="Reason (required)"
+                              disabled={voidBusy}
+                              autoFocus
+                              className="w-44 px-2 py-0.5 rounded bg-felt-900 border border-white/10 text-[11px] text-white/90 placeholder-white/30 focus:outline-none focus:border-gold-500/40"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleVoidEntry(e)}
+                              disabled={voidBusy}
+                              className="px-2 py-0.5 rounded text-[11px] font-medium bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 disabled:opacity-40"
+                            >
+                              {voidBusy ? 'Voiding…' : 'Void & refund'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVoidEntryId(null)
+                                setVoidReason('')
+                              }}
+                              disabled={voidBusy}
+                              className="px-2 py-0.5 rounded text-[11px] text-white/60 hover:text-white hover:bg-white/5"
+                            >
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVoidEntryId(e.id)
+                              setVoidReason('')
+                            }}
+                            disabled={voidBusy}
+                            className="ml-2 text-[11px] text-rose-300/70 hover:text-rose-200 underline disabled:opacity-40"
+                          >
+                            void
                           </button>
                         ))}
                     </td>

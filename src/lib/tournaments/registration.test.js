@@ -10,14 +10,29 @@ vi.mock('../firestore', () => ({
     entryPath: (tid, eid) => ['tournaments', tid, 'entries', eid],
   },
 }))
-vi.mock('../wallet', () => ({
-  payViaExternalMethod: vi.fn(),
-  payViaWallet: vi.fn(),
-  payViaTicket: vi.fn(),
-}))
+vi.mock('../wallet', () => {
+  class RegistrationClosedError extends Error {
+    constructor({ tournamentId, status }) {
+      super(`Registration is not open for tournament ${tournamentId} (status is now "${status}").`)
+      this.name = 'RegistrationClosedError'
+      this.status = status
+    }
+  }
+  return {
+    payViaExternalMethod: vi.fn(),
+    payViaWallet: vi.fn(),
+    payViaTicket: vi.fn(),
+    RegistrationClosedError,
+  }
+})
 
 import { entries as entriesApi, runValidatedTransaction } from '../firestore'
-import { payViaExternalMethod, payViaWallet, payViaTicket } from '../wallet'
+import {
+  payViaExternalMethod,
+  payViaWallet,
+  payViaTicket,
+  RegistrationClosedError,
+} from '../wallet'
 import {
   totalEntryCost,
   registrationOpen,
@@ -120,9 +135,27 @@ describe('planEntry', () => {
     expect(r.blockedReason).toMatch(/limit reached/i)
   })
 
-  it('ignores voided entries (a voided initial leaves the player as fresh)', () => {
-    const r = planEntry({ playerEntries: [{ entryType: 'initial', bustedAt: null, voidedAt: {} }], reentryConfig: freezeout })
-    expect(r).toEqual({ entryType: 'initial', entryNumber: 1, blockedReason: null })
+  it('ignores voided entries for limits, but never reuses their entry number', () => {
+    // A voided initial leaves the player free to register again (still type
+    // 'initial', even in a freezeout) — but its number stays retired, because
+    // entry doc ids are deterministic ({playerId}_{entryNumber}) and the
+    // voided doc still occupies its id.
+    const r = planEntry({
+      playerEntries: [{ entryType: 'initial', entryNumber: 1, bustedAt: null, voidedAt: {} }],
+      reentryConfig: freezeout,
+    })
+    expect(r).toEqual({ entryType: 'initial', entryNumber: 2, blockedReason: null })
+  })
+
+  it('numbers from the max existing entryNumber, not the count', () => {
+    const r = planEntry({
+      playerEntries: [
+        { entryType: 'initial', entryNumber: 1, bustedAt: null, voidedAt: {} }, // voided
+        { entryType: 'reentry', entryNumber: 2, bustedAt: {}, voidedAt: null }, // busted
+      ],
+      reentryConfig: reentry,
+    })
+    expect(r).toEqual({ entryType: 'reentry', entryNumber: 3, blockedReason: null })
   })
 })
 
@@ -371,5 +404,102 @@ describe('recountTournamentEntries', () => {
 
   it('rejects a blank tournamentId', async () => {
     await expect(recountTournamentEntries({ tournamentId: '' })).rejects.toThrow(TournamentError)
+  })
+})
+
+// ── Deterministic entry id + in-transaction guard (registerEntry) ────────────
+
+describe('registerEntry — deterministic entry id + in-transaction guard', () => {
+  const reentryTournament = () =>
+    makeTournament({ reentryConfig: { type: 'reentry', maxReentries: null, maxRebuys: null } })
+
+  it('passes the deterministic entry id and a guard to the payment op', async () => {
+    await registerEntry({ ...baseArgs, paymentMethod: 'cash' })
+    expect(payViaExternalMethod).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entryId: 'player-1_1',
+        inTransactionGuard: expect.any(Function),
+      })
+    )
+  })
+
+  it('numbers the id from the max prior entry number (voided included)', async () => {
+    await registerEntry({
+      ...baseArgs,
+      tournament: reentryTournament(),
+      playerEntries: [
+        { id: 'e1', entryType: 'initial', entryNumber: 1, bustedAt: null, voidedAt: {} },
+        { id: 'e2', entryType: 'reentry', entryNumber: 2, bustedAt: {}, voidedAt: null },
+      ],
+      paymentMethod: 'cash',
+    })
+    expect(payViaExternalMethod).toHaveBeenCalledWith(
+      expect.objectContaining({ entryId: 'player-1_3' })
+    )
+  })
+
+  it('guard passes when the fresh tournament is open and the plan is unchanged', async () => {
+    await registerEntry({ ...baseArgs, paymentMethod: 'cash' })
+    const { inTransactionGuard } = payViaExternalMethod.mock.calls[0][0]
+    const tx = { get: vi.fn(async () => makeTournament()), getOptional: vi.fn() }
+    await expect(inTransactionGuard(tx)).resolves.toBeUndefined()
+  })
+
+  it('guard vetoes when the tournament has since closed', async () => {
+    await registerEntry({ ...baseArgs, paymentMethod: 'cash' })
+    const { inTransactionGuard } = payViaExternalMethod.mock.calls[0][0]
+    const tx = { get: vi.fn(async () => makeTournament({ status: 'finished' })), getOptional: vi.fn() }
+    await expect(inTransactionGuard(tx)).rejects.toThrow(RegistrationClosedError)
+  })
+
+  it('guard vetoes when a known entry, re-read fresh, now blocks the plan (bust reverted)', async () => {
+    const bustedSnapshot = { id: 'e1', entryType: 'initial', entryNumber: 1, bustedAt: {}, voidedAt: null }
+    await registerEntry({
+      ...baseArgs,
+      tournament: reentryTournament(),
+      playerEntries: [bustedSnapshot],
+      paymentMethod: 'cash',
+    })
+    const { inTransactionGuard } = payViaExternalMethod.mock.calls[0][0]
+    // Fresh read shows the bust was reverted on another device — the player is
+    // alive again, so charging a re-entry now would double-enter them.
+    const tx = {
+      get: vi.fn(async () => reentryTournament()),
+      getOptional: vi.fn(async () => ({ ...bustedSnapshot, bustedAt: null })),
+    }
+    await expect(inTransactionGuard(tx)).rejects.toThrow(/already has an active entry/)
+  })
+
+  it('guard vetoes when the fresh plan no longer matches (entry voided since)', async () => {
+    const bustedSnapshot = { id: 'e1', entryType: 'initial', entryNumber: 1, bustedAt: {}, voidedAt: null }
+    await registerEntry({
+      ...baseArgs,
+      tournament: reentryTournament(),
+      playerEntries: [bustedSnapshot],
+      paymentMethod: 'cash',
+    })
+    const { inTransactionGuard } = payViaExternalMethod.mock.calls[0][0]
+    // Fresh read: the busted entry was voided — the fresh plan is an INITIAL
+    // entry, not the re-entry the desk confirmed. Type drift → veto.
+    const tx = {
+      get: vi.fn(async () => reentryTournament()),
+      getOptional: vi.fn(async () => ({ ...bustedSnapshot, voidedAt: {} })),
+    }
+    await expect(inTransactionGuard(tx)).rejects.toThrow(/entries changed while confirming/)
+  })
+
+  it('does not re-apply the last-longer deck on a replayed registration', async () => {
+    payViaExternalMethod.mockResolvedValue({
+      entryId: 'player-1_1',
+      walletTransactionId: 'wt-ext',
+      alreadyRegistered: true,
+    })
+    const res = await registerEntry({
+      ...baseArgs,
+      tournament: makeTournament({ hasUpperDeckMainDeck: true }),
+      paymentMethod: 'cash',
+      lastLongerDeck: 'upper',
+    })
+    expect(res.lastLongerDeckApplied).toBeNull()
   })
 })

@@ -34,6 +34,7 @@ import {
   InsufficientWalletBalanceError,
   TicketBelowFaceValueError,
   TicketAlreadyUsedError,
+  DuplicateEntryError,
 } from './errors'
 
 beforeEach(() => {
@@ -339,5 +340,187 @@ describe('payViaTicket', () => {
         actorRole: 'cashier',
       })
     ).rejects.toThrow(/topUp\.method must be 'cash' or 'eftpos'/)
+  })
+})
+
+// ── Deterministic entry id: duplicate / idempotency gate ─────────────────────
+//
+// registerEntry passes entryId = `${playerId}_${entryNumber}`. The transaction
+// probes that path first: a matching existing doc is a replay of the same
+// gesture (timeout → retry) and returns the original result with NO new writes;
+// a non-matching doc means another device just registered the player → refuse.
+
+describe('deterministic entry id gate', () => {
+  const ENTRY_ID = 'player-1_1'
+  const entryPathOf = (eid) => ['tournaments', 'tournament-1', 'entries', eid]
+
+  function seedExistingEntry(overrides = {}) {
+    mockState.seed(entryPathOf(ENTRY_ID), {
+      id: ENTRY_ID,
+      playerId: 'player-1',
+      registeredBy: 'cashier-1',
+      paymentMethod: 'cash',
+      paymentAmount: 50_00,
+      walletTransactionId: 'wtx-original',
+      voidedAt: null,
+      ...overrides,
+    })
+  }
+
+  it('replays the same gesture without writing or auditing (cash)', async () => {
+    seedExistingEntry()
+    const result = await payViaExternalMethod({
+      entryData: makeEntryData(),
+      totalCost: 50_00,
+      method: 'cash',
+      reference: 'till-1',
+      actorId: 'cashier-1',
+      actorRole: 'cashier',
+      entryId: ENTRY_ID,
+    })
+    expect(result).toEqual({
+      entryId: ENTRY_ID,
+      walletTransactionId: 'wtx-original',
+      alreadyRegistered: true,
+    })
+    expect(mockState.calls.set).toHaveLength(0)
+    expect(mockState.calls.update).toHaveLength(0)
+    expect(auditLog.writeAuditLogSafe).not.toHaveBeenCalled()
+  })
+
+  it('replays a wallet payment without re-debiting the balance', async () => {
+    seedExistingEntry({ paymentMethod: 'wallet' })
+    mockState.seed(playerPath('player-1'), makePlayer({ walletBalance: 10_00 })) // < totalCost — must not matter on replay
+    const result = await payViaWallet({
+      entryData: makeEntryData(),
+      totalCost: 50_00,
+      actorId: 'cashier-1',
+      actorRole: 'cashier',
+      entryId: ENTRY_ID,
+    })
+    expect(result.alreadyRegistered).toBe(true)
+    expect(result.walletTransactionId).toBe('wtx-original')
+    expect(mockState.calls.set).toHaveLength(0)
+    expect(mockState.calls.update).toHaveLength(0)
+  })
+
+  it('replays a ticket payment without touching the ticket', async () => {
+    seedExistingEntry({ paymentMethod: 'ticket' })
+    const result = await payViaTicket({
+      entryData: makeEntryData(),
+      totalCost: 50_00,
+      ticketId: 'ticket-1',
+      actorId: 'cashier-1',
+      actorRole: 'cashier',
+      entryId: ENTRY_ID,
+    })
+    expect(result).toEqual({
+      entryId: ENTRY_ID,
+      ticketUseTransactionId: 'wtx-original',
+      topUpTransactionId: null,
+      alreadyRegistered: true,
+    })
+    expect(mockState.calls.set).toHaveLength(0)
+    expect(mockState.calls.update).toHaveLength(0)
+  })
+
+  it('refuses a concurrent duplicate (different registrar) without charging', async () => {
+    seedExistingEntry({ registeredBy: 'cashier-OTHER' })
+    await expect(
+      payViaExternalMethod({
+        entryData: makeEntryData(),
+        totalCost: 50_00,
+        method: 'cash',
+        reference: null,
+        actorId: 'cashier-1',
+        actorRole: 'cashier',
+        entryId: ENTRY_ID,
+      })
+    ).rejects.toThrow(DuplicateEntryError)
+    expect(mockState.calls.set).toHaveLength(0)
+  })
+
+  it('refuses when the existing entry differs in amount or method', async () => {
+    seedExistingEntry({ paymentAmount: 80_00 })
+    await expect(
+      payViaWallet({
+        entryData: makeEntryData(),
+        totalCost: 50_00,
+        actorId: 'cashier-1',
+        actorRole: 'cashier',
+        entryId: ENTRY_ID,
+      })
+    ).rejects.toThrow(DuplicateEntryError)
+  })
+
+  it('refuses when the existing entry at the id is voided (numbers are never reused)', async () => {
+    seedExistingEntry({ voidedAt: {} })
+    await expect(
+      payViaExternalMethod({
+        entryData: makeEntryData(),
+        totalCost: 50_00,
+        method: 'cash',
+        reference: null,
+        actorId: 'cashier-1',
+        actorRole: 'cashier',
+        entryId: ENTRY_ID,
+      })
+    ).rejects.toThrow(DuplicateEntryError)
+  })
+
+  it('runs the inTransactionGuard before writes and propagates its veto', async () => {
+    const guard = vi.fn(async () => {
+      throw new Error('guard veto')
+    })
+    await expect(
+      payViaExternalMethod({
+        entryData: makeEntryData(),
+        totalCost: 50_00,
+        method: 'cash',
+        reference: null,
+        actorId: 'cashier-1',
+        actorRole: 'cashier',
+        entryId: ENTRY_ID,
+        inTransactionGuard: guard,
+      })
+    ).rejects.toThrow(/guard veto/)
+    expect(guard).toHaveBeenCalledTimes(1)
+    expect(mockState.calls.set).toHaveLength(0)
+    expect(auditLog.writeAuditLogSafe).not.toHaveBeenCalled()
+  })
+
+  it('skips the guard on a replay (that registration already happened)', async () => {
+    seedExistingEntry()
+    const guard = vi.fn()
+    const result = await payViaExternalMethod({
+      entryData: makeEntryData(),
+      totalCost: 50_00,
+      method: 'cash',
+      reference: null,
+      actorId: 'cashier-1',
+      actorRole: 'cashier',
+      entryId: ENTRY_ID,
+      inTransactionGuard: guard,
+    })
+    expect(result.alreadyRegistered).toBe(true)
+    expect(guard).not.toHaveBeenCalled()
+  })
+
+  it('writes the entry at the provided deterministic id on the happy path', async () => {
+    const guard = vi.fn().mockResolvedValue(undefined)
+    const result = await payViaExternalMethod({
+      entryData: makeEntryData(),
+      totalCost: 50_00,
+      method: 'cash',
+      reference: null,
+      actorId: 'cashier-1',
+      actorRole: 'cashier',
+      entryId: ENTRY_ID,
+      inTransactionGuard: guard,
+    })
+    expect(guard).toHaveBeenCalledTimes(1)
+    expect(result.entryId).toBe(ENTRY_ID)
+    const entryCall = mockState.calls.set.find((c) => c.path[2] === 'entries')
+    expect(entryCall.path[3]).toBe(ENTRY_ID)
   })
 })

@@ -53,6 +53,10 @@ export function makeMockStore() {
       // for tests we trust the seeded data and skip validation.
       return data
     }),
+    getOptional: vi.fn(async (pathParts /*, schema */) => {
+      calls.get.push({ path: pathParts })
+      return store.get(key(pathParts)) ?? null
+    }),
     set: vi.fn((pathParts, schema, data) => {
       calls.set.push({ path: pathParts, schemaName: schema?._def?.typeName ?? 'unknown', data })
       // Persist into the store so subsequent reads in the same op see it.

@@ -457,12 +457,14 @@ players/{pid}/walletTransactions/{id}
                               | 'withdrawalRequest' | 'withdrawalComplete' | 'withdrawalCancel'
                               | 'adjustment' | 'openingBalance'
                               | 'managerCredit' | 'managerDebit'
+                              | 'entryRefund'
 
   amount:                      integer         (cents; always >= 0 — type determines direction, per Q3)
 
   method:                      'cash' | 'eftpos' | 'payid' | 'wallet' | 'ticket' | null
                               // null for: withdrawalRequest, withdrawalComplete, withdrawalCancel, winCredit,
                               //           adjustment, openingBalance, managerCredit, managerDebit
+                              // REQUIRED for entryRefund (the original payment's method)
 
   reference:                   string | null   (EFTPOS approval, PayID txid, "cash", free text, or "opening_balance")
 
@@ -470,6 +472,7 @@ players/{pid}/walletTransactions/{id}
                               // entries/{id} for spend & ticketUse
                               // withdrawalRequests/{id} for the three withdrawal_* types
                               // tickets/{id} for ticketUse (in addition to entry)
+                              // entries/{id} for entryRefund (REQUIRED; notes carries the void reason)
                               // null otherwise
 
   actorId:                     string          (auth uid; 'system' for openingBalance imports)
@@ -495,6 +498,9 @@ players/{pid}/walletTransactions/{id}
 | `openingBalance` | +amount |
 | `managerCredit` | +amount; used for **intentional manager-authorized credits** (comps, goodwill, extending credit). Manager-only operation. |
 | `managerDebit` | -amount; used for **intentional manager-authorized debits** (recouping over-credit, etc.). Manager-only. HARD wallet ≥ 0 invariant still applies — debit cannot push balance negative. |
+| `entryRefund` (method == 'wallet') | +amount; reversal of a voided entry's wallet-paid buy-in (voidEntry op). |
+| `entryRefund` (method == 'cash'/'eftpos') | 0 — the till / EFTPOS terminal pays the money back externally; reconciliation nets the row against the day's takings. |
+| `entryRefund` (method == 'ticket') | 0 — the redeemed ticket is reinstated in the same transaction (state back to `unused`, `ticketBalance` restored); the row documents the reversal. A cash/EFTPOS top-up that accompanied the ticket gets its own `entryRefund` row. |
 
 **Hard invariant**: after any write, `players/{pid}.walletBalance >= 0` must hold. Enforced at the wallet module layer AND at Firestore rules (defence in depth). No override path. Per Q6 in wallet-design.md.
 

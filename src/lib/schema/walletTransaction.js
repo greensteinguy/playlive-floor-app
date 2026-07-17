@@ -26,6 +26,11 @@ const Type = z.enum([
   'openingBalance',   // for migration import
   'managerCredit',    // manager-authorized credit (comp, goodwill, extending credit)
   'managerDebit',     // manager-authorized debit (recouping over-credit, etc.)
+  'entryRefund',      // reversal of a voided entry's payment (voidEntry — one row per
+                      // reversed payment row; method = how the original payment was made:
+                      // wallet → balance credited back; cash/eftpos → the till/terminal
+                      // pays it back externally (reconciliation nets it); ticket → the
+                      // ticket was reinstated (informational, no balance effect)
 ])
 
 // Five payment methods + null for types where method doesn't apply.
@@ -109,6 +114,24 @@ export const WalletTransaction = z
         path: ['relatedDocId'],
         message: 'relatedDocId (a ticket id) is required when type=ticketUse',
       })
+    }
+
+    // entryRefund must reference the voided entry, and carry the void reason in notes.
+    if (tx.type === 'entryRefund') {
+      if (tx.relatedDocId === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['relatedDocId'],
+          message: 'relatedDocId (the voided entry id) is required when type=entryRefund',
+        })
+      }
+      if (!tx.notes || tx.notes.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['notes'],
+          message: 'notes is required for type=entryRefund (must include the void reason)',
+        })
+      }
     }
 
     // openingBalance must be actorRole=system with reference='opening_balance'

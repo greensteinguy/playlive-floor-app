@@ -25,6 +25,7 @@ import {
   InsufficientWalletBalanceError,
   TicketBelowFaceValueError,
   TicketAlreadyUsedError,
+  DuplicateEntryError,
 } from './errors'
 
 // ── Common ─────────────────────────────────────────────────────────────────
@@ -51,6 +52,31 @@ function assertEntryDataShape(entryData) {
       throw new Error(`entryData.${requiredField} is required`)
     }
   }
+}
+
+/**
+ * The registration transaction found an entry doc already at the target id.
+ * Deterministic entry ids (`{playerId}_{entryNumber}`, built by registerEntry)
+ * make this the race-safe duplicate/idempotency gate:
+ *   - If the existing doc is THIS gesture committed earlier (same player,
+ *     registrar, method, amount — the write-timeout → cashier-retry path),
+ *     return it so the op replays the original result without new writes.
+ *   - Otherwise another device just registered the same player — refuse
+ *     before any money is taken again.
+ */
+function replayOrRefuseDuplicate(existing, { entryData, entryId, method, totalCost }) {
+  const isReplay =
+    existing.playerId === entryData.playerId &&
+    existing.registeredBy === entryData.registeredBy &&
+    existing.paymentMethod === method &&
+    existing.paymentAmount === totalCost &&
+    existing.voidedAt === null
+  if (isReplay) return existing
+  throw new DuplicateEntryError({
+    entryId,
+    playerId: entryData.playerId,
+    entryNumber: entryData.entryNumber,
+  })
 }
 
 /**
@@ -92,8 +118,13 @@ function defaultEntryRuntimeFields() {
  * @param {string|null} args.reference       EFTPOS approval code / "cash" / etc.
  * @param {string} args.actorId
  * @param {'manager'|'td'|'cashier'} args.actorRole
+ * @param {string|null} [args.entryId]       deterministic id from registerEntry — the
+ *                                           duplicate/idempotency gate (random when omitted)
+ * @param {(tx: object) => Promise<void>} [args.inTransactionGuard]  caller's business-rule
+ *                                           re-checks, run on FRESH in-transaction reads
+ *                                           before any write (skipped on a replay)
  *
- * @returns {Promise<{ entryId: string, walletTransactionId: string }>}
+ * @returns {Promise<{ entryId: string, walletTransactionId: string, alreadyRegistered?: true }>}
  */
 export async function payViaExternalMethod({
   entryData,
@@ -102,6 +133,8 @@ export async function payViaExternalMethod({
   reference,
   actorId,
   actorRole,
+  entryId: providedEntryId = null,
+  inTransactionGuard = null,
 }) {
   return wrapWalletErrors('payViaExternalMethod', async () => {
     assertEntryDataShape(entryData)
@@ -110,11 +143,18 @@ export async function payViaExternalMethod({
       throw new Error(`method must be 'cash' or 'eftpos' (got "${method}")`)
     }
 
-    const entryId = generateId()
+    const entryId = providedEntryId ?? generateId()
     const walletTransactionId = generateId()
     const timestamp = now()
 
     const result = await runValidatedTransaction(async (tx) => {
+      const existing = await tx.getOptional(paths.entryPath(entryData.tournamentId, entryId), Entry)
+      if (existing) {
+        const replay = replayOrRefuseDuplicate(existing, { entryData, entryId, method, totalCost })
+        return { entryId, walletTransactionId: replay.walletTransactionId, alreadyRegistered: true }
+      }
+      if (inTransactionGuard) await inTransactionGuard(tx)
+
       // walletTransactions: spend with method=cash|eftpos, no balance change
       tx.set(paths.walletTransactionPath(entryData.playerId, walletTransactionId), WalletTransaction, {
         playerId: entryData.playerId,
@@ -145,6 +185,8 @@ export async function payViaExternalMethod({
       return { entryId, walletTransactionId }
     })
 
+    if (result.alreadyRegistered) return result
+
     await auditLog.writeAuditLogSafe({
       actorId,
       actorRole,
@@ -167,22 +209,39 @@ export async function payViaExternalMethod({
  * HARD invariant: rejects with InsufficientWalletBalanceError if the player's
  * balance is less than totalCost. No manager override path. Cashier must take
  * a deposit (or use a different method) first.
+ *
+ * entryId / inTransactionGuard: see payViaExternalMethod. A replayed gesture
+ * returns before the balance check — the debit already happened once.
  */
 export async function payViaWallet({
   entryData,
   totalCost,
   actorId,
   actorRole,
+  entryId: providedEntryId = null,
+  inTransactionGuard = null,
 }) {
   return wrapWalletErrors('payViaWallet', async () => {
     assertEntryDataShape(entryData)
     if (totalCost <= 0) throw new Error(`totalCost must be > 0 (got ${totalCost})`)
 
-    const entryId = generateId()
+    const entryId = providedEntryId ?? generateId()
     const walletTransactionId = generateId()
     const timestamp = now()
 
     const result = await runValidatedTransaction(async (tx) => {
+      const existing = await tx.getOptional(paths.entryPath(entryData.tournamentId, entryId), Entry)
+      if (existing) {
+        const replay = replayOrRefuseDuplicate(existing, {
+          entryData,
+          entryId,
+          method: 'wallet',
+          totalCost,
+        })
+        return { entryId, walletTransactionId: replay.walletTransactionId, alreadyRegistered: true }
+      }
+      if (inTransactionGuard) await inTransactionGuard(tx)
+
       const player = await tx.get(paths.playerPath(entryData.playerId), Player)
 
       // HARD invariant — no override
@@ -227,6 +286,8 @@ export async function payViaWallet({
       return { entryId, walletTransactionId }
     })
 
+    if (result.alreadyRegistered) return result
+
     await auditLog.writeAuditLogSafe({
       actorId,
       actorRole,
@@ -264,8 +325,10 @@ export async function payViaWallet({
  * @param {object|null} args.managerOverride  { reason: string } | null — required when faceValue < totalCost AND no top-up
  * @param {string} args.actorId
  * @param {'manager'|'td'|'cashier'} args.actorRole
+ * @param {string|null} [args.entryId]   see payViaExternalMethod
+ * @param {(tx: object) => Promise<void>} [args.inTransactionGuard]  see payViaExternalMethod
  *
- * @returns {Promise<{ entryId: string, ticketUseTransactionId: string, topUpTransactionId: string|null }>}
+ * @returns {Promise<{ entryId: string, ticketUseTransactionId: string, topUpTransactionId: string|null, alreadyRegistered?: true }>}
  */
 export async function payViaTicket({
   entryData,
@@ -275,12 +338,14 @@ export async function payViaTicket({
   managerOverride = null,
   actorId,
   actorRole,
+  entryId: providedEntryId = null,
+  inTransactionGuard = null,
 }) {
   return wrapWalletErrors('payViaTicket', async () => {
     assertEntryDataShape(entryData)
     if (totalCost <= 0) throw new Error(`totalCost must be > 0 (got ${totalCost})`)
 
-    const entryId = generateId()
+    const entryId = providedEntryId ?? generateId()
     const ticketUseTransactionId = generateId()
     const topUpTransactionId = topUp ? generateId() : null
     const timestamp = now()
@@ -294,6 +359,25 @@ export async function payViaTicket({
     let overrideUsed = false
 
     const result = await runValidatedTransaction(async (tx) => {
+      const existing = await tx.getOptional(paths.entryPath(entryData.tournamentId, entryId), Entry)
+      if (existing) {
+        const replay = replayOrRefuseDuplicate(existing, {
+          entryData,
+          entryId,
+          method: 'ticket',
+          totalCost,
+        })
+        // The original top-up row id isn't recoverable from the entry doc —
+        // a replay reports null there; the original ledger rows committed fine.
+        return {
+          entryId,
+          ticketUseTransactionId: replay.walletTransactionId,
+          topUpTransactionId: null,
+          alreadyRegistered: true,
+        }
+      }
+      if (inTransactionGuard) await inTransactionGuard(tx)
+
       const player = await tx.get(paths.playerPath(entryData.playerId), Player)
       const ticket = await tx.get(paths.ticketPath(entryData.playerId, ticketId), Ticket)
 
@@ -376,6 +460,8 @@ export async function payViaTicket({
 
       return { entryId, ticketUseTransactionId, topUpTransactionId }
     })
+
+    if (result.alreadyRegistered) return result
 
     // Audit log: entry created
     await auditLog.writeAuditLogSafe({

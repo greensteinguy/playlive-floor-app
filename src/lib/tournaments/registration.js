@@ -17,7 +17,13 @@
 import { entries as entriesApi, runValidatedTransaction, paths } from '../firestore'
 import { Tournament, Entry } from '../schema'
 import { now } from '../wallet/_shared'
-import { payViaExternalMethod, payViaWallet, payViaTicket } from '../wallet'
+import {
+  payViaExternalMethod,
+  payViaWallet,
+  payViaTicket,
+  voidEntryWithRefund,
+  RegistrationClosedError,
+} from '../wallet'
 import { TournamentError } from './errors'
 
 // ── Pure planning helpers ──────────────────────────────────────────────────
@@ -57,15 +63,24 @@ export function registrableSessions(sessions) {
  * - No prior entry → initial #1.
  * - Already has a still-alive entry → blocked (can't register twice at once).
  * - Busted out, freezeout → blocked (no re-entry).
- * - Busted out, re-entry/rebuy allowed → a new entry (number = prior count + 1),
- *   subject to maxReentries / maxRebuys.
+ * - Busted out, re-entry/rebuy allowed → a new entry, subject to
+ *   maxReentries / maxRebuys.
+ *
+ * entryNumber is the max across ALL of the player's entries INCLUDING voided
+ * ones, +1 — never a reused number. Entry doc ids are deterministic
+ * (`{playerId}_{entryNumber}`, see registerEntry), so a voided entry's doc
+ * still occupies its id and its number must stay retired. Re-entry LIMITS,
+ * by contrast, only count non-voided entries (a voided buy-in never happened).
  *
  * @returns {{ entryType: string|null, entryNumber: number|null, blockedReason: string|null }}
  */
 export function planEntry({ playerEntries, reentryConfig }) {
-  const pe = (playerEntries ?? []).filter((e) => e.voidedAt === null)
+  const all = playerEntries ?? []
+  const pe = all.filter((e) => e.voidedAt === null)
+  // Count is the floor so a fixture/legacy row without entryNumber still advances.
+  const nextNumber = all.reduce((max, e) => Math.max(max, e.entryNumber ?? 0), all.length) + 1
   if (pe.length === 0) {
-    return { entryType: 'initial', entryNumber: 1, blockedReason: null }
+    return { entryType: 'initial', entryNumber: nextNumber, blockedReason: null }
   }
   if (pe.some((e) => e.bustedAt === null)) {
     return {
@@ -89,7 +104,7 @@ export function planEntry({ playerEntries, reentryConfig }) {
   }
   return {
     entryType: type === 'rebuy' ? 'rebuy' : 'reentry',
-    entryNumber: pe.length + 1,
+    entryNumber: nextNumber,
     blockedReason: null,
   }
 }
@@ -205,6 +220,13 @@ export async function registerEntry({
     throw new TournamentError('This tournament has no buy-in to charge.')
   }
 
+  // Deterministic entry id — the duplicate/idempotency gate. Two devices
+  // registering the same player compute the same next entryNumber and collide
+  // on this id inside the payment transaction (one commits, the other gets a
+  // DuplicateEntryError instead of charging again); a timeout-retry of the SAME
+  // gesture finds its own committed entry and replays the result.
+  const entryId = `${player.id}_${plan.entryNumber}`
+
   const entryData = {
     tournamentId: tournament.id,
     playerId: player.id,
@@ -213,6 +235,38 @@ export async function registerEntry({
     entryNumber: plan.entryNumber,
     registeredAt: now(),
     registeredBy: actorId,
+  }
+
+  // Business-rule re-checks on FRESH reads inside the payment transaction —
+  // the checks above ran on the desk's snapshot, which can be minutes old.
+  // Runs after the duplicate probe (a replay skips it: that registration
+  // already happened under the rules of its moment) and before any write.
+  const inTransactionGuard = async (tx) => {
+    const freshTournament = await tx.get(paths.tournamentPath(tournament.id), Tournament)
+    if (!registrationOpen(freshTournament)) {
+      throw new RegistrationClosedError({
+        tournamentId: tournament.id,
+        status: freshTournament.status,
+      })
+    }
+    // Re-read the entries the plan was based on. New entries by OTHER devices
+    // are caught by the deterministic-id probe, so re-reading the known set is
+    // enough to re-validate the plan (alive entry, re-entry limits, numbering).
+    const freshEntries = []
+    for (const e of playerEntries ?? []) {
+      const fresh = await tx.getOptional(paths.entryPath(tournament.id, e.id), Entry)
+      if (fresh) freshEntries.push(fresh)
+    }
+    const freshPlan = planEntry({
+      playerEntries: freshEntries,
+      reentryConfig: freshTournament.reentryConfig,
+    })
+    if (freshPlan.blockedReason) throw new TournamentError(freshPlan.blockedReason)
+    if (freshPlan.entryType !== plan.entryType || freshPlan.entryNumber !== plan.entryNumber) {
+      throw new TournamentError(
+        "This player's entries changed while confirming — refresh and try again."
+      )
+    }
   }
 
   let walletResult
@@ -224,9 +278,11 @@ export async function registerEntry({
       reference: reference ?? null,
       actorId,
       actorRole,
+      entryId,
+      inTransactionGuard,
     })
   } else if (paymentMethod === 'wallet') {
-    walletResult = await payViaWallet({ entryData, totalCost, actorId, actorRole })
+    walletResult = await payViaWallet({ entryData, totalCost, actorId, actorRole, entryId, inTransactionGuard })
   } else if (paymentMethod === 'ticket') {
     if (typeof ticketId !== 'string' || ticketId.trim() === '') {
       throw new TournamentError('a ticket must be selected for ticket payment')
@@ -239,6 +295,8 @@ export async function registerEntry({
       managerOverride,
       actorId,
       actorRole,
+      entryId,
+      inTransactionGuard,
     })
   } else {
     throw new TournamentError(`unknown payment method "${paymentMethod}"`)
@@ -251,7 +309,7 @@ export async function registerEntry({
   // buy-in (the desk would re-charge the player); the caller gets
   // lastLongerDeckApplied: false and can warn instead.
   let lastLongerDeckApplied = null
-  if (lastLongerDeck !== null) {
+  if (lastLongerDeck !== null && !walletResult.alreadyRegistered) {
     try {
       await runValidatedTransaction(async (tx) => {
         const fresh = await tx.get(paths.entryPath(tournament.id, walletResult.entryId), Entry)
@@ -284,4 +342,45 @@ export async function registerEntry({
     lastLongerDeck,
     lastLongerDeckApplied,
   }
+}
+
+/**
+ * Void a mistaken entry and reverse its payment — the desk's escape valve for
+ * a wrong buy-in. Delegates the atomic void+refund to the wallet module
+ * (voidEntryWithRefund: wallet credit-back / external cash-EFTPOS refund row /
+ * ticket reinstatement, refused once the entry is busted or paid out), then
+ * best-effort recounts the tournament's cached counters (like registerEntry —
+ * a recount failure never undoes the committed void).
+ *
+ * @param {object} args
+ * @param {object} args.tournament
+ * @param {object} args.entry
+ * @param {string} args.reason
+ * @param {string} args.actorId
+ * @param {'manager'|'td'|'cashier'} args.actorRole
+ */
+export async function voidEntry({ tournament, entry, reason, actorId, actorRole }) {
+  if (!tournament || typeof tournament.id !== 'string') {
+    throw new TournamentError('tournament is required')
+  }
+  if (!entry || typeof entry.id !== 'string') {
+    throw new TournamentError('an entry must be selected')
+  }
+
+  const result = await voidEntryWithRefund({
+    tournamentId: tournament.id,
+    entryId: entry.id,
+    reason,
+    actorId,
+    actorRole,
+  })
+
+  let counters = null
+  try {
+    counters = await recountTournamentEntries({ tournamentId: tournament.id })
+  } catch {
+    counters = null
+  }
+
+  return { ...result, counters }
 }

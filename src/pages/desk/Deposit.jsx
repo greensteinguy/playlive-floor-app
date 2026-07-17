@@ -16,12 +16,12 @@
 //
 // Cashier + manager only (the route is role-gated).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { usePlayers } from '../../hooks/usePlayers'
-import { players as playersApi, ValidationError, WriteTimeoutError } from '../../lib/firestore'
+import { players as playersApi, generateId, ValidationError, WriteTimeoutError } from '../../lib/firestore'
 import { createPlayer, playerDisplayName, PlayerError } from '../../lib/players'
 import { recordDeposit, WalletError } from '../../lib/wallet'
 import { formatMoney, dollarsToCents } from '../../lib/money'
@@ -85,6 +85,16 @@ export default function Deposit() {
   const amountCents = dollarsToCents(amountStr)
   const amountValid = amountCents > 0
 
+  // Gesture-scoped idempotency key for recordDeposit. Generated lazily on the
+  // first Record click for the current form state and kept across retries —
+  // so if the 10s write timeout fires on a write that actually committed, the
+  // cashier's retry replays the SAME deposit instead of crediting twice.
+  // Any change to player / amount / method is a new gesture → new key.
+  const depositGestureIdRef = useRef(null)
+  function resetDepositGesture() {
+    depositGestureIdRef.current = null
+  }
+
   // Preselect a player when deep-linked from their profile (?playerId=…). Fetched
   // async so it never blocks the page; the set-state runs in the promise (not the
   // synchronous effect body). `prev ?? p` only fills an empty selection — so a
@@ -110,6 +120,7 @@ export default function Deposit() {
     setReference('')
     setPayidConfirmed(false)
     setConfirming(false)
+    resetDepositGesture()
   }
   function selectPlayer(p) {
     setSelectedPlayer(p)
@@ -126,12 +137,14 @@ export default function Deposit() {
     setReference('')
     setPayidConfirmed(false)
     setConfirming(false)
+    resetDepositGesture()
   }
   function changeAmount(v) {
     setAmountStr(v)
     // A PayID receipt is confirmed for a specific amount — re-confirm if it changes.
     setPayidConfirmed(false)
     setConfirming(false)
+    resetDepositGesture()
   }
 
   async function handleCreatePlayer() {
@@ -164,6 +177,7 @@ export default function Deposit() {
   async function doDeposit() {
     setBusy(true)
     try {
+      depositGestureIdRef.current ??= generateId()
       const res = await recordDeposit({
         playerId: selectedPlayer.id,
         amount: amountCents,
@@ -172,9 +186,14 @@ export default function Deposit() {
         reference: reference.trim() || (method === 'cash' ? 'cash' : null),
         actorId: user.uid,
         actorRole: role,
+        walletTransactionId: depositGestureIdRef.current,
       })
       const name = playerDisplayName(selectedPlayer)
-      toast.success(`Deposited ${formatMoney(amountCents)} to ${name} — balance ${formatMoney(res.newBalance)}.`)
+      toast.success(
+        res.alreadyRecorded
+          ? `That deposit had already saved (the earlier attempt went through) — ${name}'s balance is ${formatMoney(res.newBalance)}.`
+          : `Deposited ${formatMoney(amountCents)} to ${name} — balance ${formatMoney(res.newBalance)}.`
+      )
       setLastDeposit({ name, playerId: selectedPlayer.id, amount: amountCents, method, newBalance: res.newBalance })
       resetForNext()
       players.reload()

@@ -5,7 +5,7 @@
 // money flow, so every branch gets coverage.
 
 import { describe, it, expect } from 'vitest'
-import { balanceDelta, ticketBalanceDelta } from './_shared'
+import { balanceDelta, ticketBalanceDelta, walletTxDelta } from './_shared'
 
 describe('balanceDelta', () => {
   describe('credit types (+amount)', () => {
@@ -84,5 +84,14 @@ describe('ticketBalanceDelta', () => {
 
   it('defaults ticketFaceValue to 0 when not supplied', () => {
     expect(ticketBalanceDelta({ type: 'ticketIssued' })).toBe(0)
+  })
+})
+
+describe('walletTxDelta — entryRefund', () => {
+  it('credits the balance back only for wallet-method refunds', () => {
+    expect(walletTxDelta({ type: 'entryRefund', amount: 80_00, method: 'wallet', direction: null })).toBe(80_00)
+  })
+  it.each([['cash'], ['eftpos'], ['ticket']])('is neutral for %s refunds (money moves externally / via ticketBalance)', (method) => {
+    expect(walletTxDelta({ type: 'entryRefund', amount: 80_00, method, direction: null })).toBe(0)
   })
 })

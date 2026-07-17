@@ -25,3 +25,6 @@ scripts/firestore-audit/output/
 **/audit-sa.json
 **/service-account*.json
 **/*-sa.json
+
+# Firebase deploy cache
+.firebase/

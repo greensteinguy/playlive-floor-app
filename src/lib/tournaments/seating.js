@@ -19,10 +19,8 @@
 import {
   runValidatedTransaction,
   runValidatedBatch,
-  validatedSet,
   tables as tablesApi,
   entries as entriesApi,
-  generateId,
   auditLog,
   paths,
 } from '../firestore'
@@ -69,6 +67,12 @@ export class EntryNotSeatableError extends SeatingError {
   constructor() {
     super('This entry can no longer be seated (it is busted or voided).')
     this.name = 'EntryNotSeatableError'
+  }
+}
+export class StaleSeatStateError extends SeatingError {
+  constructor() {
+    super("This player's seat changed on another device — refresh and try again.")
+    this.name = 'StaleSeatStateError'
   }
 }
 export class AlreadyBustedError extends SeatingError {
@@ -256,11 +260,29 @@ async function listSessionTables(tournamentId, sessionId) {
 }
 
 /**
+ * Deterministic table doc id for a session's table number. Both drawSeats and
+ * openTable allocate ids this way, so two devices creating "the same" table
+ * collide on the doc path inside their transactions (Firestore serializes
+ * them) instead of silently minting two Table N docs. Tables created before
+ * this scheme keep their random ids — number uniqueness against those still
+ * comes from the pre-transaction listing, which is fine for non-concurrent use.
+ */
+function tableDocId(sessionId, tableNumber) {
+  return `${sessionId}_t${tableNumber}`
+}
+
+/**
  * Initial random draw for a session: create the tables and seat every seatable
- * entry, in one atomic batch (table sets are whole-doc validated; entry updates
- * set currentTableId + currentSeatNumber together, so the both-or-neither seat
- * invariant holds by construction). Refuses if tables already exist for the
+ * entry, in one atomic TRANSACTION. Refuses if tables already exist for the
  * session — clear them first to redraw.
+ *
+ * Race safety (two TDs tapping "Draw seats" within a second must not create
+ * two full table sets): every drawn set includes table 1 at the deterministic
+ * id `{sessionId}_t1`, and the transaction probes that path before writing —
+ * the probe puts it in the read set, so the losing transaction retries, sees
+ * the winner's table, and refuses with TablesExistError. The pool entries are
+ * also re-read fresh inside the transaction so a player busted/voided since
+ * the caller's snapshot is never drawn into a seat.
  *
  * @returns {Promise<{ tableCount:number, seatedCount:number }>}
  */
@@ -280,15 +302,32 @@ export async function drawSeats({
   const existing = await listSessionTables(tournament.id, sessionId)
   if (existing.length > 0) throw new TablesExistError()
 
-  const plan = planSeatDraw({ entries: pool, seatCount, rng })
   const timestamp = now()
-  const tableDocs = plan.tables.map((t) => ({ ...t, id: generateId() }))
-  const idByNumber = Object.fromEntries(tableDocs.map((t) => [t.tableNumber, t.id]))
 
-  await runValidatedBatch((batch) => {
-    for (const t of tableDocs) {
-      batch.set(paths.tablePath(tournament.id, t.id), Table, {
-        id: t.id,
+  const result = await runValidatedTransaction(async (tx) => {
+    // Draw-once sentinel (see doc comment). Pre-deterministic-id tables are
+    // caught by the listing above; concurrent draws collide here.
+    const sentinel = await tx.getOptional(
+      paths.tablePath(tournament.id, tableDocId(sessionId, 1)),
+      Table
+    )
+    if (sentinel) throw new TablesExistError()
+
+    // Fresh pool — drop entries that busted/voided (or vanished) since the
+    // snapshot. A stale seat write onto a busted entry would violate the
+    // busted ⇒ unseated invariant and brick the doc for validated reads.
+    const freshPool = []
+    for (const e of pool) {
+      const fresh = await tx.getOptional(paths.entryPath(tournament.id, e.id), Entry)
+      if (fresh && fresh.originSessionId === sessionId && isSeatable(fresh)) freshPool.push(fresh)
+    }
+    if (freshPool.length === 0) throw new NoSeatableEntriesError()
+
+    const plan = planSeatDraw({ entries: freshPool, seatCount, rng })
+    for (const t of plan.tables) {
+      const id = tableDocId(sessionId, t.tableNumber)
+      tx.set(paths.tablePath(tournament.id, id), Table, {
+        id,
         tournamentId: tournament.id,
         sessionId,
         tableNumber: t.tableNumber,
@@ -302,12 +341,13 @@ export async function drawSeats({
       })
     }
     for (const a of plan.assignments) {
-      batch.update(paths.entryPath(tournament.id, a.entryId), {
-        currentTableId: idByNumber[a.tableNumber],
+      tx.update(paths.entryPath(tournament.id, a.entryId), {
+        currentTableId: tableDocId(sessionId, a.tableNumber),
         currentSeatNumber: a.seatNumber,
         updatedAt: timestamp,
       })
     }
+    return { tableCount: plan.tables.length, seatedCount: plan.assignments.length }
   })
 
   await auditLog.writeAuditLogSafe({
@@ -317,10 +357,15 @@ export async function drawSeats({
     targetType: 'tournament',
     targetId: tournament.id,
     timestamp,
-    metadata: { sessionId, tableCount: tableDocs.length, playerCount: pool.length, seatCount },
+    metadata: {
+      sessionId,
+      tableCount: result.tableCount,
+      playerCount: result.seatedCount,
+      seatCount,
+    },
   })
 
-  return { tableCount: tableDocs.length, seatedCount: plan.assignments.length }
+  return result
 }
 
 /**
@@ -367,6 +412,12 @@ export async function clearSeating({ tournament, sessionId, actorId, actorRole }
  * entry — table writes re-validate the whole doc, the entry update sets both seat
  * fields together. Refuses if the target seat is held by a different entry.
  *
+ * The entry is RE-READ inside the transaction: a snapshot that has since been
+ * busted/voided is refused (EntryNotSeatableError), and a snapshot whose seat
+ * moved on another device is refused (StaleSeatStateError) rather than silently
+ * acting on the old position — the TD decided this move looking at a seat map
+ * that no longer holds.
+ *
  * @returns {Promise<{ tableNumber:number, seatNumber:number }>}
  */
 export async function seatEntry({ tournament, entry, targetTableId, targetSeatNumber, actorId, actorRole }) {
@@ -375,18 +426,27 @@ export async function seatEntry({ tournament, entry, targetTableId, targetSeatNu
   const timestamp = now()
 
   const result = await runValidatedTransaction(async (tx) => {
+    const fresh = await tx.get(paths.entryPath(tournament.id, entry.id), Entry)
+    if (!isSeatable(fresh)) throw new EntryNotSeatableError()
+    if (
+      fresh.currentTableId !== entry.currentTableId ||
+      fresh.currentSeatNumber !== entry.currentSeatNumber
+    ) {
+      throw new StaleSeatStateError()
+    }
+
     const target = await tx.get(paths.tablePath(tournament.id, targetTableId), Table)
     const targetSeat = target.seats.find((s) => s.seatNumber === targetSeatNumber)
     if (!targetSeat) throw new SeatOutOfRangeError()
-    if (targetSeat.entryId !== null && targetSeat.entryId !== entry.id) throw new SeatOccupiedError()
+    if (targetSeat.entryId !== null && targetSeat.entryId !== fresh.id) throw new SeatOccupiedError()
 
-    const sourceTableId = entry.currentTableId
+    const sourceTableId = fresh.currentTableId
     // If the entry currently sits at a DIFFERENT table, free that seat (read first).
     if (sourceTableId && sourceTableId !== targetTableId) {
       const source = await tx.get(paths.tablePath(tournament.id, sourceTableId), Table)
       tx.set(paths.tablePath(tournament.id, sourceTableId), Table, {
         ...source,
-        seats: source.seats.map((s) => (s.entryId === entry.id ? { ...s, entryId: null } : s)),
+        seats: source.seats.map((s) => (s.entryId === fresh.id ? { ...s, entryId: null } : s)),
         updatedAt: timestamp,
       })
     }
@@ -395,8 +455,8 @@ export async function seatEntry({ tournament, entry, targetTableId, targetSeatNu
     tx.set(paths.tablePath(tournament.id, targetTableId), Table, {
       ...target,
       seats: target.seats.map((s) => {
-        if (s.seatNumber === targetSeatNumber) return { ...s, entryId: entry.id }
-        if (sourceTableId === targetTableId && s.entryId === entry.id) return { ...s, entryId: null }
+        if (s.seatNumber === targetSeatNumber) return { ...s, entryId: fresh.id }
+        if (sourceTableId === targetTableId && s.entryId === fresh.id) return { ...s, entryId: null }
         return s
       }),
       updatedAt: timestamp,
@@ -427,6 +487,9 @@ export async function seatEntry({ tournament, entry, targetTableId, targetSeatNu
 /**
  * Remove an entry from its seat (clear the table seat + the entry's seat fields).
  * One transaction. No-op-safe callers should check entry.currentTableId first.
+ * The entry is re-read inside the transaction (see seatEntry) — an unseat aimed
+ * at a seat the player has already left is refused as stale, not applied to
+ * wherever they moved to.
  *
  * @returns {Promise<{ ok: true }>}
  */
@@ -436,10 +499,18 @@ export async function unseatEntry({ tournament, entry, actorId, actorRole }) {
   const timestamp = now()
 
   await runValidatedTransaction(async (tx) => {
-    const table = await tx.get(paths.tablePath(tournament.id, entry.currentTableId), Table)
-    tx.set(paths.tablePath(tournament.id, entry.currentTableId), Table, {
+    const fresh = await tx.get(paths.entryPath(tournament.id, entry.id), Entry)
+    if (
+      fresh.currentTableId !== entry.currentTableId ||
+      fresh.currentSeatNumber !== entry.currentSeatNumber
+    ) {
+      throw new StaleSeatStateError()
+    }
+
+    const table = await tx.get(paths.tablePath(tournament.id, fresh.currentTableId), Table)
+    tx.set(paths.tablePath(tournament.id, fresh.currentTableId), Table, {
       ...table,
-      seats: table.seats.map((s) => (s.entryId === entry.id ? { ...s, entryId: null } : s)),
+      seats: table.seats.map((s) => (s.entryId === fresh.id ? { ...s, entryId: null } : s)),
       updatedAt: timestamp,
     })
     tx.update(paths.entryPath(tournament.id, entry.id), {
@@ -999,23 +1070,41 @@ export async function openTable({ tournament, sessionId, seatCount, active = fal
   requireActor(actorId)
   const seats = seatCount ?? tournament.maxSeatsPerTable ?? DEFAULT_SEAT_COUNT
   const existing = await listSessionTables(tournament.id, sessionId)
-  const tableNumber = existing.reduce((max, t) => Math.max(max, t.tableNumber), 0) + 1
-  const id = generateId()
+  const startNumber = existing.reduce((max, t) => Math.max(max, t.tableNumber), 0) + 1
   const timestamp = now()
 
-  await validatedSet(paths.tablePath(tournament.id, id), Table, {
-    id,
-    tournamentId: tournament.id,
-    sessionId,
-    tableNumber,
-    seatCount: seats,
-    openedAt: null,
-    closedAt: null,
-    status: 'open',
-    active,
-    seats: Array.from({ length: seats }, (_, i) => ({ seatNumber: i + 1, entryId: null })),
-    createdAt: timestamp,
-    updatedAt: timestamp,
+  const result = await runValidatedTransaction(async (tx) => {
+    // Deterministic id + in-transaction probe: two devices opening tables at
+    // once serialize on the same path and take consecutive numbers instead of
+    // creating two "Table N"s. Probes upward from the listed next number (the
+    // batch-open flow opens several in quick succession).
+    let tableNumber = null
+    for (let n = startNumber; n < startNumber + 50; n++) {
+      const taken = await tx.getOptional(paths.tablePath(tournament.id, tableDocId(sessionId, n)), Table)
+      if (!taken) {
+        tableNumber = n
+        break
+      }
+    }
+    if (tableNumber === null) {
+      throw new SeatingError('Could not find a free table number — refresh and try again.')
+    }
+    const id = tableDocId(sessionId, tableNumber)
+    tx.set(paths.tablePath(tournament.id, id), Table, {
+      id,
+      tournamentId: tournament.id,
+      sessionId,
+      tableNumber,
+      seatCount: seats,
+      openedAt: null,
+      closedAt: null,
+      status: 'open',
+      active,
+      seats: Array.from({ length: seats }, (_, i) => ({ seatNumber: i + 1, entryId: null })),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    return { tableId: id, tableNumber }
   })
 
   await auditLog.writeAuditLogSafe({
@@ -1025,9 +1114,9 @@ export async function openTable({ tournament, sessionId, seatCount, active = fal
     targetType: 'tournament',
     targetId: tournament.id,
     timestamp,
-    metadata: { sessionId, tableId: id, tableNumber, active },
+    metadata: { sessionId, tableId: result.tableId, tableNumber: result.tableNumber, active },
   })
-  return { tableId: id, tableNumber }
+  return result
 }
 
 /**
