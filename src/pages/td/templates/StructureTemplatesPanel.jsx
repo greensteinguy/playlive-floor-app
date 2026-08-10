@@ -220,7 +220,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
   }
 
   return (
-    <div className="max-w-4xl">
+    <div className="w-full">
       <button type="button" onClick={onCancel} className="text-sm text-white/50 hover:text-white mb-4">
         ← Back to structures
       </button>

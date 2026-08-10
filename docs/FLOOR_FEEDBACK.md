@@ -26,19 +26,36 @@
 
 ---
 
-## C. Standing flagged tasks (carried — for reference, unchanged)
+## C. Standing flagged tasks — REFRESHED 10 Aug 2026 (stale entries closed out)
 
-- **Floor-staff seating UX walkthrough** — the whole seating/balancing UI is functional-first and expected to change; now also owns **B2** above. See the `seating-ux-pending-floor-review` memory.
-- **Reskin open dials** (now merged, still tunable): status-badge + money colours (semantic blue/green/amber vs fold-into-red), glass-blur intensity, how-much-red.
-- **2.8** — Guy's Phase 2 create-and-run walkthrough sign-off (human gate).
-- **3.12** — Guy's mock-tournament review with every payment method (human gate).
-- **Payout curve algorithm** — swap the placeholder triangular curve in `src/lib/payouts.js` `payoutCurve` for the venue's real CSV-keyed algorithm when Guy supplies it.
+### Still open
+
+- **Floor-staff seating UX walkthrough** — the whole seating/balancing UI is functional-first and expected to change; owns **B2** above plus the Tables-screen touch items from the iPad pass (`docs/reviews/2026-08-10-ipad-pass.md` M1/M2/M3/M10: disabled-button reasons in unrenderable tooltips, hover-only pip names, unpadded text-buttons, the "unseat · eliminate · milestone" word-button row). See the `seating-ux-pending-floor-review` memory.
+- **Reskin open dials** (still tunable): status-badge + money colours (semantic vs fold-into-red), glass-blur intensity, how-much-red.
+- **iPad on-device pass** — the CODE half is done (audit + blocker fixes, 10 Aug — see the report); the on-device half (Guy's iPad against staging, per the checklist at the end of the report) + older-iPad perf check remain.
 - **Templates don't carry table size** — `maxSeatsPerTable` isn't in `TemplateConfig` yet (instantiating a template defaults to 9).
-- **Phase-1 leftovers:** iPad on-device smoke test (1.10); deploy `firestore.indexes.json` to prod (now also needs the entries collection-group index); drop the legacy `tournaments` collection before any production write.
-- **Phase 4 (next build phase)** — Payouts, Results & Withdrawals: bust-out (4.1, partly pre-built by the pulled-forward elimination), mystery-bounty draw (4.2), last-longer (4.3), payout calc (4.4), deal-making (4.5), ICM helper (4.6, stretch), win-credit-to-wallet (4.7), withdrawal queue (4.8), reconciliation (4.9), results page (4.10).
+- **B1 manager numbers** (from above): Sixhundy stack/hospo/guarantee estimates; Opening/Main guarantees + house-consumption placeholders; the Main Event's exact print + multi-entry equity-payout rule unmodelled (NB equity refunds now have a field: `payoutConfig.equityRefunds` feeds the payout engine).
+- **Bounty calculator sheet** (from the venue workbook) — possibly relevant; awaiting Guy's team's confirmation. Don't build until confirmed.
+- **Payout engine open ends:** add-on SALES aren't a desk flow yet (`payoutConfig.addOnCount` is set by hand on the payouts screen); "Mix Max" handedness has no v1 tournament format; sheet future-changes get re-ingested when the venue updates it.
 
-## Suggested order
+### Closed since this list was written
 
-1. **A5 + A6** (audit fixes — small, clear bugs) → **A1** (list sorting) → **A3 + A4** (deposit picker) → **A2** (open-table button + batch). All independent, all shippable without meetings.
-2. **B1** — kick off the template data-gather in parallel (send managers a capture sheet).
-3. **B2** — schedule the seating UX walkthrough with managers; it also settles the standing seating flags.
+- ~~**2.8 / 3.12** (Guy's walkthrough + mock-tournament sign-offs)~~ → superseded by the **staging/stakeholder testing round** now running on the live URL (July–Aug 2026).
+- ~~**Payout curve algorithm**~~ ✅ **DONE 10 Aug 2026** — the venue's real calculator (`Payout Calculator.xlsx`) was reverse-engineered into `src/lib/payoutEngine.js` (fixture-exact) with a run-once STORED `payoutTable` on the tournament + a settings panel on the payouts screen; series points toggleable. Spec: `docs/payouts/venue-payout-engine-spec.md`. The old placeholder `payoutCurve` remains only as the legacy fallback path.
+- ~~**Phase 4**~~ ✅ **DONE 10 July 2026** (4.1–4.5, 4.7–4.10; ICM 4.6 parked to v1.5 triage) + the before-real-money hardening tier (16 July).
+- ~~**Deploy firestore.indexes.json to prod**~~ ✅ **DONE 8–10 July 2026** (incl. the entries collection-group index + the CG rules fix).
+- ~~**Drop the legacy `tournaments` collection**~~ ⚠️ **SUPERSEDED — DO NOT DROP.** The ~1,800 legacy Casinoware docs are almost certainly the analytics dashboard's data source (16 July discovery). The app can't see them (every tournaments query keeps the `orderBy(scheduledStartTime)` invariant). Relocating them is a Guy + analytics-project decision, parked.
+
+---
+
+## D. Stakeholder feedback round — Aug 2026 (capture here)
+
+> Guy's stakeholders are testing on the live URL. As notes arrive, capture them below in the A/B format (quick win vs needs-design), triage against the still-open items above, and branch per the workflow (feature branch → Guy tests → merge).
+
+- _(nothing captured yet)_
+
+## Suggested order (historical — the A items all shipped 1 July)
+
+1. ~~**A5 + A6** → **A1** → **A3 + A4** → **A2**~~ ✅ all done.
+2. **B1** — manager numbers still outstanding (capture sheet).
+3. **B2** — schedule the seating UX walkthrough with managers; it also settles the standing seating flags + the iPad-pass Tables items.

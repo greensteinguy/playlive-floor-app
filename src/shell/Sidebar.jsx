@@ -37,11 +37,11 @@ export default function Sidebar({ onNavigate }) {
 
       {/* Brand */}
       <div className="px-6 py-6 border-b border-white/10">
-        <span className="font-brand text-lg tracking-[0.22em] text-brand-400 [text-shadow:0_0_20px_rgba(239,43,43,0.55)]">
-          PLAYLIVE
+        <span className="font-brand text-xl tracking-[0.13em] text-brand-400 [text-shadow:0_0_20px_rgba(239,43,43,0.55)] whitespace-nowrap">
+          CHECK RAISE
         </span>
         <p className="text-[10px] font-mono text-white/35 mt-1 tracking-[0.35em] uppercase">
-          Floor OS
+          Floor OS · by PlayLive
         </p>
       </div>
 

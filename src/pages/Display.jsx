@@ -60,8 +60,10 @@ import {
   ordinalPlace,
 } from '../lib/display'
 import { materializePayouts } from '../lib/payouts'
+import { estimateServerOffsetMs, shouldAdoptOffset } from '../lib/serverTime'
 
 const TICK_MS = 250
+const OFFSET_RESAMPLE_MS = 10 * 60_000
 const CROSSFADE_MS = 700
 const FINAL_MINUTE_MS = 60_000
 const LEVEL_TRACK_MAX_BLOCKS = 14
@@ -115,6 +117,28 @@ export default function Display() {
     const id = setInterval(() => setNowMs(Date.now()), TICK_MS)
     return () => clearInterval(id)
   }, [])
+
+  // Cross-device drift correction: the anchor is stamped by the TD device, so
+  // this TV derives against server-corrected time instead of its own drifting
+  // wall clock (see lib/serverTime.js). Sub-noise re-estimates are ignored so
+  // the countdown never shimmies between samples.
+  const [serverOffsetMs, setServerOffsetMs] = useState(0)
+  useEffect(() => {
+    let disposed = false
+    const sample = async () => {
+      const next = await estimateServerOffsetMs()
+      if (!disposed) {
+        setServerOffsetMs((cur) => (shouldAdoptOffset(cur, next) ? next : cur))
+      }
+    }
+    sample()
+    const id = setInterval(sample, OFFSET_RESAMPLE_MS)
+    return () => {
+      disposed = true
+      clearInterval(id)
+    }
+  }, [])
+  const clockNowMs = nowMs + serverOffsetMs
 
   // Keep the TV awake (best-effort; silently unsupported on older browsers).
   useEffect(() => {
@@ -224,7 +248,7 @@ export default function Display() {
           <div
             key={layer.key}
             className={
-              'absolute inset-0 flex items-center justify-center px-[4vw] pt-[6vh] pb-[8vh] ' +
+              'absolute inset-0 flex items-center justify-center px-[2vw] pt-[6vh] pb-[8vh] ' +
               (isTop ? 'display-fade-in' : 'display-fade-out pointer-events-none')
             }
           >
@@ -233,7 +257,7 @@ export default function Display() {
             ) : layer.slide.screen === 'prizes' ? (
               <PrizesSlide tournament={t} />
             ) : (
-              <ClockSlide tournament={t} sessions={sessionsBy[t.id]} nowMs={nowMs} />
+              <ClockSlide tournament={t} sessions={sessionsBy[t.id]} nowMs={clockNowMs} />
             )}
           </div>
         )
@@ -248,7 +272,7 @@ function FullScreen({ timeOfDay, rotation, children }) {
   return (
     <div className="fixed inset-0 overflow-hidden text-white font-body select-none">
       {/* brand + clock-of-day, kept clear of the slide content */}
-      <div className="absolute top-[3vh] left-[4vw] right-[4vw] flex items-baseline justify-between z-10">
+      <div className="absolute top-[3vh] left-[2vw] right-[2vw] flex items-baseline justify-between z-10">
         <span className="font-brand text-[2.3vmin] tracking-[0.22em] text-brand-400 [text-shadow:0_0_20px_rgba(239,43,43,0.55)]">
           PLAYLIVE
         </span>
@@ -686,15 +710,15 @@ function PrizesSlide({ tournament }) {
 
   return (
     <>
-      <div className="relative text-center w-full max-w-[92vw]">
-        <div className="font-display text-[4.2vh] text-gold-300 mb-[1vh] truncate">{tournament.name}</div>
-        <div className="font-mono uppercase tracking-[0.35em] text-[1.8vh] text-white/40 mb-[3vh]">Prize pool</div>
+      <div className="relative text-center w-full">
+        <div className="font-display text-[4.4vmin] text-gold-300 mb-[1vh] truncate">{tournament.name}</div>
+        <div className="font-mono uppercase tracking-[0.35em] text-[1.9vmin] text-white/40 mb-[3vh]">Prize pool</div>
 
-        <div className="font-display text-[16vh] leading-none text-white tabular-nums">
+        <div className="font-display text-[min(16vmin,11vw)] leading-none text-white tabular-nums">
           {formatDisplayMoney(tournament.totalPrizePool)}
         </div>
         {guaranteed && (
-          <div className="text-[2.4vh] text-brand-300 mt-[1vh]">
+          <div className="text-[2.5vmin] text-brand-300 mt-[1vh]">
             {formatDisplayMoney(tournament.guarantee)} guaranteed
           </div>
         )}
@@ -702,8 +726,8 @@ function PrizesSlide({ tournament }) {
         {shown.length > 0 && (
           <div
             className={
-              'mx-auto mt-[4vh] grid gap-x-[4vw] gap-y-[1.2vh] w-fit ' +
-              (shown.length > 5 ? 'grid-cols-2' : 'grid-cols-1')
+              'mt-[4vh] grid gap-x-[6vw] gap-y-[1.4vh] w-full px-[4vw] ' +
+              (shown.length > 6 ? 'grid-cols-3' : shown.length > 3 ? 'grid-cols-2' : 'grid-cols-1')
             }
           >
             {shown.map(({ place, label, amount }) => (

@@ -24,7 +24,7 @@ export default function Payouts() {
     )
 
   return (
-    <div className="px-6 py-8 md:px-10 md:py-10 max-w-4xl">
+    <div className="px-6 py-8 md:px-10 md:py-10">
       <h1 className="font-display text-2xl md:text-3xl text-gold-400 mb-1">Payouts</h1>
       <p className="text-sm text-white/50 mb-6">
         Pick a tournament to calculate payouts, enter a deal, and confirm each player's payout.
