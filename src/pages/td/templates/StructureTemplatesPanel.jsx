@@ -88,12 +88,12 @@ export default function StructureTemplatesPanel() {
     )
   }
   if (error) return <EmptyState title="Couldn't load structure templates." body={error.message} tone="error" />
-  if (loading) return <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+  if (loading) return <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
 
   return (
     <>
       <div className="flex items-center justify-between mb-3 gap-3">
-        <div className="text-xs text-white/40 font-mono">
+        <div className="text-xs text-white/55 font-mono">
           {templates.length} active template{templates.length === 1 ? '' : 's'}
         </div>
         <div className="flex items-center gap-2">
@@ -122,7 +122,7 @@ export default function StructureTemplatesPanel() {
       ) : (
         <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
               <tr>
                 <th className="text-left px-4 py-2">Name</th>
                 <th className="text-left px-4 py-2 whitespace-nowrap">Levels</th>
@@ -140,7 +140,7 @@ export default function StructureTemplatesPanel() {
                     {breakCountOf(t) > 0 ? ` (+${breakCountOf(t)} brk)` : ''}
                   </td>
                   <td className="px-4 py-3 text-white/70 whitespace-nowrap">~{fmtDuration(totalMinutesOf(t))}</td>
-                  <td className="px-4 py-3 text-xs text-white/50 max-w-xs truncate">{t.description ?? '—'}</td>
+                  <td className="px-4 py-3 text-xs text-white/65 max-w-xs truncate">{t.description ?? '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <button
                       type="button"
@@ -221,7 +221,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
 
   return (
     <div className="w-full">
-      <button type="button" onClick={onCancel} className="text-sm text-white/50 hover:text-white mb-4">
+      <button type="button" onClick={onCancel} className="text-sm text-white/65 hover:text-white mb-4">
         ← Back to structures
       </button>
 
@@ -231,7 +231,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Name</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Name</span>
           <input
             type="text"
             value={name}
@@ -242,7 +242,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Description (optional)</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Description (optional)</span>
           <input
             type="text"
             value={description}
@@ -255,7 +255,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
       </div>
 
       <div className="mb-6">
-        <div className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Levels & breaks</div>
+        <div className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Levels & breaks</div>
         <StructureEditor value={levels} onChange={setLevels} disabled={submitting} />
       </div>
 
@@ -268,7 +268,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
             'px-4 py-2 rounded-lg text-sm font-medium ' +
             (canSave
               ? 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30'
-              : 'bg-white/5 text-white/30 cursor-not-allowed')
+              : 'bg-white/5 text-white/45 cursor-not-allowed')
           }
         >
           {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create structure'}
@@ -277,7 +277,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+          className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
         >
           Cancel
         </button>
@@ -286,7 +286,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
           <div className="ml-auto">
             {confirmArchive ? (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-white/60">Archive this structure?</span>
+                <span className="text-xs text-white/70">Archive this structure?</span>
                 <button
                   type="button"
                   onClick={handleArchive}
@@ -299,7 +299,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
                   type="button"
                   onClick={() => setConfirmArchive(false)}
                   disabled={submitting}
-                  className="px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white"
+                  className="px-3 py-2 rounded-lg text-xs text-white/65 hover:text-white"
                 >
                   Keep
                 </button>
@@ -326,7 +326,7 @@ function EmptyState({ title, body, tone = 'neutral' }) {
   return (
     <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
       <div className="font-display text-lg text-white mb-1">{title}</div>
-      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
+      {body && <p className="text-sm text-white/65 max-w-md mx-auto">{body}</p>}
     </div>
   )
 }

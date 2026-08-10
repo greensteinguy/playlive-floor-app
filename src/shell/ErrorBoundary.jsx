@@ -53,7 +53,7 @@ function DefaultFallback({ error, onReset }) {
         <pre className="bg-felt-950/80 text-red-200/80 text-xs font-mono p-3 my-4 rounded overflow-x-auto whitespace-pre-wrap">
           {error?.message ?? String(error)}
         </pre>
-        <p className="text-xs text-white/40 mb-4">
+        <p className="text-xs text-white/55 mb-4">
           If this keeps happening, take a screenshot, note what you were doing, and let the floor manager know.
         </p>
         <div className="flex gap-3">

@@ -26,7 +26,7 @@ export default function Payouts() {
   return (
     <div className="px-6 py-8 md:px-10 md:py-10">
       <h1 className="font-display text-2xl md:text-3xl text-gold-400 mb-1">Payouts</h1>
-      <p className="text-sm text-white/50 mb-6">
+      <p className="text-sm text-white/65 mb-6">
         Pick a tournament to calculate payouts, enter a deal, and confirm each player's payout.
       </p>
 
@@ -38,7 +38,7 @@ export default function Payouts() {
       ) : error ? (
         <EmptyState title="Couldn't load tournaments." body={error.message} tone="error" />
       ) : loading ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : rows.length === 0 ? (
         <EmptyState title="No tournaments yet." body="Payouts appear here once tournaments are scheduled and played." />
       ) : (
@@ -54,15 +54,15 @@ export default function Payouts() {
                     <span className="text-sm text-white/90 truncate">{t.name}</span>
                     <StatusBadge status={t.status} />
                   </div>
-                  <div className="text-xs text-white/40 mt-0.5">
+                  <div className="text-xs text-white/55 mt-0.5">
                     {t.entryCount} entries · {t.remainingPlayerCount} remaining
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-white/30">Prize pool</div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-white/45">Prize pool</div>
                   <div className="text-sm text-gold-300 tabular-nums">{formatMoney(t.totalPrizePool)}</div>
                 </div>
-                <span className="text-white/30">→</span>
+                <span className="text-white/45">→</span>
               </Link>
             </li>
           ))}

@@ -36,17 +36,17 @@ export default function PlayerPicker({ players, onSelect, action = null, emptyHi
           placeholder="Search by name, phone, or email…"
           autoFocus
           aria-label="Search players"
-          className="flex-1 min-w-[14rem] bg-felt-900 border border-white/10 rounded-lg px-4 py-3 text-sm placeholder:text-white/30"
+          className="flex-1 min-w-[14rem] bg-felt-900 border border-white/10 rounded-lg px-4 py-3 text-sm placeholder:text-white/45"
         />
         {action}
       </div>
       {players.length === 0 ? (
-        <p className="text-xs text-white/40 mt-3">{withHint('No players yet.')}</p>
+        <p className="text-xs text-white/55 mt-3">{withHint('No players yet.')}</p>
       ) : results.length === 0 ? (
-        <p className="text-xs text-white/40 mt-3">{withHint(`No players match "${q}".`)}</p>
+        <p className="text-xs text-white/55 mt-3">{withHint(`No players match "${q}".`)}</p>
       ) : (
         <>
-          <div className="text-[11px] font-mono uppercase tracking-widest text-white/30 mt-3 mb-1">
+          <div className="text-[11px] font-mono uppercase tracking-widest text-white/45 mt-3 mb-1">
             {results.length}
             {results.length === RESULT_LIMIT ? '+' : ''} {results.length === 1 ? 'player' : 'players'}
             {q.trim() === '' ? ' · alphabetical' : ''}
@@ -63,12 +63,12 @@ export default function PlayerPicker({ players, onSelect, action = null, emptyHi
                 >
                   <span className="min-w-0">
                     <span className="block text-sm text-white/90 truncate">{playerDisplayName(p)}</span>
-                    <span className="block text-xs text-white/40 truncate">
+                    <span className="block text-xs text-white/55 truncate">
                       {p.phone}
                       {p.email ? ` · ${p.email}` : ''} · Wallet {formatMoney(p.walletBalance)}
                     </span>
                   </span>
-                  <span aria-hidden className="text-xs text-white/30 shrink-0">
+                  <span aria-hidden className="text-xs text-white/45 shrink-0">
                     Select →
                   </span>
                 </button>

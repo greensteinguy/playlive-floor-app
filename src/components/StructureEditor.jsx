@@ -86,7 +86,7 @@ export default function StructureEditor({ value, onChange, disabled = false }) {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-white/40 font-mono">
+        <div className="text-xs text-white/55 font-mono">
           {levelCount} level{levelCount === 1 ? '' : 's'}
           {entries.length > levelCount ? ` · ${entries.length - levelCount} break${entries.length - levelCount === 1 ? '' : 's'}` : ''}
           {' · '}~{formatTotal(totalMinutes)} total
@@ -112,7 +112,7 @@ export default function StructureEditor({ value, onChange, disabled = false }) {
       </div>
 
       {entries.length === 0 ? (
-        <div className="bg-felt-800 border border-white/5 rounded-lg p-6 text-center text-sm text-white/40">
+        <div className="bg-felt-800 border border-white/5 rounded-lg p-6 text-center text-sm text-white/55">
           No levels yet. Add a level to start the structure.
         </div>
       ) : (
@@ -133,7 +133,7 @@ export default function StructureEditor({ value, onChange, disabled = false }) {
                 {entry.type === 'level' ? (
                   <div className="flex flex-wrap items-end gap-2 bg-felt-800 border border-white/5 rounded-lg px-3 py-2">
                     <div className="flex flex-col gap-0.5 w-12">
-                      <span className="text-[9px] font-mono uppercase tracking-wider text-white/40">Lvl</span>
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-white/55">Lvl</span>
                       <span className="font-display text-gold-300 text-lg leading-none">{entry.blindNumber}</span>
                     </div>
                     <NumField label="Small" value={entry.smallBlind} disabled={disabled} onChange={(v) => patchAt(i, { smallBlind: v })} />
@@ -146,12 +146,12 @@ export default function StructureEditor({ value, onChange, disabled = false }) {
                 ) : (
                   <div className="flex flex-wrap items-end gap-2 bg-felt-900/60 border border-gold-500/20 rounded-lg px-3 py-2">
                     <div className="flex flex-col gap-0.5 w-12">
-                      <span className="text-[9px] font-mono uppercase tracking-wider text-white/40">Brk</span>
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-white/55">Brk</span>
                       <span className="text-gold-300/60 text-lg leading-none">—</span>
                     </div>
                     <NumField label="Mins" value={entry.durationMinutes} min={1} disabled={disabled} onChange={(v) => patchAt(i, { durationMinutes: v })} width="w-16" />
                     <label className="flex flex-col gap-0.5 grow min-w-[8rem]">
-                      <span className="text-[9px] font-mono uppercase tracking-wider text-white/40">Label</span>
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-white/55">Label</span>
                       <input
                         type="text"
                         value={entry.label ?? ''}
@@ -161,7 +161,7 @@ export default function StructureEditor({ value, onChange, disabled = false }) {
                         className="bg-felt-900 border border-white/10 rounded px-2 py-1 text-sm w-full disabled:opacity-50"
                       />
                     </label>
-                    <label className="flex items-center gap-1.5 pb-1 text-xs text-white/60 cursor-pointer">
+                    <label className="flex items-center gap-1.5 pb-1 text-xs text-white/70 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={entry.isColorUp}
@@ -189,7 +189,7 @@ export default function StructureEditor({ value, onChange, disabled = false }) {
 function NumField({ label, value, onChange, min = 0, width = 'w-20', disabled = false }) {
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-[9px] font-mono uppercase tracking-wider text-white/40">{label}</span>
+      <span className="text-[9px] font-mono uppercase tracking-wider text-white/55">{label}</span>
       <input
         type="number"
         inputMode="numeric"
@@ -216,7 +216,7 @@ function RowActions({ index, count, onMove, onRemove, disabled }) {
         aria-label="Move up"
         disabled={disabled || index === 0}
         onClick={() => onMove(index, -1)}
-        className={`${btn} bg-white/5 text-white/60 hover:bg-white/10 hover:text-white`}
+        className={`${btn} bg-white/5 text-white/70 hover:bg-white/10 hover:text-white`}
       >
         ▲
       </button>
@@ -225,7 +225,7 @@ function RowActions({ index, count, onMove, onRemove, disabled }) {
         aria-label="Move down"
         disabled={disabled || index === count - 1}
         onClick={() => onMove(index, 1)}
-        className={`${btn} bg-white/5 text-white/60 hover:bg-white/10 hover:text-white`}
+        className={`${btn} bg-white/5 text-white/70 hover:bg-white/10 hover:text-white`}
       >
         ▼
       </button>

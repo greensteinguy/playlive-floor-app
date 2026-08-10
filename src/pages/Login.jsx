@@ -78,7 +78,7 @@ export default function Login() {
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
         <div className="text-center mb-8">
           <h1 className="font-display text-3xl text-gold-500 mb-1">Check Raise</h1>
-          <p className="text-white/60 text-sm">Sign in to continue.</p>
+          <p className="text-white/70 text-sm">Sign in to continue.</p>
         </div>
 
         <button
@@ -96,7 +96,7 @@ export default function Login() {
           Sign in with Google
         </button>
 
-        <div className="flex items-center gap-3 text-white/40 text-xs">
+        <div className="flex items-center gap-3 text-white/55 text-xs">
           <span className="flex-1 border-t border-white/10" />
           or use an email account
           <span className="flex-1 border-t border-white/10" />
@@ -112,7 +112,7 @@ export default function Login() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={submitting}
-            className="w-full bg-felt-800 border border-felt-700 rounded-lg px-4 py-3 text-base text-white placeholder-white/40 focus:outline-none focus:border-gold-500 disabled:opacity-50"
+            className="w-full bg-felt-800 border border-felt-700 rounded-lg px-4 py-3 text-base text-white placeholder-white/55 focus:outline-none focus:border-gold-500 disabled:opacity-50"
             placeholder="you@playlive.com.au"
           />
         </label>
@@ -126,7 +126,7 @@ export default function Login() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={submitting}
-            className="w-full bg-felt-800 border border-felt-700 rounded-lg px-4 py-3 text-base text-white placeholder-white/40 focus:outline-none focus:border-gold-500 disabled:opacity-50"
+            className="w-full bg-felt-800 border border-felt-700 rounded-lg px-4 py-3 text-base text-white placeholder-white/55 focus:outline-none focus:border-gold-500 disabled:opacity-50"
           />
         </label>
 
@@ -144,7 +144,7 @@ export default function Login() {
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
 
-        <div className="text-center text-xs text-white/40">
+        <div className="text-center text-xs text-white/55">
           Need access? Talk to a manager — accounts are provisioned by venue staff.
           <br />
           <Link to="/display" className="text-gold-400 hover:text-gold-500 underline">

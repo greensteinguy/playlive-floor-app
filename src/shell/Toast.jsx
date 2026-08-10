@@ -92,7 +92,7 @@ function ToastViewport({ toasts, onDismiss }) {
             type="button"
             onClick={() => onDismiss(t.id)}
             aria-label="Dismiss"
-            className="text-white/40 hover:text-white text-base leading-none"
+            className="text-white/55 hover:text-white text-base leading-none"
           >
             ×
           </button>

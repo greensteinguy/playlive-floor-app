@@ -21,11 +21,11 @@ export default function Templates() {
     <div className="px-6 py-8 md:px-10 md:py-10">
       <div className="flex items-baseline justify-between gap-4 mb-2">
         <h1 className="font-display text-3xl md:text-4xl text-gold-400">Templates</h1>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
           Phase 2 — task 2.5
         </span>
       </div>
-      <p className="text-white/50 text-sm mb-6">
+      <p className="text-white/65 text-sm mb-6">
         Reusable building blocks for tournament setup. Manager-only.
       </p>
 
@@ -39,7 +39,7 @@ export default function Templates() {
               'px-4 py-2 text-sm font-medium -mb-px border-b-2 ' +
               (tab === t.id
                 ? 'border-gold-400 text-gold-300'
-                : 'border-transparent text-white/50 hover:text-white/80')
+                : 'border-transparent text-white/65 hover:text-white/80')
             }
           >
             {t.label}

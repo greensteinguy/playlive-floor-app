@@ -19,7 +19,7 @@ export default function Forbidden() {
         <p className="text-white/80">
           Your account doesn’t have permission to view this area.
         </p>
-        <p className="text-white/60 text-sm">
+        <p className="text-white/70 text-sm">
           Signed in as <span className="font-mono">{user?.email}</span>
           {role ? <> (<span className="font-mono">{role}</span>)</> : null}.
         </p>

@@ -55,7 +55,7 @@ function friendlyError(e) {
 function Panel({ title, children }) {
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">{title}</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">{title}</h3>
       <div className="bg-felt-800 border border-white/5 rounded-lg p-4">{children}</div>
     </section>
   )
@@ -210,7 +210,7 @@ export default function Deposit() {
       <button
         type="button"
         onClick={() => navigate('/desk')}
-        className="text-sm text-white/50 hover:text-white mb-4"
+        className="text-sm text-white/65 hover:text-white mb-4"
       >
         ← Back to desk
       </button>
@@ -218,11 +218,11 @@ export default function Deposit() {
       <div className="mb-5">
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="font-display text-3xl md:text-4xl text-gold-400">Wallet deposit</h1>
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
             Phase 3 — task 3.6
           </span>
         </div>
-        <p className="mt-2 text-sm text-white/50">
+        <p className="mt-2 text-sm text-white/65">
           Record cash, EFTPOS, or PayID added to a player's wallet. The money moves through the
           venue's own systems — this writes the ledger row.
         </p>
@@ -242,7 +242,7 @@ export default function Deposit() {
             {formatMoney(lastDeposit.amount)} to <span className="text-white">{lastDeposit.name}</span> via{' '}
             {methodLabel(lastDeposit.method)}.
           </p>
-          <p className="text-sm text-white/50 mt-1">
+          <p className="text-sm text-white/65 mt-1">
             New wallet balance:{' '}
             <span className="text-emerald-300 tabular-nums">{formatMoney(lastDeposit.newBalance)}</span>
           </p>
@@ -256,7 +256,7 @@ export default function Deposit() {
             </button>
             <Link
               to={`/desk/players/${lastDeposit.playerId}`}
-              className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+              className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
             >
               View {lastDeposit.name} →
             </Link>
@@ -270,7 +270,7 @@ export default function Deposit() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-white/90 font-medium">{playerDisplayName(selectedPlayer)}</div>
-                  <div className="text-xs text-white/50 mt-0.5">
+                  <div className="text-xs text-white/65 mt-0.5">
                     {selectedPlayer.phone} · Wallet {formatMoney(selectedPlayer.walletBalance)} · Tickets{' '}
                     {formatMoney(selectedPlayer.ticketBalance)}
                   </div>
@@ -295,7 +295,7 @@ export default function Deposit() {
                     type="button"
                     onClick={() => setCreating(false)}
                     disabled={busy}
-                    className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                    className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
                   >
                     Cancel
                   </button>
@@ -334,7 +334,7 @@ export default function Deposit() {
                 <div className="max-w-[12rem]">
                   <Money label="Deposit amount" value={amountStr} onChange={changeAmount} disabled={busy} />
                 </div>
-                <p className="text-xs text-white/40 mt-2">
+                <p className="text-xs text-white/55 mt-2">
                   Current wallet balance {formatMoney(selectedPlayer.walletBalance)}
                   {amountValid && (
                     <>
@@ -360,7 +360,7 @@ export default function Deposit() {
                         'px-4 py-2 rounded-lg text-sm font-medium ' +
                         (method === m.id
                           ? 'bg-gold-500/25 text-gold-200'
-                          : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90')
+                          : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white/90')
                       }
                     >
                       {m.label}
@@ -389,7 +389,7 @@ export default function Deposit() {
                         </div>
                         <div className="text-sm text-white/90">{venuePayId.payId}</div>
                         {venuePayId.accountName && (
-                          <div className="text-xs text-white/50 mt-0.5">{venuePayId.accountName}</div>
+                          <div className="text-xs text-white/65 mt-0.5">{venuePayId.accountName}</div>
                         )}
                       </div>
                     ) : (
@@ -399,7 +399,7 @@ export default function Deposit() {
                         <code>.env.local</code> to show it here.)
                       </div>
                     )}
-                    <p className="text-sm text-white/60">
+                    <p className="text-sm text-white/70">
                       Ask <span className="text-white/90">{playerDisplayName(selectedPlayer)}</span> to transfer{' '}
                       <span className="text-gold-300">{amountValid ? formatMoney(amountCents) : 'the amount'}</span>{' '}
                       to the venue PayID from their banking app, then confirm the funds have landed in the
@@ -423,7 +423,7 @@ export default function Deposit() {
                         disabled={busy || !amountValid}
                         className="accent-gold-500 mt-0.5"
                       />
-                      <span className={amountValid ? 'text-white/80' : 'text-white/40'}>
+                      <span className={amountValid ? 'text-white/80' : 'text-white/55'}>
                         I've confirmed {amountValid ? formatMoney(amountCents) : 'the amount'} was received in
                         the venue account.
                       </span>
@@ -453,7 +453,7 @@ export default function Deposit() {
                         <span className="text-white">{playerDisplayName(selectedPlayer)}</span> via{' '}
                         {methodLabel(method)}.
                       </p>
-                      <p className="text-sm text-white/50 mb-3">
+                      <p className="text-sm text-white/65 mb-3">
                         New wallet balance will be {formatMoney(selectedPlayer.walletBalance + amountCents)}.
                       </p>
                       <div className="flex items-center justify-end gap-3">
@@ -461,7 +461,7 @@ export default function Deposit() {
                           type="button"
                           onClick={() => setConfirming(false)}
                           disabled={busy}
-                          className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                          className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
                         >
                           Back
                         </button>

@@ -60,18 +60,18 @@ export default function PlayerNew() {
       <button
         type="button"
         onClick={() => navigate('/desk/players')}
-        className="text-sm text-white/50 hover:text-white mb-4"
+        className="text-sm text-white/65 hover:text-white mb-4"
       >
         ← Back to players
       </button>
 
       <div className="flex items-baseline justify-between gap-4 mb-2">
         <h1 className="font-display text-3xl md:text-4xl text-gold-400">New player</h1>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
           Phase 3 — task 3.3
         </span>
       </div>
-      <p className="text-white/50 text-sm mb-6">
+      <p className="text-white/65 text-sm mb-6">
         First name, last name, and phone are required. Everything else can be added later.
       </p>
 
@@ -88,7 +88,7 @@ export default function PlayerNew() {
           type="button"
           onClick={() => navigate('/desk/players')}
           disabled={saving}
-          className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+          className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
         >
           Cancel
         </button>

@@ -86,11 +86,11 @@ export default function Reconciliation() {
       {/* Header */}
       <div className="flex items-baseline justify-between gap-4 mb-2">
         <h1 className="font-display text-3xl md:text-4xl text-gold-400">Reconciliation</h1>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
           Phase 4 — task 4.9
         </span>
       </div>
-      <p className="text-white/50 text-sm mb-6">
+      <p className="text-white/65 text-sm mb-6">
         End-of-day totals to hold against the till count, EFTPOS settlement, and bank statement.
         The app records money movement — the till, terminal, and bank are the source of the cash.
       </p>
@@ -98,7 +98,7 @@ export default function Reconciliation() {
       {/* Filter bar */}
       <div className="bg-felt-800 border border-white/5 rounded-lg p-4 md:p-5 mb-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 mr-2">Date</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 mr-2">Date</span>
           {RECON_DATE_PRESETS.map((p) => (
             <button
               key={p.id}
@@ -108,7 +108,7 @@ export default function Reconciliation() {
                 'px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wider ' +
                 (datePresetId === p.id
                   ? 'bg-gold-500/20 text-gold-300'
-                  : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white active:bg-white/15')
+                  : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white active:bg-white/15')
               }
             >
               {p.label}
@@ -120,7 +120,7 @@ export default function Reconciliation() {
               type="button"
               onClick={reload}
               disabled={loading || mockMode}
-              className="px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white hover:bg-white/5 active:bg-white/10 disabled:opacity-50"
+              className="px-3 py-2 rounded-lg text-xs text-white/65 hover:text-white hover:bg-white/5 active:bg-white/10 disabled:opacity-50"
             >
               {loading ? 'Loading…' : 'Refresh'}
             </button>
@@ -131,7 +131,7 @@ export default function Reconciliation() {
               className={
                 'px-3 py-2 rounded-lg text-xs font-medium ' +
                 (loading || mockMode
-                  ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                  ? 'bg-white/5 text-white/45 cursor-not-allowed'
                   : 'bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35')
               }
             >
@@ -144,7 +144,7 @@ export default function Reconciliation() {
               className={
                 'px-3 py-2 rounded-lg text-xs font-medium ' +
                 (loading || mockMode
-                  ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                  ? 'bg-white/5 text-white/45 cursor-not-allowed'
                   : 'bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35')
               }
             >
@@ -155,7 +155,7 @@ export default function Reconciliation() {
 
         {datePresetId === 'custom' && (
           <div className="flex flex-wrap items-center gap-3">
-            <label className="text-xs text-white/60 flex items-center gap-2">
+            <label className="text-xs text-white/70 flex items-center gap-2">
               From
               <input
                 type="date"
@@ -164,7 +164,7 @@ export default function Reconciliation() {
                 className="bg-felt-900 border border-white/10 rounded px-2 py-1 text-sm"
               />
             </label>
-            <label className="text-xs text-white/60 flex items-center gap-2">
+            <label className="text-xs text-white/70 flex items-center gap-2">
               To
               <input
                 type="date"
@@ -185,7 +185,7 @@ export default function Reconciliation() {
       ) : error ? (
         <EmptyState title="Couldn't load transactions." body={error.message} tone="error" />
       ) : loading ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : (
         <>
           {/* Headline: totals per external method — the reconciliation line */}
@@ -291,7 +291,7 @@ export default function Reconciliation() {
           <div className="flex items-baseline justify-between mb-2">
             <h2 className="font-display text-xl text-white">
               Transactions
-              <span className="ml-2 text-sm font-body text-white/40">
+              <span className="ml-2 text-sm font-body text-white/55">
                 {report.transactionCount} in range
               </span>
             </h2>
@@ -316,11 +316,11 @@ function HeadlineCard({ label, sub, cents, tone = 'in' }) {
   const amountClass = tone === 'out' ? 'text-red-300' : 'text-gold-300'
   return (
     <div className="bg-felt-800 border border-white/5 rounded-lg p-4">
-      <div className="text-[10px] font-mono uppercase tracking-widest text-white/40">{label}</div>
+      <div className="text-[10px] font-mono uppercase tracking-widest text-white/55">{label}</div>
       <div className={`font-display text-2xl md:text-3xl mt-1 ${amountClass}`}>
         {formatMoney(cents)}
       </div>
-      <div className="text-[11px] text-white/40 mt-1">{sub}</div>
+      <div className="text-[11px] text-white/55 mt-1">{sub}</div>
     </div>
   )
 }
@@ -328,7 +328,7 @@ function HeadlineCard({ label, sub, cents, tone = 'in' }) {
 function SummaryCard({ title, children, className = '' }) {
   return (
     <div className={`bg-felt-800 border border-white/5 rounded-lg p-4 md:p-5 ${className}`}>
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-3">{title}</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-3">{title}</h3>
       <div className="divide-y divide-white/5">{children}</div>
     </div>
   )
@@ -338,12 +338,12 @@ function SummaryRow({ label, bucket }) {
   const muted = bucket.count === 0
   return (
     <div className="flex items-center justify-between py-1.5 text-sm">
-      <span className={muted ? 'text-white/30' : 'text-white/70'}>{label}</span>
+      <span className={muted ? 'text-white/45' : 'text-white/70'}>{label}</span>
       <span className="flex items-baseline gap-3">
-        <span className={`text-xs font-mono ${muted ? 'text-white/20' : 'text-white/40'}`}>
+        <span className={`text-xs font-mono ${muted ? 'text-white/35' : 'text-white/55'}`}>
           ×{bucket.count}
         </span>
-        <span className={`font-mono ${muted ? 'text-white/30' : 'text-white/90'}`}>
+        <span className={`font-mono ${muted ? 'text-white/45' : 'text-white/90'}`}>
           {formatMoney(bucket.total)}
         </span>
       </span>
@@ -373,7 +373,7 @@ function EmptyState({ title, body, tone = 'neutral' }) {
   return (
     <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
       <div className="font-display text-lg text-white mb-1">{title}</div>
-      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
+      {body && <p className="text-sm text-white/65 max-w-md mx-auto">{body}</p>}
     </div>
   )
 }
@@ -383,7 +383,7 @@ function DetailTable({ transactions }) {
     <div className="bg-felt-800 border border-white/5 rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
             <tr>
               <th className="text-left px-4 py-2 whitespace-nowrap">Timestamp</th>
               <th className="text-left px-4 py-2 whitespace-nowrap">Type</th>
@@ -409,7 +409,7 @@ function DetailTable({ transactions }) {
                     {tx.playerId}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 whitespace-nowrap text-xs text-white/60">
+                <td className="px-4 py-2.5 whitespace-nowrap text-xs text-white/70">
                   {ledgerMethodLabel(tx)}
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-xs text-white/90 whitespace-nowrap">

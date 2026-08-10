@@ -51,7 +51,7 @@ export default function TdLanding() {
         <h1 className="font-display text-3xl md:text-4xl text-white">
           Run the room.
         </h1>
-        <p className="text-white/50 text-sm mt-2">
+        <p className="text-white/65 text-sm mt-2">
           Tournament setup, the live clock, seating, and payouts.
         </p>
       </div>

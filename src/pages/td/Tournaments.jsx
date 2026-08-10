@@ -157,11 +157,11 @@ export default function Tournaments() {
     <div className="px-6 py-8 md:px-10 md:py-10">
       <div className="flex items-baseline justify-between gap-4 mb-2">
         <h1 className="font-display text-3xl md:text-4xl text-gold-400">Tournaments</h1>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
           Phase 2 — task 2.2
         </span>
       </div>
-      <p className="text-white/50 text-sm mb-6">
+      <p className="text-white/65 text-sm mb-6">
         Every tournament — running, scheduled, and finished. Open one to manage its clock, tables,
         and payouts, or to register players.
       </p>
@@ -174,7 +174,7 @@ export default function Tournaments() {
       ) : error ? (
         <EmptyState title="Couldn't load tournaments." body={error.message} tone="error" />
       ) : loading ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -188,11 +188,11 @@ export default function Tournaments() {
                     'px-3 py-1.5 rounded-full text-xs font-medium ' +
                     (filter === f.id
                       ? 'bg-gold-500/20 text-gold-300'
-                      : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80')
+                      : 'bg-white/5 text-white/65 hover:bg-white/10 hover:text-white/80')
                   }
                 >
                   {f.label}
-                  <span className="ml-1.5 text-white/30">{counts[f.id]}</span>
+                  <span className="ml-1.5 text-white/45">{counts[f.id]}</span>
                 </button>
               ))}
             </div>
@@ -229,7 +229,7 @@ export default function Tournaments() {
           ) : (
             <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+                <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
                   <tr>
                     {SORT_COLUMNS.map((col) => {
                       const active = sortKey === col.key
@@ -274,7 +274,7 @@ export default function Tournaments() {
                           {t.name}
                         </Link>
                         {(t.isMultiDay || t.isMultiFlight) && (
-                          <span className="ml-2 text-[10px] font-mono uppercase tracking-wider text-white/30">
+                          <span className="ml-2 text-[10px] font-mono uppercase tracking-wider text-white/45">
                             {t.isMultiFlight ? 'multi-flight' : 'multi-day'}
                           </span>
                         )}
@@ -303,7 +303,7 @@ function EmptyState({ title, body, tone = 'neutral' }) {
   return (
     <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
       <div className="font-display text-lg text-white mb-1">{title}</div>
-      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
+      {body && <p className="text-sm text-white/65 max-w-md mx-auto">{body}</p>}
     </div>
   )
 }

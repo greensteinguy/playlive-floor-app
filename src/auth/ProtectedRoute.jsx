@@ -19,7 +19,7 @@ export function ProtectedRoute({ children, requiredRoles }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-felt-900 text-white/60 flex items-center justify-center font-body">
+      <div className="min-h-screen bg-felt-900 text-white/70 flex items-center justify-center font-body">
         Loading…
       </div>
     )

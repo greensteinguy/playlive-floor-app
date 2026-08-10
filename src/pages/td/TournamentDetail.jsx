@@ -338,7 +338,7 @@ export default function TournamentDetail() {
       <button
         type="button"
         onClick={() => navigate('/td/tournaments')}
-        className="text-sm text-white/50 hover:text-white mb-4"
+        className="text-sm text-white/65 hover:text-white mb-4"
       >
         ← Back to tournaments
       </button>
@@ -356,13 +356,13 @@ export default function TournamentDetail() {
           body="This tournament may have been removed, or the link is out of date."
         />
       ) : loading || !tournament || !form ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : (
         <>
           <TopBar t={tournament} role={role} />
 
           {!canEdit && (
-            <div className="bg-felt-800 border border-white/10 rounded-lg px-4 py-2 mb-5 text-xs text-white/50">
+            <div className="bg-felt-800 border border-white/10 rounded-lg px-4 py-2 mb-5 text-xs text-white/65">
               Read-only access — ask a manager or TD to make changes.
             </div>
           )}
@@ -381,7 +381,7 @@ export default function TournamentDetail() {
                   'px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ' +
                   (tab === tb.id
                     ? 'border-gold-400 text-gold-300'
-                    : 'border-transparent text-white/50 hover:text-white/80')
+                    : 'border-transparent text-white/65 hover:text-white/80')
                 }
               >
                 {tb.label}
@@ -436,7 +436,7 @@ export default function TournamentDetail() {
                 <Section title="Mystery bounty">
                   <div className="md:col-span-2">
                     <BountyValues values={form.bountyValues} onChange={(vals) => set({ bountyValues: vals })} disabled={d} />
-                    <p className="text-[11px] text-white/40 mt-2">Total bounty pool is the sum of the values above.</p>
+                    <p className="text-[11px] text-white/55 mt-2">Total bounty pool is the sum of the values above.</p>
                   </div>
                 </Section>
               )}
@@ -448,7 +448,7 @@ export default function TournamentDetail() {
           {tab === 'structure' && (
             <>
               <section className="mb-5">
-                <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Format</h3>
+                <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Format</h3>
                 <div className="bg-felt-800 border border-white/5 rounded-lg p-4 flex flex-col gap-2">
                   <Toggle label="Multi-day" checked={form.isMultiDay} onChange={setMultiDay} disabled={d} />
                   <Toggle label="Multi-flight" checked={form.isMultiFlight} onChange={setMultiFlight} disabled={d} hint="Implies multi-day" />
@@ -457,7 +457,7 @@ export default function TournamentDetail() {
               </section>
 
               <section className="mb-5">
-                <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Blind structure</h3>
+                <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Blind structure</h3>
                 <div className="bg-felt-800 border border-white/5 rounded-lg p-4 space-y-3">
                   <div className="max-w-sm">
                     <Select
@@ -525,9 +525,9 @@ function StatusControls({ status, role, busy, onChange }) {
     <section className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 mb-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 mr-1">Floor controls</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 mr-1">Floor controls</span>
           {nextStatuses.length === 0 ? (
-            <span className="text-xs text-white/40">
+            <span className="text-xs text-white/55">
               No standard next step — tournament is {statusLabel(status).toLowerCase()}.
             </span>
           ) : (
@@ -548,7 +548,7 @@ function StatusControls({ status, role, busy, onChange }) {
           <button
             type="button"
             onClick={() => setOverrideOpen((o) => !o)}
-            className="text-xs text-white/50 hover:text-white"
+            className="text-xs text-white/65 hover:text-white"
           >
             {overrideOpen ? 'Close override' : 'Override status…'}
           </button>
@@ -586,7 +586,7 @@ function StatusControls({ status, role, busy, onChange }) {
           </p>
           <div className="flex flex-wrap gap-2 items-end">
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Set status to</span>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Set status to</span>
               <select
                 value={overrideTo}
                 onChange={(e) => setOverrideTo(e.target.value)}
@@ -601,7 +601,7 @@ function StatusControls({ status, role, busy, onChange }) {
               </select>
             </label>
             <label className="flex flex-col gap-1 flex-1 min-w-[12rem]">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Reason</span>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Reason</span>
               <input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
@@ -639,7 +639,7 @@ function TopBar({ t, role }) {
           <h1 className="font-display text-2xl md:text-3xl text-gold-400">{t.name}</h1>
           <StatusBadge status={t.status} />
           {(t.isMultiDay || t.isMultiFlight) && (
-            <span className="text-[10px] font-mono uppercase tracking-wider text-white/30">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-white/45">
               {t.isMultiFlight ? 'multi-flight' : 'multi-day'}
             </span>
           )}
@@ -699,7 +699,7 @@ function TopBar({ t, role }) {
 function Meta({ label, value }) {
   return (
     <div className="flex flex-col">
-      <span className="text-[10px] font-mono uppercase tracking-widest text-white/30">{label}</span>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-white/45">{label}</span>
       <span className="text-sm text-white/80 tabular-nums">{value}</span>
     </div>
   )
@@ -714,7 +714,7 @@ function SaveBar({ onSave, saving, label }) {
         disabled={saving}
         className={
           'px-4 py-2 rounded-lg text-sm font-medium ' +
-          (saving ? 'bg-white/5 text-white/30 cursor-not-allowed' : 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30')
+          (saving ? 'bg-white/5 text-white/45 cursor-not-allowed' : 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30')
         }
       >
         {saving ? 'Saving…' : label}
@@ -841,7 +841,7 @@ function PlayersTab({ t, onChanged }) {
       ) : error ? (
         <EmptyState title="Couldn't load the roster." body={error.message} tone="error" />
       ) : loading ? (
-        <div className="py-8 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-8 text-center text-white/55 text-sm">Loading…</div>
       ) : rows.length === 0 ? (
         <EmptyState
           title="No players registered yet."
@@ -863,7 +863,7 @@ function PlayersTab({ t, onChanged }) {
           </div>
           <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+              <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
                 <tr>
                   <th className="text-left px-4 py-2">Player</th>
                   <th className="text-left px-4 py-2 whitespace-nowrap">Entry</th>
@@ -893,20 +893,20 @@ function PlayersTab({ t, onChanged }) {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-white/70 whitespace-nowrap">
                       {entryTypeLabel(e.entryType)} #{e.entryNumber}
                     </td>
-                    <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">{paymentMethodLabel(e.paymentMethod)}</td>
+                    <td className="px-4 py-2.5 text-white/70 whitespace-nowrap">{paymentMethodLabel(e.paymentMethod)}</td>
                     <td className="px-4 py-2.5 text-right text-white/70 tabular-nums whitespace-nowrap">
                       {formatMoney(e.paymentAmount)}
                     </td>
-                    <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-white/70 whitespace-nowrap">
                       {entryResultLabel(e)}
                       {canEdit &&
                         e.bustedAt !== null &&
                         (undoEntryId === e.id ? (
                           <span className="ml-2 inline-flex items-center gap-3">
-                            <span className="text-[11px] text-white/50">Undo elimination?</span>
+                            <span className="text-[11px] text-white/65">Undo elimination?</span>
                             <button
                               type="button"
                               onClick={() => handleUndoElimination(e)}
@@ -919,7 +919,7 @@ function PlayersTab({ t, onChanged }) {
                               type="button"
                               onClick={() => setUndoEntryId(null)}
                               disabled={undoBusy}
-                              className="px-3 py-2 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                              className="px-3 py-2 rounded text-xs text-white/70 hover:text-white hover:bg-white/5"
                             >
                               Cancel
                             </button>
@@ -945,7 +945,7 @@ function PlayersTab({ t, onChanged }) {
                               placeholder="Reason (required)"
                               disabled={voidBusy}
                               autoFocus
-                              className="w-44 px-3 py-2 rounded bg-felt-900 border border-white/10 text-xs text-white/90 placeholder-white/30 focus:outline-none focus:border-gold-500/40"
+                              className="w-44 px-3 py-2 rounded bg-felt-900 border border-white/10 text-xs text-white/90 placeholder-white/45 focus:outline-none focus:border-gold-500/40"
                             />
                             <button
                               type="button"
@@ -962,7 +962,7 @@ function PlayersTab({ t, onChanged }) {
                                 setVoidReason('')
                               }}
                               disabled={voidBusy}
-                              className="px-3 py-2 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                              className="px-3 py-2 rounded text-xs text-white/70 hover:text-white hover:bg-white/5"
                             >
                               Cancel
                             </button>
@@ -992,7 +992,7 @@ function PlayersTab({ t, onChanged }) {
               later finishers are not renumbered). */}
           {busted.length > 0 && (
             <section>
-              <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">
+              <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">
                 Finishing order — {busted.length} out
               </h3>
               <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3">
@@ -1003,7 +1003,7 @@ function PlayersTab({ t, onChanged }) {
                         {e.finishingPlace != null ? ordinal(e.finishingPlace) : '—'}
                       </span>
                       <span className="text-white/90 truncate">{nameOf(e)}</span>
-                      <span className="ml-auto text-xs text-white/40 whitespace-nowrap">{fmtDateTime(e.bustedAt)}</span>
+                      <span className="ml-auto text-xs text-white/55 whitespace-nowrap">{fmtDateTime(e.bustedAt)}</span>
                     </li>
                   ))}
                 </ul>
@@ -1072,10 +1072,10 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
   return (
     <div className="space-y-5">
       <section>
-        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Payout type</h3>
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Payout type</h3>
         <div className="bg-felt-800 border border-white/5 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Distribute by</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Distribute by</span>
             <div className="flex gap-1">
               {[
                 { id: 'byPercent', label: 'Percentage' },
@@ -1090,7 +1090,7 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
                     'px-3 py-2 rounded-lg text-xs font-medium disabled:opacity-50 ' +
                     (form.payoutType === opt.id
                       ? 'bg-gold-500/20 text-gold-200'
-                      : 'bg-white/5 text-white/60 hover:bg-white/10')
+                      : 'bg-white/5 text-white/70 hover:bg-white/10')
                   }
                 >
                   {opt.label}
@@ -1106,7 +1106,7 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
             disabled={disabled}
           />
         </div>
-        <p className="text-[11px] text-white/40 mt-2">
+        <p className="text-[11px] text-white/55 mt-2">
           {byPercent
             ? 'Each place gets a share of the prize pool; cash is calculated at the end using the rounding rule.'
             : 'Each place gets a fixed cash amount, regardless of the final prize pool.'}
@@ -1114,10 +1114,10 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
       </section>
 
       <section>
-        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Auto-fill</h3>
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Auto-fill</h3>
         <div className="bg-felt-800 border border-white/5 rounded-lg p-4 flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">% of field paid</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">% of field paid</span>
             <div className="relative w-32">
               <input
                 type="text"
@@ -1128,7 +1128,7 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
                 disabled={disabled}
                 className="w-full bg-felt-900 border border-white/10 rounded pl-3 pr-7 py-2 text-sm disabled:opacity-50"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">%</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/45 text-sm pointer-events-none">%</span>
             </div>
           </label>
           <button
@@ -1139,20 +1139,20 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
           >
             Auto-fill places
           </button>
-          <p className="text-[11px] text-white/40 flex-1 min-w-[12rem]">
+          <p className="text-[11px] text-white/55 flex-1 min-w-[12rem]">
             {derivedPlaces > 0
               ? `${entryCount} entries × ${form.payoutPercentPaid || 0}% → ${derivedPlaces} paid place${derivedPlaces === 1 ? '' : 's'}.`
               : entryCount > 0
                 ? 'Enter a percentage to compute how many places get paid.'
                 : 'No entries yet — auto-fill re-spreads the current places down the curve, or add places manually below.'}
-            <span className="block text-white/25 mt-0.5">Uses a standard descending curve (venue payout CSV will replace this).</span>
+            <span className="block text-white/40 mt-0.5">Uses a standard descending curve (venue payout CSV will replace this).</span>
           </p>
         </div>
       </section>
 
       <section>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Paid places</h3>
+          <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55">Paid places</h3>
           <button
             type="button"
             onClick={addRow}
@@ -1164,7 +1164,7 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
         </div>
         <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
               <tr>
                 <th className="text-left px-4 py-2 w-16">Place</th>
                 <th className="text-left px-4 py-2">{byPercent ? 'Percent' : 'Payout'}</th>
@@ -1188,11 +1188,11 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
                           disabled={disabled}
                           className="w-full bg-felt-900 border border-white/10 rounded pl-3 pr-7 py-1.5 text-sm disabled:opacity-50"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">%</span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/45 text-sm pointer-events-none">%</span>
                       </div>
                     ) : (
                       <div className="relative w-32">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/45 text-sm pointer-events-none">$</span>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -1206,7 +1206,7 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
                     )}
                   </td>
                   {byPercent && (
-                    <td className="px-4 py-2 text-right text-white/60 tabular-nums whitespace-nowrap">
+                    <td className="px-4 py-2 text-right text-white/70 tabular-nums whitespace-nowrap">
                       {formatMoney(cashFor(p))}
                     </td>
                   )}
@@ -1216,7 +1216,7 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
                       onClick={() => removeRow(i)}
                       disabled={disabled || rows.length <= 1}
                       aria-label={`Remove place ${i + 1}`}
-                      className="text-white/30 hover:text-red-300 disabled:opacity-30 disabled:hover:text-white/30"
+                      className="text-white/45 hover:text-red-300 disabled:opacity-30 disabled:hover:text-white/45"
                     >
                       ×
                     </button>
@@ -1226,7 +1226,7 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
             </tbody>
             <tfoot className="border-t border-white/10">
               <tr className="text-[11px]">
-                <td className="px-4 py-2 font-mono uppercase tracking-widest text-white/40">Total</td>
+                <td className="px-4 py-2 font-mono uppercase tracking-widest text-white/55">Total</td>
                 <td className="px-4 py-2">
                   {byPercent ? (
                     <span className={'tabular-nums ' + (pctOk ? 'text-emerald-300' : 'text-amber-300')}>
@@ -1246,7 +1246,7 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
             </tfoot>
           </table>
         </div>
-        <p className="text-[11px] text-white/40 mt-2">
+        <p className="text-[11px] text-white/55 mt-2">
           {byPercent
             ? prizePool > 0
               ? `Distributing ${formatMoney(distributed)} of the ${formatMoney(prizePool)} prize pool (estimate — rounding is applied per place).`

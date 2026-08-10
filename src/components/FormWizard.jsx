@@ -29,7 +29,7 @@ export default function FormWizard({ steps, current, onStepChange, errorKeys = [
               aria-current={active ? 'step' : undefined}
               className={
                 'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ' +
-                (active ? 'bg-gold-500/20 text-gold-200' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80')
+                (active ? 'bg-gold-500/20 text-gold-200' : 'bg-white/5 text-white/65 hover:bg-white/10 hover:text-white/80')
               }
             >
               <span
@@ -39,7 +39,7 @@ export default function FormWizard({ steps, current, onStepChange, errorKeys = [
                     ? 'bg-red-500/30 text-red-200'
                     : active
                       ? 'bg-gold-500/30 text-gold-100'
-                      : 'bg-white/10 text-white/50')
+                      : 'bg-white/10 text-white/65')
                 }
               >
                 {hasError ? '!' : i + 1}
@@ -57,7 +57,7 @@ export default function FormWizard({ steps, current, onStepChange, errorKeys = [
           type="button"
           onClick={() => onStepChange(current - 1)}
           disabled={atFirst}
-          className="px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="px-3 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           ← Back
         </button>
