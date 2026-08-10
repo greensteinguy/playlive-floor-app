@@ -905,13 +905,13 @@ function PlayersTab({ t, onChanged }) {
                       {canEdit &&
                         e.bustedAt !== null &&
                         (undoEntryId === e.id ? (
-                          <span className="ml-2 inline-flex items-center gap-1.5">
+                          <span className="ml-2 inline-flex items-center gap-3">
                             <span className="text-[11px] text-white/50">Undo elimination?</span>
                             <button
                               type="button"
                               onClick={() => handleUndoElimination(e)}
                               disabled={undoBusy}
-                              className="px-2 py-0.5 rounded text-[11px] font-medium bg-gold-500/20 text-gold-200 hover:bg-gold-500/30 disabled:opacity-40"
+                              className="px-3 py-2 rounded text-xs font-medium bg-gold-500/20 text-gold-200 hover:bg-gold-500/30 disabled:opacity-40"
                             >
                               {undoBusy ? 'Undoing…' : 'Yes, undo'}
                             </button>
@@ -919,7 +919,7 @@ function PlayersTab({ t, onChanged }) {
                               type="button"
                               onClick={() => setUndoEntryId(null)}
                               disabled={undoBusy}
-                              className="px-2 py-0.5 rounded text-[11px] text-white/60 hover:text-white hover:bg-white/5"
+                              className="px-3 py-2 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
                             >
                               Cancel
                             </button>
@@ -929,7 +929,7 @@ function PlayersTab({ t, onChanged }) {
                             type="button"
                             onClick={() => setUndoEntryId(e.id)}
                             disabled={undoBusy}
-                            className="ml-2 text-[11px] text-gold-300/80 hover:text-gold-200 underline disabled:opacity-40"
+                            className="ml-2 px-3 py-2 rounded text-xs text-gold-300/80 hover:text-gold-200 bg-gold-500/10 hover:bg-gold-500/20 disabled:opacity-40"
                           >
                             undo
                           </button>
@@ -937,7 +937,7 @@ function PlayersTab({ t, onChanged }) {
                       {canVoid &&
                         e.bustedAt === null &&
                         (voidEntryId === e.id ? (
-                          <span className="ml-2 inline-flex items-center gap-1.5">
+                          <span className="ml-2 inline-flex items-center gap-3">
                             <input
                               type="text"
                               value={voidReason}
@@ -945,13 +945,13 @@ function PlayersTab({ t, onChanged }) {
                               placeholder="Reason (required)"
                               disabled={voidBusy}
                               autoFocus
-                              className="w-44 px-2 py-0.5 rounded bg-felt-900 border border-white/10 text-[11px] text-white/90 placeholder-white/30 focus:outline-none focus:border-gold-500/40"
+                              className="w-44 px-3 py-2 rounded bg-felt-900 border border-white/10 text-xs text-white/90 placeholder-white/30 focus:outline-none focus:border-gold-500/40"
                             />
                             <button
                               type="button"
                               onClick={() => handleVoidEntry(e)}
                               disabled={voidBusy}
-                              className="px-2 py-0.5 rounded text-[11px] font-medium bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 disabled:opacity-40"
+                              className="px-3 py-2 rounded text-xs font-medium bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 disabled:opacity-40"
                             >
                               {voidBusy ? 'Voiding…' : 'Void & refund'}
                             </button>
@@ -962,7 +962,7 @@ function PlayersTab({ t, onChanged }) {
                                 setVoidReason('')
                               }}
                               disabled={voidBusy}
-                              className="px-2 py-0.5 rounded text-[11px] text-white/60 hover:text-white hover:bg-white/5"
+                              className="px-3 py-2 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
                             >
                               Cancel
                             </button>
@@ -975,7 +975,7 @@ function PlayersTab({ t, onChanged }) {
                               setVoidReason('')
                             }}
                             disabled={voidBusy}
-                            className="ml-2 text-[11px] text-rose-300/70 hover:text-rose-200 underline disabled:opacity-40"
+                            className="ml-2 px-3 py-2 rounded text-xs text-rose-300/70 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40"
                           >
                             void
                           </button>

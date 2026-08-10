@@ -18,12 +18,13 @@ function fieldLabel(label) {
   return <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{label}</span>
 }
 
-export function Text({ label, value, onChange, placeholder, disabled }) {
+export function Text({ label, value, onChange, placeholder, disabled, inputMode }) {
   return (
     <label className="flex flex-col gap-1">
       {fieldLabel(label)}
       <input
         type="text"
+        inputMode={inputMode}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

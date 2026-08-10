@@ -11,7 +11,7 @@ that's the point).
 
 | Email | Role | You see |
 |---|---|---|
-| admin@playlive.melbourne | manager | Everything |
+| manager@playlive.melbourne | manager | Everything |
 | td@playlive.melbourne | td | Floor tools: clock, tables, floor controls |
 | cashier@playlive.melbourne | cashier | Desk tools: players, registration, deposits |
 | readonly@playlive.melbourne | readonly | Look, don't touch |
@@ -50,7 +50,7 @@ that's the point).
 3. **Floor controls** on the tournament page: walk the status forward.
 4. Check the tournament list sorting and filters.
 
-## What to try — Manager (admin login)
+## What to try — Manager (manager login)
 
 1. Everything above, plus:
 2. **Create a tournament** from scratch (ZZTEST prefix, status Draft) — is the

@@ -1137,7 +1137,7 @@ export default function Tables() {
                               onClick={() => handleSetActive(table.id, !isActive)}
                               disabled={busy}
                               className={
-                                'px-2 py-0.5 rounded text-[10px] font-medium disabled:opacity-30 ' +
+                                'px-3 py-2 min-h-[44px] rounded text-xs font-medium disabled:opacity-30 ' +
                                 (isActive
                                   ? 'text-amber-300/80 bg-amber-500/10 hover:bg-amber-500/20'
                                   : 'text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25')
@@ -1154,7 +1154,7 @@ export default function Tables() {
                                   ? 'Close this table (move any players to the other active tables)'
                                   : 'Nowhere to move the players — activate another table first'
                               }
-                              className="px-2 py-0.5 rounded text-[10px] font-medium text-red-300/80 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-30"
+                              className="px-3 py-2 min-h-[44px] rounded text-xs font-medium text-red-300/80 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-30"
                             >
                               Close
                             </button>
@@ -1171,7 +1171,7 @@ export default function Tables() {
 
                       {/* At-a-glance ✓/✗ seat map (always shown). Click a seat to pick up
                           a player or drop the held one — same as the named list below. */}
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-2">
                         {seatsSorted.map((seat) => {
                           const occupied = !!seat.entryId
                           const isSel = occupied && seat.entryId === selectedEntryId
@@ -1192,7 +1192,12 @@ export default function Tables() {
                               onClick={() => interactive && handleSeatClick(table, seat)}
                               disabled={!interactive || busy}
                               title={occupied ? nameForEntry(entriesById[seat.entryId]) : `Seat ${seat.seatNumber} — empty`}
-                              className={'w-9 rounded border flex flex-col items-center justify-center py-1 disabled:cursor-default ' + pipClass}
+                              className={
+                                // 44px-min tap target — this pip is the TD's primary seating
+                                // control on the iPad (iPad pass 2026-08-10, finding B1)
+                                'w-11 min-h-[44px] rounded border flex flex-col items-center justify-center py-2 disabled:cursor-default ' +
+                                pipClass
+                              }
                             >
                               <span className="text-[9px] font-mono leading-none opacity-70">{seat.seatNumber}</span>
                               <span className="text-sm leading-none mt-0.5">{occupied ? '✓' : '✗'}</span>

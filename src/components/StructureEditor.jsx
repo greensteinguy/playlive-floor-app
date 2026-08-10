@@ -207,9 +207,10 @@ function NumField({ label, value, onChange, min = 0, width = 'w-20', disabled = 
 }
 
 function RowActions({ index, count, onMove, onRemove, disabled }) {
-  const btn = 'w-7 h-7 rounded flex items-center justify-center text-sm disabled:opacity-30 disabled:cursor-not-allowed'
+  // 44px targets — × deletes a blind level (iPad pass 2026-08-10, finding M8)
+  const btn = 'w-11 h-11 rounded flex items-center justify-center text-sm disabled:opacity-30 disabled:cursor-not-allowed'
   return (
-    <div className="flex items-center gap-1 ml-auto pb-0.5">
+    <div className="flex items-center gap-2 ml-auto pb-0.5">
       <button
         type="button"
         aria-label="Move up"

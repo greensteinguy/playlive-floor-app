@@ -33,7 +33,7 @@ you're testing — the app genuinely looks and behaves differently per role.
 
 | Login email | Role | What you see |
 |---|---|---|
-| admin@playlive.melbourne | Manager | Everything |
+| manager@playlive.melbourne | Manager | Everything |
 | td@playlive.melbourne | Tournament Director | Floor tools: clock, tables, seating |
 | cashier@playlive.melbourne | Cashier / Desk | Players, registration, deposits |
 | readonly@playlive.melbourne | Read-only | View everything, change nothing |

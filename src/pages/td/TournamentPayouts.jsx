@@ -59,12 +59,14 @@ function fmtTime(ts) {
   return d.toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
+// px-4 py-2.5 = ~40px tall — these drive the wallet-crediting confirms, so they
+// stay near the 44px iOS tap-target floor (iPad pass 2026-08-10, finding B3)
 const btnGold =
-  'px-3 py-1.5 rounded-lg text-xs font-medium bg-gold-500/20 text-gold-200 hover:bg-gold-500/30 border border-gold-500/40 disabled:opacity-40'
+  'px-4 py-2.5 rounded-lg text-sm font-medium bg-gold-500/20 text-gold-200 hover:bg-gold-500/30 border border-gold-500/40 disabled:opacity-40'
 const btnPlain =
-  'px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-white/70 hover:bg-white/10 border border-white/10 disabled:opacity-40'
+  'px-4 py-2.5 rounded-lg text-sm font-medium bg-white/5 text-white/70 hover:bg-white/10 border border-white/10 disabled:opacity-40'
 const btnGreen =
-  'px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 border border-emerald-500/30 disabled:opacity-40'
+  'px-4 py-2.5 rounded-lg text-sm font-medium bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 border border-emerald-500/30 disabled:opacity-40'
 
 export default function TournamentPayouts() {
   const { id } = useParams()
@@ -468,7 +470,7 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
                     <td className="px-4 py-2.5 text-right whitespace-nowrap">
                       {canConfirm && r.entryId && !r.isPaid && r.payableAmount > 0 && (
                         confirmEntryId === r.entryId ? (
-                          <span className="inline-flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-3">
                             <span className="text-[11px] text-white/50">
                               Credit {formatMoney(r.payableAmount)} to {nameOf(r.playerId)}'s wallet?
                             </span>
@@ -694,7 +696,7 @@ function BountySection({ tournament, entries, nameOf, canConfirm, user, role, to
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     {canConfirm && !d.walletTransactionId && (
                       confirmDrawId === d.id ? (
-                        <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-3">
                           <span className="text-[11px] text-white/50">
                             Credit {formatMoney(d.bountyValue)} to {nameOf(knockerPlayerId(d))}?
                           </span>
@@ -769,7 +771,7 @@ function TicketSection({ tournament, entries, nameOf, canConfirm, user, role, to
                   </span>
                 ) : canConfirm ? (
                   confirmEntryId === e.id ? (
-                    <span className="ml-auto inline-flex items-center gap-1.5">
+                    <span className="ml-auto inline-flex items-center gap-3">
                       <span className="text-[11px] text-white/50">
                         Issue a {formatMoney(e.ticketWinnings)} ticket to {nameOf(e.playerId)}?
                       </span>

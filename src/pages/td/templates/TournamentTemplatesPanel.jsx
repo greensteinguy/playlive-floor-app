@@ -114,7 +114,7 @@ export default function TournamentTemplatesPanel() {
           body="Create a reusable tournament config here to pre-fill the create form."
         />
       ) : (
-        <div className="bg-felt-800 border border-white/5 rounded-lg overflow-hidden">
+        <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
               <tr>

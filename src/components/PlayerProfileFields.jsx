@@ -16,8 +16,8 @@ export default function PlayerProfileFields({ form, set, disabled }) {
       </Section>
 
       <Section title="Contact">
-        <Text label="Phone" value={form.phone} onChange={(v) => set({ phone: v })} placeholder="0400 123 456" disabled={disabled} />
-        <Text label="Email (optional)" value={form.email} onChange={(v) => set({ email: v })} placeholder="jane@example.com" disabled={disabled} />
+        <Text label="Phone" value={form.phone} onChange={(v) => set({ phone: v })} placeholder="0400 123 456" disabled={disabled} inputMode="tel" />
+        <Text label="Email (optional)" value={form.email} onChange={(v) => set({ email: v })} placeholder="jane@example.com" disabled={disabled} inputMode="email" />
         <Text label="Street address (optional)" value={form.streetAddress} onChange={(v) => set({ streetAddress: v })} placeholder="1 Example St, Melbourne" disabled={disabled} />
         <Select label="Country (optional)" value={form.countryCode} onChange={(v) => set({ countryCode: v })} options={COUNTRY_OPTIONS} disabled={disabled} />
       </Section>
