@@ -483,13 +483,13 @@ function QueueRow({
         </td>
         <td className="px-4 py-3 text-right whitespace-nowrap">
           {isPending ? (
-            <div className="inline-flex items-center gap-2">
+            <div className="inline-flex items-center gap-3">
               {isManager && (
                 <button
                   type="button"
                   onClick={() => onStartAction('complete')}
                   disabled={busy}
-                  className="px-3 py-1.5 rounded text-xs font-medium bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 active:bg-emerald-500/35 disabled:opacity-40"
+                  className="px-4 py-2.5 rounded text-sm font-medium bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 active:bg-emerald-500/35 disabled:opacity-40"
                 >
                   Complete
                 </button>
@@ -498,7 +498,7 @@ function QueueRow({
                 type="button"
                 onClick={() => onStartAction('cancel')}
                 disabled={busy}
-                className="px-3 py-1.5 rounded text-xs bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90 disabled:opacity-40"
+                className="px-4 py-2.5 rounded text-sm bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90 disabled:opacity-40"
               >
                 Cancel
               </button>

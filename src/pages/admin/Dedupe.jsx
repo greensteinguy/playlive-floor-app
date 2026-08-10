@@ -132,7 +132,7 @@ function ListView({ groups, onPick, onExport }) {
         </button>
       </div>
 
-      <div className="bg-felt-800 border border-white/5 rounded-lg overflow-hidden">
+      <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
             <tr>
