@@ -41,7 +41,7 @@ export default function Sidebar({ onNavigate }) {
           CHECK RAISE
         </span>
         <p className="text-[10px] font-mono text-white/35 mt-1 tracking-[0.35em] uppercase">
-          PlayLive · Floor OS
+          Floor OS · by PlayLive
         </p>
       </div>
 
