@@ -187,6 +187,38 @@ body::after {
   animation: display-fade-out 700ms ease both;
 }
 
+/* Display v2 (see docs/display-design-notes.md) — bottom ticker strip. The
+   content is rendered twice back-to-back; sliding the pair by exactly -50%
+   loops seamlessly. Duration is set inline per content length. */
+@keyframes display-ticker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.display-ticker {
+  animation: display-ticker linear infinite;
+}
+
+/* Level-change pulse: one quick brightness/scale breath on the blinds row the
+   moment the level rolls over. Keyed remount triggers it. */
+@keyframes display-level-pulse {
+  0%   { transform: scale(1);    filter: brightness(1); }
+  25%  { transform: scale(1.06); filter: brightness(1.6); }
+  100% { transform: scale(1);    filter: brightness(1); }
+}
+.display-level-pulse {
+  animation: display-level-pulse 1.1s ease-out both;
+}
+
+/* Final-minute warning: the countdown digits breathe gently while red. Subtle
+   on purpose — the color change does the shouting, the motion draws the eye. */
+@keyframes display-hurry {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.82; }
+}
+.display-hurry {
+  animation: display-hurry 1s ease-in-out infinite;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
    App-wide glass upgrade. The two solid panel fills used across every page
    (`bg-felt-800` cards/tables, `bg-felt-900` sub-surfaces) become frosted &

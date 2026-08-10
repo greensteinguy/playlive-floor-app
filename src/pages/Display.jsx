@@ -1,9 +1,17 @@
-// Venue TV display (Phase 5, tasks 5.1–5.3) at /display.
+// Venue TV display (Phase 5, tasks 5.1–5.3; v2 pass per docs/display-design-notes.md).
 //
 // A read-only, full-screen rotation for the tournament TVs: per displayable
 // tournament, a blind-countdown screen and a prize-pool screen, crossfading
 // on a timer; multiple live tournaments rotate through the same deck. The
 // stats screen is v1.5+ (SOW v0.5) — deliberately absent.
+//
+// v2 additions (all stage-aware, all degrade to nothing rather than a gap):
+//   - segmented level track under the progress bar (levels until next break)
+//   - final-minute warning state + level-change pulse on the blinds row
+//   - break mode: cool-toned full-screen shift with a "back at H:MM" line
+//   - late-reg slot (closes-in countdown → "registration closed · paying N")
+//   - bottom ticker strip (payouts, guarantee, late-reg/buy-in info)
+//   - total chips in the counter strip; prizes slide sits out while pool is $0
 //
 // The clock face DERIVES level + countdown from the session's anchor fields
 // (lib/clock.js) with a local 250ms tick, exactly like the TD control screen —
@@ -21,7 +29,7 @@
 // Dev note: with VITE_USE_MOCK_DATA=true this page shows a "needs live data"
 // notice (same rule as the TD clock).
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useLiveTournaments, useSessionsByTournament } from '../hooks/useDisplay'
 import {
@@ -29,6 +37,7 @@ import {
   formatRemaining,
   clockSliceEndIndex,
   CLOCK_PAUSED,
+  CLOCK_RUNNING,
   CLOCK_STOPPED,
 } from '../lib/clock'
 import {
@@ -42,18 +51,21 @@ import {
   formatStartTime,
   formatUntilStart,
   formatDisplayMoney,
+  formatWallTime,
+  levelTrackSegment,
+  msUntilLateRegClose,
+  msUntilNextBreak,
+  formatCloseIn,
+  structureSummary,
+  tickerItems,
+  ordinalPlace,
 } from '../lib/display'
 import { materializePayouts } from '../lib/payouts'
 
 const TICK_MS = 250
 const CROSSFADE_MS = 700
-
-function ordinal(place) {
-  const mod100 = place % 100
-  if (mod100 >= 11 && mod100 <= 13) return `${place}th`
-  const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[place % 10] ?? 'th'
-  return `${place}${suffix}`
-}
+const FINAL_MINUTE_MS = 60_000
+const LEVEL_TRACK_MAX_BLOCKS = 14
 
 function entryLabel(entry) {
   if (!entry) return ''
@@ -64,6 +76,16 @@ function entryLabel(entry) {
 function entryBlinds(entry) {
   if (!entry || entry.type !== 'level') return null
   return `${entry.smallBlind.toLocaleString()} / ${entry.bigBlind.toLocaleString()}`
+}
+
+// A malformed payout structure must never take down the TV.
+function safePayouts(tournament) {
+  if (!tournament?.payoutStructure || tournament.totalPrizePool <= 0) return []
+  try {
+    return materializePayouts(tournament.payoutStructure, tournament.totalPrizePool)
+  } catch {
+    return []
+  }
 }
 
 export default function Display() {
@@ -184,7 +206,7 @@ export default function Display() {
           <div
             key={layer.key}
             className={
-              'absolute inset-0 flex items-center justify-center px-[4vw] py-[6vh] ' +
+              'absolute inset-0 flex items-center justify-center px-[4vw] pt-[6vh] pb-[8vh] ' +
               (isTop ? 'display-fade-in' : 'display-fade-out pointer-events-none')
             }
           >
@@ -216,7 +238,7 @@ function FullScreen({ timeOfDay, rotation, children }) {
       </div>
       <div className="absolute inset-0 flex items-center justify-center">{children}</div>
       {rotation && (
-        <div className="absolute bottom-[2.5vh] left-0 right-0 flex justify-center gap-2 z-10">
+        <div className="absolute bottom-[5.4vh] left-0 right-0 flex justify-center gap-2 z-10">
           {Array.from({ length: rotation.count }, (_, i) => (
             <span
               key={i}
@@ -246,16 +268,17 @@ function IdleScreen() {
 }
 
 function CounterStrip({ tournament }) {
-  const { entries, remaining, reentries, avgStack } = displayCounters(tournament)
+  const { entries, remaining, reentries, avgStack, totalChips } = displayCounters(tournament)
   const cells = [
     ['Entries', entries.toLocaleString()],
     ['Remaining', remaining.toLocaleString()],
     ['Re-entries', reentries.toLocaleString()],
     ['Avg stack', avgStack != null ? avgStack.toLocaleString() : '—'],
+    ['Total chips', totalChips != null ? totalChips.toLocaleString() : '—'],
     ['Prize pool', formatDisplayMoney(tournament.totalPrizePool)],
   ]
   return (
-    <div className="flex justify-center gap-[3vw] mt-[4vh]">
+    <div className="flex justify-center gap-[2.6vw] mt-[4vh]">
       {cells.map(([label, value]) => (
         <div key={label} className="text-center">
           <div className="font-mono uppercase tracking-[0.25em] text-[1.4vh] text-white/35 mb-[0.6vh]">{label}</div>
@@ -266,12 +289,120 @@ function CounterStrip({ tournament }) {
   )
 }
 
+/* ── v2 furniture ────────────────────────────────────────────────────────── */
+
+/**
+ * Segmented level track: one block per level in the current between-breaks
+ * stretch. Hidden when the segment is trivial or absurdly long (a wall of
+ * slivers reads worse than nothing).
+ */
+function LevelTrack({ structure, heroIndex, sliceEnd, breakInMs }) {
+  const segment = levelTrackSegment(structure, heroIndex, sliceEnd)
+  if (!segment || segment.blocks.length > LEVEL_TRACK_MAX_BLOCKS) return null
+  const breakIn = segment.endsInBreak && breakInMs != null ? formatCloseIn(breakInMs) : null
+  return (
+    <div className="mx-auto w-[46vw] flex items-center gap-[0.5vw] mb-[2vh]">
+      {segment.blocks.map((b) => (
+        <span
+          key={b.index}
+          className={
+            'h-[1vh] flex-1 rounded-[0.3vh] ' +
+            (b.state === 'done'
+              ? 'bg-brand-500/70'
+              : b.state === 'current'
+                ? 'bg-white shadow-[0_0_12px_rgba(255,255,255,0.5)]'
+                : 'bg-white/12')
+          }
+        />
+      ))}
+      <span className="font-mono uppercase tracking-[0.2em] text-[1.3vh] text-sky-300/80 ml-[0.6vw] whitespace-nowrap">
+        {segment.endsInBreak ? (breakIn ? `Break in ${breakIn}` : 'Break') : 'End'}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Stage-aware registration slot. Late reg open → closes-in countdown (or
+ * "through level N" before the clock runs); late reg closed → confirmation +
+ * places paid. Any other status renders nothing.
+ */
+function RegSlot({ tournament, derived, payoutCount }) {
+  const status = tournament.status
+  if (status === 'lateRegOpen') {
+    const running = derived && derived.state !== CLOCK_STOPPED
+    const closeMs = running
+      ? msUntilLateRegClose(
+          tournament.structure,
+          derived.currentIndex,
+          derived.remainingMs,
+          tournament.lateRegCutoffLevel,
+        )
+      : null
+    const buyIn = tournament.buyIn > 0 ? `${formatDisplayMoney(tournament.buyIn)} buy-in` : null
+    let lead
+    if (closeMs != null && closeMs > 0) lead = `Late reg closes in ${formatCloseIn(closeMs)}`
+    else if (closeMs === 0) lead = 'Late reg closing'
+    else if (tournament.lateRegCutoffLevel != null)
+      lead = `Late reg open through level ${tournament.lateRegCutoffLevel}`
+    else lead = 'Late reg open'
+    return (
+      <div className="font-mono uppercase tracking-[0.25em] text-[1.9vh] text-emerald-300 mt-[2.2vh]">
+        {lead}
+        {buyIn ? <span className="text-emerald-300/60"> · {buyIn}</span> : null}
+      </div>
+    )
+  }
+  if (status === 'lateRegClosed') {
+    return (
+      <div className="font-mono uppercase tracking-[0.25em] text-[1.7vh] text-white/40 mt-[2.2vh]">
+        Registration closed
+        {payoutCount > 0 ? ` · paying ${payoutCount} places` : ''}
+      </div>
+    )
+  }
+  return null
+}
+
+/**
+ * Bottom ticker strip. The item run is repeated until it is comfortably wider
+ * than the screen, then rendered twice — the -50% marquee loops seamlessly.
+ * No items → no ticker.
+ */
+function Ticker({ tournament, payouts }) {
+  const items = tickerItems(tournament, payouts)
+  if (items.length === 0) return null
+  const chars = items.join('').length
+  const reps = Math.max(1, Math.ceil(140 / Math.max(1, chars)))
+  const run = Array.from({ length: reps }, () => items).flat()
+  const durationS = Math.min(90, Math.max(24, run.join('').length * 0.35))
+  const half = (suffix) => (
+    <div className="flex items-center" aria-hidden={suffix === 'b'}>
+      {run.map((item, i) => (
+        <span key={`${suffix}${i}`} className="flex items-center whitespace-nowrap">
+          <span className="font-mono uppercase tracking-[0.18em] text-[1.9vh] text-white/70">{item}</span>
+          <span className="text-brand-400 text-[1.4vh] mx-[1.6vw]">◆</span>
+        </span>
+      ))}
+    </div>
+  )
+  return (
+    <div className="absolute bottom-0 inset-x-0 h-[4.6vh] border-t border-white/10 bg-black/45 flex items-center overflow-hidden">
+      <div className="display-ticker flex" style={{ animationDuration: `${durationS}s` }}>
+        {half('a')}
+        {half('b')}
+      </div>
+    </div>
+  )
+}
+
 /* ── Blind countdown ─────────────────────────────────────────────────────── */
 
 function ClockSlide({ tournament, sessions, nowMs }) {
   const session = pickDisplaySession(sessions)
   const multiSession = (sessions ?? []).filter((s) => s.status !== 'cancelled').length > 1
   const derived = session ? deriveClock(session, tournament.structure, nowMs) : null
+  const payouts = useMemo(() => safePayouts(tournament), [tournament])
 
   // Hero resolution mirrors the TD clock screen (TournamentClock.jsx): the
   // not-started preview shows the session's real first level, finished shows
@@ -311,6 +442,7 @@ function ClockSlide({ tournament, sessions, nowMs }) {
   const sliceEnd = session ? clockSliceEndIndex(session, tournament.structure.length) : -1
   const heroNext = heroIndex != null && heroIndex + 1 <= sliceEnd ? tournament.structure[heroIndex + 1] : null
   const onBreak = heroEntry?.type === 'break'
+  const isRunning = derived?.state === CLOCK_RUNNING && badge === 'RUNNING'
   const startTime = formatStartTime(tournament)
   const untilStart = formatUntilStart(msUntilStart(tournament, nowMs))
   const progress =
@@ -318,109 +450,184 @@ function ClockSlide({ tournament, sessions, nowMs }) {
       ? Math.min(1, derived.elapsedInLevelMs / derived.levelDurationMs)
       : 0
 
+  // Final-minute warning: only while genuinely counting down a level.
+  const hurry = isRunning && !onBreak && heroRemainingMs > 0 && heroRemainingMs <= FINAL_MINUTE_MS
+
+  // Level-change pulse: fires when the live index rolls, never on mount.
+  const [pulseKey, setPulseKey] = useState(0)
+  const prevHeroRef = useRef(null)
+  useEffect(() => {
+    if (prevHeroRef.current != null && heroIndex != null && heroIndex !== prevHeroRef.current) {
+      setPulseKey((k) => k + 1)
+    }
+    prevHeroRef.current = heroIndex
+  }, [heroIndex])
+
+  // Break mode: "back at H:MM" only means something while the clock is moving.
+  const backAt = onBreak && isRunning && heroRemainingMs > 0 ? formatWallTime(nowMs + heroRemainingMs) : null
+
   return (
-    <div className="text-center w-full max-w-[92vw]">
-      <div className="font-display text-[4.2vh] text-gold-300 mb-[1vh] truncate">{tournament.name}</div>
-      <div className={'font-mono uppercase tracking-[0.35em] text-[1.8vh] mb-[3vh] ' + badgeTone}>
-        {badge}
-        {multiSession && session ? ` · ${session.sessionLabel}` : ''}
-      </div>
-
-      {heroEntry ? (
-        <>
-          <div className="font-display text-[3vh] text-white/60 mb-[0.5vh]">{entryLabel(heroEntry)}</div>
-          {onBreak ? (
-            <div className="font-display text-[9vh] leading-tight text-sky-200">Break</div>
-          ) : (
-            <div className="font-display text-[9vh] leading-tight text-white tabular-nums">
-              {entryBlinds(heroEntry)}
-            </div>
-          )}
-          {!onBreak && heroEntry.ante > 0 && (
-            <div className="text-white/50 text-[2.6vh]">ante {heroEntry.ante.toLocaleString()}</div>
-          )}
-          <div className="font-display text-[22vh] leading-none text-white tabular-nums my-[2vh]">
-            {formatRemaining(heroRemainingMs)}
-          </div>
-          {/* level progress */}
-          <div className="mx-auto w-[46vw] h-[0.5vh] rounded-full bg-white/10 overflow-hidden mb-[2vh]">
-            <div
-              className="h-full bg-gradient-to-r from-brand-500 to-brand-400 transition-[width] duration-300"
-              style={{ width: `${Math.round(progress * 100)}%` }}
-            />
-          </div>
-          <div className="text-white/40 text-[2.2vh]">
-            {heroNext
-              ? `Next: ${heroNext.type === 'break' ? entryLabel(heroNext) : entryBlinds(heroNext)}`
-              : 'Final level'}
-          </div>
-        </>
-      ) : (
-        <>
-          {startTime && (
-            <div className="font-display text-[16vh] leading-none text-white tabular-nums my-[3vh]">{startTime}</div>
-          )}
-          <div className="text-white/50 text-[2.6vh]">{untilStart ?? 'Registration at the desk'}</div>
-        </>
+    <>
+      {onBreak && (
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(56,152,255,0.14),transparent_70%)]" />
       )}
+      <div className="relative text-center w-full max-w-[92vw]">
+        <div className="font-display text-[4.2vh] text-gold-300 mb-[1vh] truncate">{tournament.name}</div>
+        <div
+          className={
+            'font-mono uppercase tracking-[0.35em] text-[1.8vh] mb-[3vh] ' +
+            (onBreak ? 'text-sky-300' : badgeTone)
+          }
+        >
+          {onBreak ? 'ON BREAK' : badge}
+          {multiSession && session ? ` · ${session.sessionLabel}` : ''}
+        </div>
 
-      <CounterStrip tournament={tournament} />
-    </div>
+        {heroEntry ? (
+          <>
+            <div key={pulseKey} className={pulseKey > 0 ? 'display-level-pulse' : ''}>
+              <div className="font-display text-[3vh] text-white/60 mb-[0.5vh]">{entryLabel(heroEntry)}</div>
+              {onBreak ? (
+                <div className="font-display text-[9vh] leading-tight text-sky-200">Break</div>
+              ) : (
+                <div className="font-display text-[9vh] leading-tight text-white tabular-nums">
+                  {entryBlinds(heroEntry)}
+                </div>
+              )}
+              {!onBreak && heroEntry.ante > 0 && (
+                <div className="text-white/50 text-[2.6vh]">ante {heroEntry.ante.toLocaleString()}</div>
+              )}
+            </div>
+            <div
+              className={
+                'font-display text-[22vh] leading-none tabular-nums my-[2vh] ' +
+                (hurry
+                  ? 'display-hurry text-brand-400 [text-shadow:0_0_50px_rgba(239,43,43,0.55)]'
+                  : onBreak
+                    ? 'text-sky-100'
+                    : 'text-white')
+              }
+            >
+              {formatRemaining(heroRemainingMs)}
+            </div>
+            {backAt && (
+              <div className="text-sky-200/80 text-[2.6vh] -mt-[1vh] mb-[1.5vh]">back at {backAt}</div>
+            )}
+            {onBreak && heroEntry.isColorUp && (
+              <div className="font-mono uppercase tracking-[0.25em] text-[1.7vh] text-amber-300 mb-[1.5vh]">
+                Chip color-up this break
+              </div>
+            )}
+            {/* level progress */}
+            <div className="mx-auto w-[46vw] h-[0.5vh] rounded-full bg-white/10 overflow-hidden mb-[1.2vh]">
+              <div
+                className={
+                  'h-full transition-[width] duration-300 ' +
+                  (hurry ? 'bg-brand-400' : 'bg-gradient-to-r from-brand-500 to-brand-400')
+                }
+                style={{ width: `${Math.round(progress * 100)}%` }}
+              />
+            </div>
+            <LevelTrack
+              structure={tournament.structure}
+              heroIndex={heroIndex}
+              sliceEnd={sliceEnd}
+              breakInMs={
+                !onBreak && derived && badge !== 'STARTS SOON'
+                  ? msUntilNextBreak(tournament.structure, heroIndex, heroRemainingMs, sliceEnd)
+                  : null
+              }
+            />
+            <div className={'text-[2.2vh] ' + (onBreak ? 'text-white/70' : 'text-white/40')}>
+              {heroNext
+                ? `Next: ${
+                    heroNext.type === 'break'
+                      ? entryLabel(heroNext)
+                      : entryBlinds(heroNext) +
+                        (heroNext.ante > 0 ? ` · ante ${heroNext.ante.toLocaleString()}` : '')
+                  }`
+                : 'Final level'}
+            </div>
+            {badge === 'STARTS SOON' && <PreStartInfo tournament={tournament} />}
+          </>
+        ) : (
+          <>
+            {startTime && (
+              <div className="font-display text-[16vh] leading-none text-white tabular-nums my-[3vh]">{startTime}</div>
+            )}
+            <div className="text-white/50 text-[2.6vh]">{untilStart ?? 'Registration at the desk'}</div>
+            <PreStartInfo tournament={tournament} />
+          </>
+        )}
+
+        <RegSlot tournament={tournament} derived={derived} payoutCount={payouts.length} />
+        <CounterStrip tournament={tournament} />
+      </div>
+      <Ticker tournament={tournament} payouts={payouts} />
+    </>
   )
+}
+
+/** Buy-in & structure line for the pre-start screen — when players deciding to enter need it. */
+function PreStartInfo({ tournament }) {
+  const parts = []
+  if (tournament.buyIn > 0) parts.push(`${formatDisplayMoney(tournament.buyIn)} buy-in`)
+  const summary = structureSummary(tournament)
+  if (summary) parts.push(summary)
+  if (parts.length === 0) return null
+  return <div className="text-gold-300/80 text-[2.4vh] mt-[1.5vh]">{parts.join(' · ')}</div>
 }
 
 /* ── Prize pool ──────────────────────────────────────────────────────────── */
 
 function PrizesSlide({ tournament }) {
-  const payouts = useMemo(() => {
-    if (!tournament.payoutStructure || tournament.totalPrizePool <= 0) return []
-    try {
-      return materializePayouts(tournament.payoutStructure, tournament.totalPrizePool)
-    } catch {
-      return [] // a malformed structure must never take down the TV
-    }
-  }, [tournament.payoutStructure, tournament.totalPrizePool])
+  const payouts = useMemo(() => safePayouts(tournament), [tournament])
   const shown = payouts.slice(0, 9)
   const guaranteed = tournament.guarantee > 0
 
   return (
-    <div className="text-center w-full max-w-[92vw]">
-      <div className="font-display text-[4.2vh] text-gold-300 mb-[1vh] truncate">{tournament.name}</div>
-      <div className="font-mono uppercase tracking-[0.35em] text-[1.8vh] text-white/40 mb-[3vh]">Prize pool</div>
+    <>
+      <div className="relative text-center w-full max-w-[92vw]">
+        <div className="font-display text-[4.2vh] text-gold-300 mb-[1vh] truncate">{tournament.name}</div>
+        <div className="font-mono uppercase tracking-[0.35em] text-[1.8vh] text-white/40 mb-[3vh]">Prize pool</div>
 
-      <div className="font-display text-[16vh] leading-none text-white tabular-nums">
-        {formatDisplayMoney(tournament.totalPrizePool)}
+        <div className="font-display text-[16vh] leading-none text-white tabular-nums">
+          {formatDisplayMoney(tournament.totalPrizePool)}
+        </div>
+        {guaranteed && (
+          <div className="text-[2.4vh] text-brand-300 mt-[1vh]">
+            {formatDisplayMoney(tournament.guarantee)} guaranteed
+          </div>
+        )}
+
+        {shown.length > 0 && (
+          <div
+            className={
+              'mx-auto mt-[4vh] grid gap-x-[4vw] gap-y-[1.2vh] w-fit ' +
+              (shown.length > 5 ? 'grid-cols-2' : 'grid-cols-1')
+            }
+          >
+            {shown.map(({ place, amount }) => (
+              <div key={place} className="flex items-baseline gap-[1.5vw] justify-between">
+                <span className="font-mono uppercase tracking-[0.2em] text-[2vh] text-white/45">
+                  {ordinalPlace(place)}
+                </span>
+                <span className="font-display text-[3.4vh] text-white/90 tabular-nums">
+                  {formatDisplayMoney(amount)}
+                </span>
+              </div>
+            ))}
+            {payouts.length > shown.length && (
+              <div className="col-span-full font-mono text-[1.6vh] text-white/30 uppercase tracking-[0.25em]">
+                {payouts.length - shown.length} more places paid
+              </div>
+            )}
+          </div>
+        )}
+
+        <CounterStrip tournament={tournament} />
       </div>
-      {guaranteed && (
-        <div className="text-[2.4vh] text-brand-300 mt-[1vh]">
-          {formatDisplayMoney(tournament.guarantee)} guaranteed
-        </div>
-      )}
-
-      {shown.length > 0 && (
-        <div
-          className={
-            'mx-auto mt-[4vh] grid gap-x-[4vw] gap-y-[1.2vh] w-fit ' +
-            (shown.length > 5 ? 'grid-cols-2' : 'grid-cols-1')
-          }
-        >
-          {shown.map(({ place, amount }) => (
-            <div key={place} className="flex items-baseline gap-[1.5vw] justify-between">
-              <span className="font-mono uppercase tracking-[0.2em] text-[2vh] text-white/45">{ordinal(place)}</span>
-              <span className="font-display text-[3.4vh] text-white/90 tabular-nums">
-                {formatDisplayMoney(amount)}
-              </span>
-            </div>
-          ))}
-          {payouts.length > shown.length && (
-            <div className="col-span-full font-mono text-[1.6vh] text-white/30 uppercase tracking-[0.25em]">
-              {payouts.length - shown.length} more places paid
-            </div>
-          )}
-        </div>
-      )}
-
-      <CounterStrip tournament={tournament} />
-    </div>
+      <Ticker tournament={tournament} payouts={payouts} />
+    </>
   )
 }

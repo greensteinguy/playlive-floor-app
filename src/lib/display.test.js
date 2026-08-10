@@ -12,6 +12,13 @@ import {
   msUntilStart,
   formatUntilStart,
   formatDisplayMoney,
+  levelTrackSegment,
+  msUntilLateRegClose,
+  msUntilNextBreak,
+  formatCloseIn,
+  structureSummary,
+  tickerItems,
+  ordinalPlace,
 } from './display'
 
 // Fixed "now": 2026-08-10 14:00 local.
@@ -26,8 +33,22 @@ const tourney = (over = {}) => ({
   uniquePlayerCount: 0,
   remainingPlayerCount: 0,
   startingStack: 20000,
+  totalPrizePool: 500000,
   ...over,
 })
+
+// Structure shorthand: 3 levels, break, 2 levels, break, 1 level.
+const L = (n, dur = 20) => ({
+  type: 'level',
+  blindNumber: n,
+  smallBlind: n * 100,
+  bigBlind: n * 200,
+  ante: 0,
+  bringIn: 0,
+  durationMinutes: dur,
+})
+const B = (dur = 10, over = {}) => ({ type: 'break', durationMinutes: dur, label: null, isColorUp: false, ...over })
+const STRUCT = [L(1), L(2), L(3), B(), L(4), L(5), B(), L(6)]
 
 describe('isDisplayableTournament', () => {
   it('always shows lateRegOpen and lateRegClosed', () => {
@@ -152,6 +173,20 @@ describe('buildSlides', () => {
     expect(DISPLAY_SCREENS).toEqual(['clock', 'prizes'])
     for (const s of DISPLAY_SCREENS) expect(SCREEN_DURATION_MS[s]).toBeGreaterThan(0)
   })
+
+  it('drops the prizes slide while the pool is $0, unless the screen is pinned', () => {
+    const early = [tourney({ id: 'a', totalPrizePool: 0 }), tourney({ id: 'b' })]
+    expect(buildSlides(early)).toEqual([
+      { tournamentId: 'a', screen: 'clock' },
+      { tournamentId: 'b', screen: 'clock' },
+      { tournamentId: 'b', screen: 'prizes' },
+    ])
+    // a dedicated prizes TV keeps its slide even at $0
+    expect(buildSlides(early, { screen: 'prizes' })).toEqual([
+      { tournamentId: 'a', screen: 'prizes' },
+      { tournamentId: 'b', screen: 'prizes' },
+    ])
+  })
 })
 
 describe('rotation helpers', () => {
@@ -171,16 +206,148 @@ describe('rotation helpers', () => {
 })
 
 describe('displayCounters', () => {
-  it('derives entries / remaining / re-entries / avg stack', () => {
+  it('derives entries / remaining / re-entries / avg stack / total chips', () => {
     const c = displayCounters(
       tourney({ entryCount: 40, uniquePlayerCount: 34, remainingPlayerCount: 16, startingStack: 20000 }),
     )
-    expect(c).toEqual({ entries: 40, remaining: 16, reentries: 6, avgStack: 50000 })
+    expect(c).toEqual({ entries: 40, remaining: 16, reentries: 6, avgStack: 50000, totalChips: 800000 })
   })
 
-  it('avg stack is null with nobody left', () => {
+  it('avg stack is null with nobody left; total chips null with no entries', () => {
     expect(displayCounters(tourney({ entryCount: 10, remainingPlayerCount: 0 })).avgStack).toBeNull()
+    expect(displayCounters(tourney({ entryCount: 0 })).totalChips).toBeNull()
     expect(displayCounters(null).avgStack).toBeNull()
+  })
+})
+
+describe('levelTrackSegment', () => {
+  it('bounds the current run of levels by breaks', () => {
+    const seg = levelTrackSegment(STRUCT, 1, STRUCT.length - 1)
+    expect(seg.blocks).toEqual([
+      { index: 0, state: 'done' },
+      { index: 1, state: 'current' },
+      { index: 2, state: 'upcoming' },
+    ])
+    expect(seg.endsInBreak).toBe(true)
+  })
+
+  it('looks ahead to the next segment during a break (no current block)', () => {
+    const seg = levelTrackSegment(STRUCT, 3, STRUCT.length - 1)
+    expect(seg.blocks).toEqual([
+      { index: 4, state: 'upcoming' },
+      { index: 5, state: 'upcoming' },
+    ])
+    expect(seg.endsInBreak).toBe(true)
+  })
+
+  it('flags a segment that runs to the slice end instead of a break', () => {
+    expect(levelTrackSegment(STRUCT, 4, 5).endsInBreak).toBe(false)
+  })
+
+  it('hides trivial or impossible tracks', () => {
+    // final segment is a single level — one block reads as noise
+    expect(levelTrackSegment(STRUCT, 7, STRUCT.length - 1)).toBeNull()
+    expect(levelTrackSegment(STRUCT, null, STRUCT.length - 1)).toBeNull()
+    expect(levelTrackSegment(STRUCT, 99, STRUCT.length - 1)).toBeNull()
+    expect(levelTrackSegment([], 0, 0)).toBeNull()
+  })
+})
+
+describe('msUntilLateRegClose', () => {
+  it('sums the current remainder plus everything through the cutoff level (breaks included)', () => {
+    // in level 1 with 30s left; cutoff is level 4 → 30s + L2 + L3 + break + L4
+    expect(msUntilLateRegClose(STRUCT, 0, 30_000, 4)).toBe(30_000 + (20 + 20 + 10 + 20) * 60_000)
+  })
+
+  it('is just the remainder inside the cutoff level itself', () => {
+    expect(msUntilLateRegClose(STRUCT, 4, 120_000, 4)).toBe(120_000)
+  })
+
+  it('returns 0 once the clock is past the cutoff', () => {
+    expect(msUntilLateRegClose(STRUCT, 5, 120_000, 4)).toBe(0)
+  })
+
+  it('returns null when it cannot be computed', () => {
+    expect(msUntilLateRegClose(STRUCT, 0, 30_000, null)).toBeNull()
+    expect(msUntilLateRegClose(STRUCT, 0, 30_000, 99)).toBeNull()
+    expect(msUntilLateRegClose(STRUCT, null, 30_000, 4)).toBeNull()
+  })
+})
+
+describe('msUntilNextBreak', () => {
+  it('sums the current remainder plus full levels until the break', () => {
+    // level 1 with 30s left → 30s + L2 + L3, then the index-3 break
+    expect(msUntilNextBreak(STRUCT, 0, 30_000, STRUCT.length - 1)).toBe(30_000 + (20 + 20) * 60_000)
+  })
+
+  it('is just the remainder when the break is next', () => {
+    expect(msUntilNextBreak(STRUCT, 2, 45_000, STRUCT.length - 1)).toBe(45_000)
+  })
+
+  it('returns null on a break, past the last break, or outside the slice', () => {
+    expect(msUntilNextBreak(STRUCT, 3, 30_000, STRUCT.length - 1)).toBeNull()
+    expect(msUntilNextBreak(STRUCT, 7, 30_000, STRUCT.length - 1)).toBeNull()
+    // slice capped before the break → the break never comes
+    expect(msUntilNextBreak(STRUCT, 0, 30_000, 2)).toBeNull()
+    expect(msUntilNextBreak(STRUCT, null, 30_000, 7)).toBeNull()
+  })
+})
+
+describe('formatCloseIn', () => {
+  it('formats M:SS and H:MM:SS, ceiling to a second', () => {
+    expect(formatCloseIn(42 * 60_000 + 10_000)).toBe('42:10')
+    expect(formatCloseIn(3_723_000)).toBe('1:02:03')
+    expect(formatCloseIn(500)).toBe('0:01')
+    expect(formatCloseIn(0)).toBeNull()
+  })
+})
+
+describe('structureSummary', () => {
+  it('reads stack and first-level duration', () => {
+    expect(structureSummary(tourney({ structure: STRUCT }))).toBe('20,000 chips · 20-min levels')
+    expect(structureSummary(tourney({ structure: [] }))).toBe('20,000 chips')
+    expect(structureSummary({ startingStack: 0, structure: [] })).toBeNull()
+  })
+})
+
+describe('tickerItems', () => {
+  it('lists pool, guarantee, places, and payouts in reading order', () => {
+    const t = tourney({ totalPrizePool: 500000, guarantee: 1000000, status: 'lateRegClosed' })
+    const items = tickerItems(t, [
+      { place: 1, amount: 300000 },
+      { place: 2, amount: 200000 },
+    ])
+    expect(items).toEqual([
+      'Prize pool $5,000',
+      '$10,000 guaranteed',
+      'Paying 2 places',
+      '1st $3,000',
+      '2nd $2,000',
+    ])
+  })
+
+  it('adds a late-reg item while reg is open', () => {
+    const t = tourney({ totalPrizePool: 0, guarantee: 0, buyIn: 15000, structure: STRUCT })
+    expect(tickerItems(t, [])).toEqual(['Late reg open — $150 buy-in — 20,000 chips · 20-min levels'])
+  })
+
+  it('is empty when there is nothing to say', () => {
+    expect(tickerItems(tourney({ totalPrizePool: 0, guarantee: 0, status: 'lateRegClosed' }), [])).toEqual([])
+    expect(tickerItems(null, [])).toEqual([])
+  })
+})
+
+describe('ordinalPlace', () => {
+  it('handles the English suffix edge cases', () => {
+    expect(ordinalPlace(1)).toBe('1st')
+    expect(ordinalPlace(2)).toBe('2nd')
+    expect(ordinalPlace(3)).toBe('3rd')
+    expect(ordinalPlace(4)).toBe('4th')
+    expect(ordinalPlace(11)).toBe('11th')
+    expect(ordinalPlace(12)).toBe('12th')
+    expect(ordinalPlace(13)).toBe('13th')
+    expect(ordinalPlace(21)).toBe('21st')
+    expect(ordinalPlace(103)).toBe('103rd')
   })
 })
 
