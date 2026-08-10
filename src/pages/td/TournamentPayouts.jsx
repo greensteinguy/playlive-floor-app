@@ -102,7 +102,7 @@ export default function TournamentPayouts() {
   }
 
   return (
-    <div className="px-6 py-8 md:px-10 md:py-10 max-w-5xl">
+    <div className="px-6 py-8 md:px-10 md:py-10">
       <Link to={`/td/tournaments/${id}`} className="text-sm text-white/50 hover:text-white mb-4 inline-block">
         ← Back to tournament
       </Link>

@@ -496,7 +496,7 @@ export default function Tables() {
   ]
 
   return (
-    <div className="px-6 py-8 md:px-10 md:py-10 max-w-5xl">
+    <div className="px-6 py-8 md:px-10 md:py-10">
       <div className="mb-5">
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="font-display text-3xl md:text-4xl text-gold-400">Tables &amp; seating</h1>

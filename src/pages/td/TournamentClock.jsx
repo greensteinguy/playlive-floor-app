@@ -350,7 +350,7 @@ export default function TournamentClock() {
 
 function Shell({ id, children }) {
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
+    <div className=" mx-auto px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-4">
         <Link to={`/td/tournaments/${id}`} className="text-sm text-white/50 hover:text-white">
           ← Back to tournament

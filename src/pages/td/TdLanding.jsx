@@ -43,7 +43,7 @@ export default function TdLanding() {
   })
 
   return (
-    <div className="px-6 py-8 md:px-10 md:py-12 max-w-6xl">
+    <div className="px-6 py-8 md:px-10 md:py-12">
       <div className="mb-8">
         <p className="text-[10px] font-mono uppercase tracking-widest text-gold-400/70 mb-1">
           Tournament floor

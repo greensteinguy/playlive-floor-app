@@ -206,7 +206,7 @@ export default function Deposit() {
   }
 
   return (
-    <div className="px-6 py-8 md:px-10 md:py-10 max-w-2xl">
+    <div className="px-6 py-8 md:px-10 md:py-10">
       <button
         type="button"
         onClick={() => navigate('/desk')}

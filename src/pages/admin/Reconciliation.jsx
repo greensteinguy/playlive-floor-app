@@ -82,7 +82,7 @@ export default function Reconciliation() {
   }
 
   return (
-    <div className="px-6 py-8 md:px-10 md:py-10 max-w-7xl">
+    <div className="px-6 py-8 md:px-10 md:py-10">
       {/* Header */}
       <div className="flex items-baseline justify-between gap-4 mb-2">
         <h1 className="font-display text-3xl md:text-4xl text-gold-400">Reconciliation</h1>

@@ -113,7 +113,7 @@ export default function PlayerDetail() {
   }
 
   return (
-    <div className="px-6 py-8 md:px-10 md:py-10 max-w-5xl">
+    <div className="px-6 py-8 md:px-10 md:py-10">
       <button
         type="button"
         onClick={() => navigate('/desk/players')}
