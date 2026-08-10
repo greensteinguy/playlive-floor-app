@@ -130,6 +130,7 @@ export {
   isWinningsPaid,
   isWinningsStaged,
   buildPayoutRows,
+  payoutTablePlaces,
   payoutRowsTotal,
   recordWinner,
   revertWinner,
@@ -153,5 +154,13 @@ export {
   flattenStandings,
   latestDealFromAudit,
 } from './results'
+
+export {
+  refreshPayoutTable,
+  updatePayoutConfig,
+  shouldRefreshPayoutTable,
+  engineInputsFromTournament,
+  PAYOUT_REFRESH_MIN_INTERVAL_MS,
+} from './payoutTable'
 
 export { TournamentError } from './errors'

@@ -216,6 +216,39 @@ tournaments/{id}.payoutStructure: {
 
 (Mystery Bounty's bounty-pool config is separate, in `bountyPoolConfig` above.)
 
+**Venue payout engine fields** (added 10 Aug 2026 — see `docs/payouts/venue-payout-engine-spec.md`; both default-filled on read, so pre-existing docs stay valid):
+
+```
+tournaments/{id}.payoutConfig: {            (engine knobs; defaults in parens)
+  spotsRatio:                  integer         ("1 in X paid"; 9)
+  minCashMultiplier:           1.5|1.75|2      (× avg full ticket; 1.75)
+  seriesEvent:                 boolean         (emit leaderboard points; false)
+  addOnCount:                  integer         (add-ons sold; price comes from reentryConfig.addOnCost; 0)
+  equityRefunds:               integer         (cents deducted from the distributed pool; 0)
+}
+
+tournaments/{id}.payoutTable: {             (null until computed — the RUN-ONCE stored output;
+                                             every consumer reads THIS, nothing re-derives)
+  computedAt:                  timestamp
+  entryCountAtCompute:         integer
+  placesPaid:                  integer
+  minCash:                     integer         (cents)
+  adjPrizePool:                integer         (cents — what the rows sum to, exactly)
+  tailRatio:                   number          (the solved curve ratio, for audit)
+  ratioFlag:                   'ok'|'low'|'high'|null   (1st/2nd sanity gate [1.59, 1.7])
+  seriesEvent:                 boolean         (whether rows carry points)
+  warnings:                    string[]
+  rows: Array<{
+    fromPlace, toPlace, size:  integer         (a band: places fromPlace..toPlace, size players)
+    amount:                    integer         (cents per player in the band)
+    rowTotal:                  integer         (amount × size)
+    points:                    number | null   (series points; null when seriesEvent off)
+  }>
+}
+```
+
+> **Analytics / Player App note:** `payoutTable` is the payout SSOT when non-null (the embedded `payoutStructure` remains as the legacy/manual fallback). Consumers should prefer `payoutTable.rows`; new audit actionTypes `tournament.payoutTableComputed` / `tournament.payoutConfigChanged` record each recompute.
+
 ---
 
 ### 3.2 `players`

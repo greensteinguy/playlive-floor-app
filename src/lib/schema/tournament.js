@@ -109,6 +109,61 @@ const BountyPoolConfig = z
     }
   })
 
+// ── Venue payout engine (10 Aug 2026 — see docs/payouts/venue-payout-engine-spec.md) ──
+// Inputs the engine needs beyond existing tournament fields. Defaults keep
+// every pre-existing doc valid on read (no migration).
+export const PayoutEngineConfig = z
+  .object({
+    // "1 in X paid" (sheet C15)
+    spotsRatio: z.number().int().min(2).max(50).default(9),
+    // min-cash = avg full ticket × this (sheet front C9; only these three exist)
+    minCashMultiplier: z.union([z.literal(1.5), z.literal(1.75), z.literal(2)]).default(1.75),
+    // series toggle (Guy 10 Aug): emit leaderboard points alongside the money
+    seriesEvent: z.boolean().default(false),
+    // add-ons SOLD (price comes from reentryConfig.addOnCost)
+    addOnCount: z.number().int().nonnegative().default(0),
+    // equity refunds deducted from the distributed pool (sheet C12)
+    equityRefunds: Money.default(0),
+  })
+  .strict()
+
+export const PAYOUT_ENGINE_CONFIG_DEFAULTS = {
+  spotsRatio: 9,
+  minCashMultiplier: 1.75,
+  seriesEvent: false,
+  addOnCount: 0,
+  equityRefunds: 0,
+}
+
+const PayoutTableRow = z
+  .object({
+    fromPlace: z.number().int().positive(),
+    toPlace: z.number().int().positive(),
+    size: z.number().int().positive(),
+    amount: Money, // per player in the band
+    rowTotal: Money, // amount × size
+    points: z.number().nullable(), // series points (null when seriesEvent off)
+  })
+  .strict()
+
+// The STORED payout table — Guy's run-once directive (10 Aug): computed by the
+// engine, written to the tournament, and read by every screen (payouts screen,
+// results, venue display). Never derived per-screen.
+export const PayoutTable = z
+  .object({
+    computedAt: FirestoreTimestamp,
+    entryCountAtCompute: z.number().int().nonnegative(),
+    placesPaid: z.number().int().positive(),
+    minCash: Money,
+    adjPrizePool: Money,
+    tailRatio: z.number(), // the solved Y — stored for audit/reproducibility
+    ratioFlag: z.enum(['ok', 'low', 'high']).nullable(), // 1st/2nd sanity gate
+    seriesEvent: z.boolean(), // whether rows carry points
+    warnings: z.array(z.string()),
+    rows: z.array(PayoutTableRow).min(1),
+  })
+  .strict()
+
 export const Tournament = z
   .object({
     // Identity
@@ -140,8 +195,14 @@ export const Tournament = z
     maxSeatsPerTable: z.number().int().min(2).max(12).default(9),
     structure: Structure,
 
-    // Payout structure (embedded)
+    // Payout structure (embedded — legacy/manual path, used until a stored
+    // payoutTable exists; see buildPayoutRows)
     payoutStructure: PayoutStructure,
+
+    // Venue payout engine (10 Aug 2026): the knobs + the stored, run-once
+    // output table. Defaults keep pre-existing docs valid on read.
+    payoutConfig: PayoutEngineConfig.default(PAYOUT_ENGINE_CONFIG_DEFAULTS),
+    payoutTable: PayoutTable.nullable().default(null),
 
     // Scheduling
     scheduledStartTime: FirestoreTimestamp,

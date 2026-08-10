@@ -137,9 +137,29 @@ export function isWinningsStaged(entry) {
  *   payableAmount    — staged cashWinnings when present, else calculatedAmount
  *   isStaged / isAdjusted / isPaid
  */
+/**
+ * Expand the STORED payout table (tournament.payoutTable — the venue engine's
+ * run-once output) into per-place {place, amount} rows; band members each get
+ * the band's amount. Pure. Returns [] when no table is stored.
+ */
+export function payoutTablePlaces(payoutTable) {
+  if (!payoutTable?.rows?.length) return []
+  return payoutTable.rows.flatMap((r) => {
+    const places = []
+    for (let place = r.fromPlace; place <= r.toPlace; place++) {
+      places.push({ place, amount: r.amount })
+    }
+    return places
+  })
+}
+
 export function buildPayoutRows({ tournament, entries }) {
   const live = (entries ?? []).filter((e) => e.voidedAt === null)
-  const table = materializePayouts(tournament.payoutStructure, tournament.totalPrizePool)
+  // The stored venue table is the SSOT when present (Guy's run-once directive,
+  // 10 Aug 2026); the embedded payoutStructure is the legacy/manual fallback.
+  const table = tournament.payoutTable
+    ? payoutTablePlaces(tournament.payoutTable)
+    : materializePayouts(tournament.payoutStructure, tournament.totalPrizePool)
   const entryByPlace = new Map(live.filter((e) => e.finishingPlace != null).map((e) => [e.finishingPlace, e]))
 
   const placeRows = table.map(({ place, amount }) =>
