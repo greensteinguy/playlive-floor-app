@@ -230,10 +230,10 @@ function FullScreen({ timeOfDay, rotation, children }) {
     <div className="fixed inset-0 overflow-hidden text-white font-body select-none">
       {/* brand + clock-of-day, kept clear of the slide content */}
       <div className="absolute top-[3vh] left-[4vw] right-[4vw] flex items-baseline justify-between z-10">
-        <span className="font-brand text-[2.2vh] tracking-[0.22em] text-brand-400 [text-shadow:0_0_20px_rgba(239,43,43,0.55)]">
+        <span className="font-brand text-[2.3vmin] tracking-[0.22em] text-brand-400 [text-shadow:0_0_20px_rgba(239,43,43,0.55)]">
           PLAYLIVE
         </span>
-        <span className="font-display text-[2.6vh] text-white/60 tabular-nums">{timeOfDay}</span>
+        <span className="font-display text-[2.7vmin] text-white/60 tabular-nums">{timeOfDay}</span>
       </div>
       <div className="absolute inset-0 flex items-center justify-center">{children}</div>
       {rotation && (
@@ -279,11 +279,13 @@ function CounterStrip({ tournament, withPool = false }) {
     ...(withPool ? [['Prize pool', formatDisplayMoney(tournament.totalPrizePool)]] : []),
   ]
   return (
-    <div className="flex justify-center gap-[2.6vw] mt-[4vh]">
+    <div className="flex flex-wrap justify-center gap-x-[2vw] gap-y-[1.5vh] mt-[3vh]">
       {cells.map(([label, value]) => (
         <div key={label} className="text-center">
-          <div className="font-mono uppercase tracking-[0.25em] text-[1.4vh] text-white/35 mb-[0.6vh]">{label}</div>
-          <div className="font-display text-[3.4vh] text-white/90 tabular-nums">{value}</div>
+          <div className="font-mono uppercase tracking-[0.2em] text-[1.5vmin] text-white/35 mb-[0.5vh] whitespace-nowrap">
+            {label}
+          </div>
+          <div className="font-display text-[3.4vmin] text-white/90 tabular-nums whitespace-nowrap">{value}</div>
         </div>
       ))}
     </div>
@@ -315,7 +317,7 @@ function LevelTrack({ structure, heroIndex, sliceEnd }) {
           }
         />
       ))}
-      <span className="font-mono uppercase tracking-[0.2em] text-[1.3vh] text-sky-300/80 ml-[0.6vw] whitespace-nowrap">
+      <span className="font-mono uppercase tracking-[0.2em] text-[1.4vmin] text-sky-300/80 ml-[0.6vw] whitespace-nowrap">
         {segment.endsInBreak ? 'Break' : 'End'}
       </span>
     </div>
@@ -323,13 +325,11 @@ function LevelTrack({ structure, heroIndex, sliceEnd }) {
 }
 
 /** One label-over-value block in a side rail. */
-function RailRow({ label, value, tone = 'text-white/90', big = false }) {
+function RailRow({ label, value, tone = 'text-white/90' }) {
   return (
     <div>
-      <div className="font-mono uppercase tracking-[0.25em] text-[1.4vh] text-white/35 mb-[0.4vh]">{label}</div>
-      <div className={'font-display tabular-nums leading-tight ' + (big ? 'text-[5vh] ' : 'text-[2.9vh] ') + tone}>
-        {value}
-      </div>
+      <div className="font-mono uppercase tracking-[0.22em] text-[1.5vmin] text-white/35 mb-[0.4vh]">{label}</div>
+      <div className={'font-display tabular-nums leading-tight text-[3.1vmin] ' + tone}>{value}</div>
     </div>
   )
 }
@@ -383,7 +383,7 @@ function GameRail({ tournament, derived, badge, onBreak, heroNext, sliceEnd }) {
   }
 
   return (
-    <div className="w-[21vw] shrink-0 flex flex-col gap-[3.2vh] text-left">
+    <div className="w-[20vw] shrink-0 self-stretch flex flex-col justify-evenly text-left py-[2vh]">
       {rows.map((r) => (
         <RailRow key={r.label} label={r.label} value={r.value} tone={r.tone} />
       ))}
@@ -398,30 +398,39 @@ function GameRail({ tournament, derived, badge, onBreak, heroNext, sliceEnd }) {
 function MoneyRail({ tournament, payouts }) {
   const shown = payouts.slice(0, 6)
   return (
-    <div className="w-[21vw] shrink-0 flex flex-col gap-[3.2vh] text-right">
+    <div
+      className={
+        'w-[20vw] shrink-0 self-stretch flex flex-col text-right py-[2vh] ' +
+        (shown.length > 0 ? '' : 'justify-center')
+      }
+    >
       <div>
-        <div className="font-mono uppercase tracking-[0.25em] text-[1.4vh] text-white/35 mb-[0.4vh]">Prize pool</div>
-        <div className="font-display text-[5vh] leading-tight text-gold-300 tabular-nums">
+        <div className="font-mono uppercase tracking-[0.22em] text-[1.5vmin] text-white/35 mb-[0.4vh]">
+          Prize pool
+        </div>
+        <div className="font-display text-[5.5vmin] leading-tight text-gold-300 tabular-nums">
           {formatDisplayMoney(tournament.totalPrizePool)}
         </div>
         {tournament.guarantee > 0 && (
-          <div className="text-[1.9vh] text-brand-300">{formatDisplayMoney(tournament.guarantee)} GTD</div>
+          <div className="text-[1.9vmin] text-brand-300 mt-[0.4vh]">
+            {formatDisplayMoney(tournament.guarantee)} GTD
+          </div>
         )}
       </div>
       {shown.length > 0 && (
-        <div className="flex flex-col gap-[1.1vh]">
+        <div className="flex-1 flex flex-col justify-evenly mt-[2vh]">
           {shown.map(({ place, amount }) => (
             <div key={place} className="flex items-baseline justify-end gap-[1vw]">
-              <span className="font-mono uppercase tracking-[0.2em] text-[1.7vh] text-white/45">
+              <span className="font-mono uppercase tracking-[0.2em] text-[1.8vmin] text-white/45">
                 {ordinalPlace(place)}
               </span>
-              <span className="font-display text-[2.6vh] text-white/90 tabular-nums">
+              <span className="font-display text-[2.8vmin] text-white/90 tabular-nums">
                 {formatDisplayMoney(amount)}
               </span>
             </div>
           ))}
           {payouts.length > shown.length && (
-            <div className="font-mono uppercase tracking-[0.25em] text-[1.4vh] text-white/30">
+            <div className="font-mono uppercase tracking-[0.22em] text-[1.5vmin] text-white/30">
               +{payouts.length - shown.length} more places
             </div>
           )}
@@ -447,8 +456,8 @@ function Ticker({ tournament, payouts }) {
     <div className="flex items-center" aria-hidden={suffix === 'b'}>
       {run.map((item, i) => (
         <span key={`${suffix}${i}`} className="flex items-center whitespace-nowrap">
-          <span className="font-mono uppercase tracking-[0.18em] text-[1.9vh] text-white/70">{item}</span>
-          <span className="text-brand-400 text-[1.4vh] mx-[1.6vw]">◆</span>
+          <span className="font-mono uppercase tracking-[0.18em] text-[2vmin] text-white/70">{item}</span>
+          <span className="text-brand-400 text-[1.5vmin] mx-[1.6vw]">◆</span>
         </span>
       ))}
     </div>
@@ -534,9 +543,10 @@ function ClockSlide({ tournament, sessions, nowMs }) {
   const backAt = onBreak && isRunning && heroRemainingMs > 0 ? formatWallTime(nowMs + heroRemainingMs) : null
 
   // Long countdowns (H:MM:SS) drop a size so seven digits never spill out of
-  // the center column.
+  // the center column. Sizes are vmin so type scales with the tighter screen
+  // dimension — identical on a 16:9 TV, no column overflow on odd windows.
   const remainStr = formatRemaining(heroRemainingMs)
-  const countdownSize = remainStr.length > 5 ? 'text-[16vh]' : 'text-[21vh]'
+  const countdownSize = remainStr.length > 5 ? 'text-[min(19vmin,10.5vw)]' : 'text-[min(25vmin,15vw)]'
 
   return (
     <>
@@ -546,10 +556,10 @@ function ClockSlide({ tournament, sessions, nowMs }) {
       <div className="relative w-full h-full flex flex-col">
         {/* full-width header: name + state */}
         <div className="text-center shrink-0">
-          <div className="font-display text-[4.2vh] text-gold-300 mb-[0.6vh] truncate">{tournament.name}</div>
+          <div className="font-display text-[4.4vmin] text-gold-300 mb-[0.6vh] truncate">{tournament.name}</div>
           <div
             className={
-              'font-mono uppercase tracking-[0.35em] text-[1.8vh] ' + (onBreak ? 'text-sky-300' : badgeTone)
+              'font-mono uppercase tracking-[0.35em] text-[1.9vmin] ' + (onBreak ? 'text-sky-300' : badgeTone)
             }
           >
             {onBreak ? 'ON BREAK' : badge}
@@ -557,8 +567,9 @@ function ClockSlide({ tournament, sessions, nowMs }) {
           </div>
         </div>
 
-        {/* three-zone body: game rail | hero clock | money rail */}
-        <div className="flex-1 flex items-center justify-between gap-[2.5vw] min-h-0">
+        {/* three-zone body: game rail | hero clock | money rail — every zone
+            stretches the full height so nothing floats in slack space */}
+        <div className="flex-1 flex items-stretch justify-between gap-[2.5vw] min-h-0 pt-[2vh]">
           <GameRail
             tournament={tournament}
             derived={derived}
@@ -568,65 +579,77 @@ function ClockSlide({ tournament, sessions, nowMs }) {
             sliceEnd={sliceEnd}
           />
 
-          <div className="flex-1 text-center min-w-0">
+          <div
+            className={
+              'flex-1 text-center min-w-0 flex flex-col ' +
+              (heroEntry ? 'justify-between' : 'justify-center gap-[4vh]')
+            }
+          >
             {heroEntry ? (
               <>
-                <div key={pulseKey} className={pulseKey > 0 ? 'display-level-pulse' : ''}>
-                  <div className="font-display text-[3vh] text-white/60 mb-[0.5vh]">{entryLabel(heroEntry)}</div>
+                <div key={pulseKey} className={'shrink-0 ' + (pulseKey > 0 ? 'display-level-pulse' : '')}>
+                  <div className="font-display text-[3.2vmin] text-white/60 mb-[0.5vh]">{entryLabel(heroEntry)}</div>
                   {onBreak ? (
-                    <div className="font-display text-[8vh] leading-tight text-sky-200">Break</div>
+                    <div className="font-display text-[min(9.5vmin,5.5vw)] leading-tight text-sky-200">Break</div>
                   ) : (
-                    <div className="font-display text-[8vh] leading-tight text-white tabular-nums">
+                    <div className="font-display text-[min(9.5vmin,5.5vw)] leading-tight text-white tabular-nums whitespace-nowrap">
                       {entryBlinds(heroEntry)}
                     </div>
                   )}
                   {!onBreak && heroEntry.ante > 0 && (
-                    <div className="text-white/50 text-[2.6vh]">ante {heroEntry.ante.toLocaleString()}</div>
+                    <div className="text-white/50 text-[2.8vmin]">ante {heroEntry.ante.toLocaleString()}</div>
                   )}
                 </div>
-                <div
-                  className={
-                    `font-display ${countdownSize} leading-none tabular-nums my-[1.5vh] ` +
-                    (hurry
-                      ? 'display-hurry text-brand-400 [text-shadow:0_0_50px_rgba(239,43,43,0.55)]'
-                      : onBreak
-                        ? 'text-sky-100'
-                        : 'text-white')
-                  }
-                >
-                  {remainStr}
-                </div>
-                {backAt && (
-                  <div className="text-sky-200/80 text-[2.6vh] -mt-[0.5vh] mb-[1vh]">back at {backAt}</div>
-                )}
-                {onBreak && heroEntry.isColorUp && (
-                  <div className="font-mono uppercase tracking-[0.25em] text-[1.7vh] text-amber-300 mb-[1vh]">
-                    Chip color-up this break
-                  </div>
-                )}
-                {/* level progress */}
-                <div className="mx-auto w-[42vw] h-[0.5vh] rounded-full bg-white/10 overflow-hidden mb-[1.2vh]">
+
+                <div className="shrink-0">
                   <div
                     className={
-                      'h-full transition-[width] duration-300 ' +
-                      (hurry ? 'bg-brand-400' : 'bg-gradient-to-r from-brand-500 to-brand-400')
+                      `font-display ${countdownSize} leading-none tabular-nums ` +
+                      (hurry
+                        ? 'display-hurry text-brand-400 [text-shadow:0_0_50px_rgba(239,43,43,0.55)]'
+                        : onBreak
+                          ? 'text-sky-100'
+                          : 'text-white')
                     }
-                    style={{ width: `${Math.round(progress * 100)}%` }}
-                  />
+                  >
+                    {remainStr}
+                  </div>
+                  {backAt && <div className="text-sky-200/80 text-[2.8vmin] mt-[0.8vh]">back at {backAt}</div>}
+                  {onBreak && heroEntry.isColorUp && (
+                    <div className="font-mono uppercase tracking-[0.25em] text-[1.8vmin] text-amber-300 mt-[0.8vh]">
+                      Chip color-up this break
+                    </div>
+                  )}
                 </div>
-                <LevelTrack structure={tournament.structure} heroIndex={heroIndex} sliceEnd={sliceEnd} />
+
+                <div className="shrink-0">
+                  {/* level progress */}
+                  <div className="mx-auto w-[42vw] h-[0.5vh] rounded-full bg-white/10 overflow-hidden mb-[1.2vh]">
+                    <div
+                      className={
+                        'h-full transition-[width] duration-300 ' +
+                        (hurry ? 'bg-brand-400' : 'bg-gradient-to-r from-brand-500 to-brand-400')
+                      }
+                      style={{ width: `${Math.round(progress * 100)}%` }}
+                    />
+                  </div>
+                  <LevelTrack structure={tournament.structure} heroIndex={heroIndex} sliceEnd={sliceEnd} />
+                  <CounterStrip tournament={tournament} />
+                </div>
               </>
             ) : (
               <>
-                {startTime && (
-                  <div className="font-display text-[15vh] leading-none text-white tabular-nums my-[2vh]">
-                    {startTime}
-                  </div>
-                )}
-                <div className="text-white/50 text-[2.6vh]">{untilStart ?? 'Registration at the desk'}</div>
+                <div>
+                  {startTime && (
+                    <div className="font-display text-[min(16vmin,11vw)] leading-none text-white tabular-nums mb-[2vh]">
+                      {startTime}
+                    </div>
+                  )}
+                  <div className="text-white/50 text-[2.8vmin]">{untilStart ?? 'Registration at the desk'}</div>
+                </div>
+                <CounterStrip tournament={tournament} />
               </>
             )}
-            <CounterStrip tournament={tournament} />
           </div>
 
           <MoneyRail tournament={tournament} payouts={payouts} />
