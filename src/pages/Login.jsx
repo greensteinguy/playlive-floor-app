@@ -77,7 +77,7 @@ export default function Login() {
     <div className="min-h-screen bg-felt-900 text-white flex items-center justify-center p-6 font-body">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
         <div className="text-center mb-8">
-          <h1 className="font-display text-3xl text-gold-500 mb-1">PlayLive Floor</h1>
+          <h1 className="font-display text-3xl text-gold-500 mb-1">Check Raise</h1>
           <p className="text-white/60 text-sm">Sign in to continue.</p>
         </div>
 
