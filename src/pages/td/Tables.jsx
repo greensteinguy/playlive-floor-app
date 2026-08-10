@@ -91,7 +91,7 @@ function Panel({ title, right, children }) {
   return (
     <section className="mb-5">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">{title}</h3>
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55">{title}</h3>
         {right}
       </div>
       <div className="bg-felt-800 border border-white/5 rounded-lg p-4">{children}</div>
@@ -500,11 +500,11 @@ export default function Tables() {
       <div className="mb-5">
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="font-display text-3xl md:text-4xl text-gold-400">Tables &amp; seating</h1>
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
             Phase 3 — seating
           </span>
         </div>
-        <p className="mt-2 text-sm text-white/50">
+        <p className="mt-2 text-sm text-white/65">
           An at-a-glance room overview — each table shows which seats are filled (✓) or open (✗). Expand a table
           for the named seats to move players by hand, or pick a player up to eliminate them. Tables are per-session.
         </p>
@@ -513,7 +513,7 @@ export default function Tables() {
       {/* Tournament + session pickers */}
       <Panel title="Tournament">
         {tournamentsList.mockMode ? (
-          <p className="text-sm text-white/50">Mock mode — seating needs the emulator or production.</p>
+          <p className="text-sm text-white/65">Mock mode — seating needs the emulator or production.</p>
         ) : (
           <div className="flex flex-wrap gap-4">
             <div className="min-w-[16rem]">
@@ -545,10 +545,10 @@ export default function Tables() {
       ) : seating.notFound ? (
         <EmptyState title="Tournament not found." />
       ) : seating.loading || !tournament ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : (
         <>
-          <div className="mb-5 text-sm text-white/60 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="mb-5 text-sm text-white/70 flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="text-white/90 font-medium">{tournament.name}</span>
             <StatusBadge status={tournament.status} />
             {activeSession && <span>{activeSession.sessionLabel}</span>}
@@ -557,18 +557,18 @@ export default function Tables() {
               {pool.length} in field · {seatedIds.size} seated · {unseated.length} unseated
             </span>
             {eliminatedCount - sessionTicketWinners > 0 && (
-              <span className="text-white/40">{eliminatedCount - sessionTicketWinners} out</span>
+              <span className="text-white/55">{eliminatedCount - sessionTicketWinners} out</span>
             )}
             {isSat && sessionTicketWinners > 0 && (
               <span className="text-emerald-300">{sessionTicketWinners} ticket{sessionTicketWinners === 1 ? '' : 's'} won</span>
             )}
             {isSat && milestoneThreshold != null && (
-              <span className="text-white/40">
+              <span className="text-white/55">
                 Milestone {fmtChips(milestoneThreshold)} chips → {formatMoney(ticketReward)} ticket
               </span>
             )}
             {isMB && bountySummary && (
-              <span className="text-white/40">
+              <span className="text-white/55">
                 {bountySummary.count} bounties undrawn · {formatMoney(bountySummary.total)}
               </span>
             )}
@@ -588,7 +588,7 @@ export default function Tables() {
                       onClick={() => setOpenCount((c) => Math.max(1, c - 1))}
                       disabled={busy || openCount <= 1}
                       aria-label="Fewer tables"
-                      className="px-2.5 py-2 text-white/60 hover:text-white hover:bg-white/5 disabled:opacity-30"
+                      className="px-2.5 py-2 text-white/70 hover:text-white hover:bg-white/5 disabled:opacity-30"
                     >
                       −
                     </button>
@@ -598,7 +598,7 @@ export default function Tables() {
                       onClick={() => setOpenCount((c) => Math.min(12, c + 1))}
                       disabled={busy || openCount >= 12}
                       aria-label="More tables"
-                      className="px-2.5 py-2 text-white/60 hover:text-white hover:bg-white/5 disabled:opacity-30"
+                      className="px-2.5 py-2 text-white/70 hover:text-white hover:bg-white/5 disabled:opacity-30"
                     >
                       +
                     </button>
@@ -616,7 +616,7 @@ export default function Tables() {
                     <button
                       type="button"
                       onClick={() => setShowSeatList((v) => !v)}
-                      className="px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                      className="px-3 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
                     >
                       {showSeatList ? 'Hide seat list' : 'Seat list'}
                     </button>
@@ -635,8 +635,8 @@ export default function Tables() {
                 >
                   {busy ? 'Drawing…' : `Draw seats (${pool.length})`}
                 </button>
-                <span className="text-xs text-white/40">{tournament.maxSeatsPerTable}-handed tables</span>
-                {pool.length === 0 && <span className="text-xs text-white/40">No seatable players in this session yet.</span>}
+                <span className="text-xs text-white/55">{tournament.maxSeatsPerTable}-handed tables</span>
+                {pool.length === 0 && <span className="text-xs text-white/55">No seatable players in this session yet.</span>}
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-3">
@@ -658,7 +658,7 @@ export default function Tables() {
                     <button type="button" onClick={handleClear} disabled={busy} className="px-3 py-1.5 rounded text-xs bg-red-500/20 text-red-200 hover:bg-red-500/30 disabled:opacity-40">
                       {busy ? 'Clearing…' : 'Yes, clear'}
                     </button>
-                    <button type="button" onClick={() => setConfirmClear(false)} disabled={busy} className="px-3 py-1.5 rounded text-xs text-white/60 hover:bg-white/5">
+                    <button type="button" onClick={() => setConfirmClear(false)} disabled={busy} className="px-3 py-1.5 rounded text-xs text-white/70 hover:bg-white/5">
                       Cancel
                     </button>
                   </div>
@@ -671,7 +671,7 @@ export default function Tables() {
           {fillableTables(openTables).length > 1 && (
             <Panel title="Balance">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                <span className="text-white/50 text-xs font-mono">
+                <span className="text-white/65 text-xs font-mono">
                   {tableSizes(openTables).map((s) => `T${s.tableNumber}: ${s.size}`).join('  ·  ')}
                 </span>
                 {balanceMoves.length === 0 ? (
@@ -687,7 +687,7 @@ export default function Tables() {
                   </button>
                 ) : (
                   <div className="w-full">
-                    <p className="text-xs text-white/60 mb-2">Move {balanceMoves.length} player(s) to even the tables:</p>
+                    <p className="text-xs text-white/70 mb-2">Move {balanceMoves.length} player(s) to even the tables:</p>
                     <ul className="text-xs text-white/70 space-y-0.5 mb-3">
                       {balanceMoves.map((m, i) => (
                         <li key={i}>
@@ -709,12 +709,12 @@ export default function Tables() {
                         type="button"
                         onClick={() => setConfirmBalance(false)}
                         disabled={busy}
-                        className="px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                        className="px-3 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
                       >
                         Cancel
                       </button>
                     </div>
-                    <p className="text-[11px] text-white/30 mt-2">
+                    <p className="text-[11px] text-white/45 mt-2">
                       Rule: the highest-seat player on the fullest table fills the lowest empty seat on the emptiest — review
                       and hand-adjust afterward if needed.
                     </p>
@@ -788,7 +788,7 @@ export default function Tables() {
                       type="button"
                       onClick={() => setConfirmMilestone(false)}
                       disabled={busy}
-                      className="px-3 py-1.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                      className="px-3 py-1.5 rounded text-xs text-white/70 hover:text-white hover:bg-white/5"
                     >
                       Cancel
                     </button>
@@ -823,7 +823,7 @@ export default function Tables() {
                       type="button"
                       onClick={() => setConfirmEliminate(false)}
                       disabled={busy}
-                      className="px-3 py-1.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                      className="px-3 py-1.5 rounded text-xs text-white/70 hover:text-white hover:bg-white/5"
                     >
                       Cancel
                     </button>
@@ -844,7 +844,7 @@ export default function Tables() {
                     <span className="text-gold-300 font-medium">Record a bounty draw</span> — whose knockout is it for?
                   </p>
                   {undrawnKnockouts.length === 0 ? (
-                    <p className="text-xs text-white/40 mb-2">Every recorded knockout already has its bounty drawn.</p>
+                    <p className="text-xs text-white/55 mb-2">Every recorded knockout already has its bounty drawn.</p>
                   ) : (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {undrawnKnockouts.map((e) => (
@@ -857,7 +857,7 @@ export default function Tables() {
                         >
                           {nameForEntry(e)}
                           {e.finishingPlace != null && (
-                            <span className="text-[10px] font-mono text-white/40 ml-1.5">{ordinal(e.finishingPlace)}</span>
+                            <span className="text-[10px] font-mono text-white/55 ml-1.5">{ordinal(e.finishingPlace)}</span>
                           )}
                         </button>
                       ))}
@@ -867,7 +867,7 @@ export default function Tables() {
                     type="button"
                     onClick={() => setBountyPrompt(null)}
                     disabled={busy}
-                    className="px-3 py-1.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                    className="px-3 py-1.5 rounded text-xs text-white/70 hover:text-white hover:bg-white/5"
                   >
                     Cancel
                   </button>
@@ -882,7 +882,7 @@ export default function Tables() {
                     ?
                   </p>
                   {eliminatorCandidates.length === 0 ? (
-                    <p className="text-xs text-white/40 mb-2">No seated players to pick from.</p>
+                    <p className="text-xs text-white/55 mb-2">No seated players to pick from.</p>
                   ) : (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {eliminatorCandidates.map((e) => (
@@ -903,11 +903,11 @@ export default function Tables() {
                       type="button"
                       onClick={() => setBountyPrompt(null)}
                       disabled={busy}
-                      className="px-3 py-1.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/5"
+                      className="px-3 py-1.5 rounded text-xs text-white/70 hover:text-white hover:bg-white/5"
                     >
                       Skip — no bounty / unknown eliminator
                     </button>
-                    <span className="text-[11px] text-white/30">You can record it later from the bounty board.</span>
+                    <span className="text-[11px] text-white/45">You can record it later from the bounty board.</span>
                   </div>
                 </>
               )}
@@ -950,7 +950,7 @@ export default function Tables() {
                       type="button"
                       onClick={() => setBreakTableId(null)}
                       disabled={busy}
-                      className="px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                      className="px-3 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
                     >
                       Cancel
                     </button>
@@ -975,7 +975,7 @@ export default function Tables() {
                           ? 'Seat #1 in a random open seat on an active table'
                           : 'No active seat free — activate a table first'
                       }
-                      className="text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:text-white/30"
+                      className="text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:text-white/45"
                     >
                       Seat next →
                     </button>
@@ -986,7 +986,7 @@ export default function Tables() {
                 </div>
               }
             >
-              <p className="text-[11px] text-white/40 mb-2">
+              <p className="text-[11px] text-white/55 mb-2">
                 #1 is next (FIFO by registration). “Seat next →” drops them in a <span className="text-white/70">random</span>{' '}
                 open seat on an active table; or click a name then an empty seat to place by hand
                 {nextSeat ? '' : ' — no active seat free right now'}.
@@ -1008,7 +1008,7 @@ export default function Tables() {
                       (selectedEntryId === e.id ? 'bg-gold-500/30 text-gold-100' : 'bg-white/5 text-white/80 hover:bg-white/10')
                     }
                   >
-                    <span className="text-[10px] font-mono text-white/40 mr-1.5">#{i + 1}</span>
+                    <span className="text-[10px] font-mono text-white/55 mr-1.5">#{i + 1}</span>
                     {nameForEntry(e)}
                   </button>
                 ))}
@@ -1033,7 +1033,7 @@ export default function Tables() {
                         ? 'Every recorded knockout already has its bounty drawn'
                         : 'Draw a bounty for a knockout that was skipped earlier'
                     }
-                    className="text-[11px] font-medium text-gold-300 hover:text-gold-200 disabled:text-white/30"
+                    className="text-[11px] font-medium text-gold-300 hover:text-gold-200 disabled:text-white/45"
                   >
                     Record draw…
                   </button>
@@ -1041,18 +1041,18 @@ export default function Tables() {
               }
             >
               {bountySummary && (
-                <p className="text-xs text-white/50 mb-3">
+                <p className="text-xs text-white/65 mb-3">
                   <span className="text-gold-300">{formatMoney(bountySummary.total)}</span> still in the pool
                   {' · '}
                   {formatMoney(bountySummary.drawnTotal)} drawn so far
                 </p>
               )}
               {bountyRows.length === 0 ? (
-                <p className="text-sm text-white/40">No bounties drawn yet — the first knockout starts the reveals.</p>
+                <p className="text-sm text-white/55">No bounties drawn yet — the first knockout starts the reveals.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                    <thead className="text-[10px] font-mono uppercase tracking-widest text-white/55">
                       <tr>
                         <th className="text-left px-2 py-1.5">Won by</th>
                         <th className="text-right px-2 py-1.5">Bounty</th>
@@ -1067,14 +1067,14 @@ export default function Tables() {
                           <td className="px-2 py-1.5 text-white/90">{r.knockerName}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums text-gold-300">{formatMoney(r.bountyValue)}</td>
                           <td className="px-2 py-1.5 text-white/70">{r.knockedOutName}</td>
-                          <td className="px-2 py-1.5 text-white/50">
+                          <td className="px-2 py-1.5 text-white/65">
                             {r.drawnAt?.toDate?.().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) ?? '—'}
                           </td>
                           <td className="px-2 py-1.5">
                             {r.isCredited ? (
                               <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-300/80">credited</span>
                             ) : (
-                              <span className="text-[10px] font-mono uppercase tracking-wider text-white/30">at cashier</span>
+                              <span className="text-[10px] font-mono uppercase tracking-wider text-white/45">at cashier</span>
                             )}
                           </td>
                         </tr>
@@ -1091,14 +1091,14 @@ export default function Tables() {
           {openTables.length > 0 && (
             <section className="mb-5">
               <div className="flex items-center justify-between mb-2 gap-3">
-                <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55">
                   Room — {openTables.length} table{openTables.length === 1 ? '' : 's'}
-                  <span className="ml-2 text-white/30 normal-case tracking-normal">✓ taken · ✗ open</span>
+                  <span className="ml-2 text-white/45 normal-case tracking-normal">✓ taken · ✗ open</span>
                 </h3>
                 <button
                   type="button"
                   onClick={toggleExpandAll}
-                  className="text-[11px] text-white/50 hover:text-white shrink-0"
+                  className="text-[11px] text-white/65 hover:text-white shrink-0"
                 >
                   {allExpanded ? 'Collapse all' : 'Expand all'}
                 </button>
@@ -1123,7 +1123,7 @@ export default function Tables() {
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">
                           {occupiedSeatCount(table)}/{table.seatCount}
                         </span>
                       </div>
@@ -1163,7 +1163,7 @@ export default function Tables() {
                         <button
                           type="button"
                           onClick={() => toggleExpand(table.id)}
-                          className="ml-auto text-[10px] font-mono uppercase tracking-wider text-white/40 hover:text-white/80"
+                          className="ml-auto text-[10px] font-mono uppercase tracking-wider text-white/55 hover:text-white/80"
                         >
                           {expanded ? 'Hide seats' : 'Show seats'}
                         </button>
@@ -1184,7 +1184,7 @@ export default function Tables() {
                               ? 'bg-white/10 text-white/80 border-white/10 hover:bg-white/15'
                               : isActive && selectedEntry
                                 ? 'bg-emerald-500/10 text-emerald-200/90 border-emerald-500/30 hover:bg-emerald-500/20'
-                                : 'bg-felt-900/40 text-white/25 border-white/5'
+                                : 'bg-felt-900/40 text-white/40 border-white/5'
                           return (
                             <button
                               key={seat.seatNumber}
@@ -1227,10 +1227,10 @@ export default function Tables() {
                                         : 'bg-felt-900/60 text-white/90 hover:bg-white/10'
                                       : isActive && selectedEntry
                                         ? 'bg-emerald-500/10 text-emerald-200/90 hover:bg-emerald-500/20'
-                                        : 'bg-felt-900/40 text-white/30')
+                                        : 'bg-felt-900/40 text-white/45')
                                   }
                                 >
-                                  <span className="text-[10px] font-mono text-white/40 w-4 shrink-0">{seat.seatNumber}</span>
+                                  <span className="text-[10px] font-mono text-white/55 w-4 shrink-0">{seat.seatNumber}</span>
                                   <span className="truncate flex-1">
                                     {occupied ? nameForEntry(entriesById[seat.entryId]) : isActive && selectedEntry ? 'seat here' : 'empty'}
                                   </span>
@@ -1259,7 +1259,7 @@ export default function Tables() {
             >
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                  <thead className="text-[10px] font-mono uppercase tracking-widest text-white/55">
                     <tr>
                       <th className="text-left px-2 py-1.5">Table</th>
                       <th className="text-left px-2 py-1.5">Seat</th>
@@ -1302,7 +1302,7 @@ export default function Tables() {
                 <p className="text-lg text-white/90 mb-1">
                   <span className="font-medium">{bountyReveal.knockerName}</span> wins the bounty
                 </p>
-                <p className="text-xs text-white/40 mb-6">
+                <p className="text-xs text-white/55 mb-6">
                   {bountyReveal.remainingCount} bount{bountyReveal.remainingCount === 1 ? 'y' : 'ies'} ·{' '}
                   {formatMoney(bountyReveal.remainingTotal)} left in the pool · paid when the cashier confirms
                 </p>

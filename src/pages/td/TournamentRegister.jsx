@@ -64,7 +64,7 @@ function friendlyError(e) {
 function Panel({ title, children }) {
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">{title}</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">{title}</h3>
       <div className="bg-felt-800 border border-white/5 rounded-lg p-4">{children}</div>
     </section>
   )
@@ -241,7 +241,7 @@ export default function TournamentRegister() {
       <button
         type="button"
         onClick={() => navigate(`/td/tournaments/${id}`)}
-        className="text-sm text-white/50 hover:text-white mb-4"
+        className="text-sm text-white/65 hover:text-white mb-4"
       >
         ← Back to tournament
       </button>
@@ -256,17 +256,17 @@ export default function TournamentRegister() {
       ) : notFound ? (
         <EmptyState title="Tournament not found." body="This tournament may have been removed, or the link is out of date." />
       ) : loading || !tournament ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : (
         <>
           <div className="mb-5">
             <div className="flex items-baseline justify-between gap-3">
               <h1 className="font-display text-3xl md:text-4xl text-gold-400">Register player</h1>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
                 Phase 3 — task 3.4
               </span>
             </div>
-            <div className="mt-2 text-sm text-white/60 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <div className="mt-2 text-sm text-white/70 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="text-white/90 font-medium">{tournament.name}</span>
               <StatusBadge status={tournament.status} />
               <span>
@@ -290,7 +290,7 @@ export default function TournamentRegister() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="text-white/90 font-medium">{playerDisplayName(selectedPlayer)}</div>
-                      <div className="text-xs text-white/50 mt-0.5">
+                      <div className="text-xs text-white/65 mt-0.5">
                         {selectedPlayer.phone} · Wallet {formatMoney(selectedPlayer.walletBalance)} · Tickets{' '}
                         {formatMoney(selectedPlayer.ticketBalance)}
                       </div>
@@ -322,7 +322,7 @@ export default function TournamentRegister() {
                         type="button"
                         onClick={() => setCreating(false)}
                         disabled={busy}
-                        className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                        className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
                       >
                         Cancel
                       </button>
@@ -346,7 +346,7 @@ export default function TournamentRegister() {
                         placeholder="Search by name, phone, or email…"
                         autoFocus
                         aria-label="Search players"
-                        className="flex-1 min-w-[14rem] bg-felt-900 border border-white/10 rounded-lg px-4 py-3 text-sm placeholder:text-white/30"
+                        className="flex-1 min-w-[14rem] bg-felt-900 border border-white/10 rounded-lg px-4 py-3 text-sm placeholder:text-white/45"
                       />
                       <button
                         type="button"
@@ -357,16 +357,16 @@ export default function TournamentRegister() {
                       </button>
                     </div>
                     {q.trim() === '' ? (
-                      <p className="text-xs text-white/40 mt-3">Start typing to find a player, or add a new one.</p>
+                      <p className="text-xs text-white/55 mt-3">Start typing to find a player, or add a new one.</p>
                     ) : results.length === 0 ? (
-                      <p className="text-xs text-white/40 mt-3">No players match "{q}". Add them with + New player.</p>
+                      <p className="text-xs text-white/55 mt-3">No players match "{q}". Add them with + New player.</p>
                     ) : (
                       <ul className="mt-3 divide-y divide-white/5">
                         {results.map((p) => (
                           <li key={p.id} className="flex items-center justify-between py-2">
                             <div>
                               <div className="text-sm text-white/90">{playerDisplayName(p)}</div>
-                              <div className="text-xs text-white/40">
+                              <div className="text-xs text-white/55">
                                 {p.phone}
                                 {p.email ? ` · ${p.email}` : ''}
                               </div>
@@ -414,7 +414,7 @@ export default function TournamentRegister() {
                           'px-4 py-2 rounded-lg text-sm font-medium ' +
                           (method === m.id
                             ? 'bg-gold-500/25 text-gold-200'
-                            : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90')
+                            : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white/90')
                         }
                       >
                         {m.label}
@@ -436,7 +436,7 @@ export default function TournamentRegister() {
 
                   {method === 'wallet' && (
                     <div className="mt-4 text-sm">
-                      <div className="text-white/60">
+                      <div className="text-white/70">
                         Wallet balance: <span className="tabular-nums text-white/90">{formatMoney(selectedPlayer.walletBalance)}</span>
                       </div>
                       {walletShort ? (
@@ -454,7 +454,7 @@ export default function TournamentRegister() {
                   {method === 'ticket' && (
                     <div className="mt-4">
                       {playerTickets.length === 0 ? (
-                        <p className="text-sm text-white/50">This player has no unused tickets.</p>
+                        <p className="text-sm text-white/65">This player has no unused tickets.</p>
                       ) : (
                         <>
                           <Select
@@ -543,7 +543,7 @@ export default function TournamentRegister() {
 
                   {tournament.hasUpperDeckMainDeck && (
                     <div className="mt-4 pt-3 border-t border-white/5 flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">
                         Last longer (optional)
                       </span>
                       <div className="flex gap-1">
@@ -561,7 +561,7 @@ export default function TournamentRegister() {
                               'px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 ' +
                               (deck === value
                                 ? 'bg-gold-500/20 text-gold-200'
-                                : 'bg-white/5 text-white/60 hover:bg-white/10')
+                                : 'bg-white/5 text-white/70 hover:bg-white/10')
                             }
                           >
                             {label}
@@ -598,7 +598,7 @@ export default function TournamentRegister() {
                           : ''}
                         .
                       </p>
-                      <p className="text-sm text-white/60 mb-3">
+                      <p className="text-sm text-white/70 mb-3">
                         {methodLabel(method)} · <span className="text-gold-300">{formatMoney(cost)}</span>
                         {method === 'ticket' && shortfall > 0 && shortfallMode === 'topup'
                           ? ` (ticket ${formatMoney(selectedTicket.faceValue)} + ${formatMoney(shortfall)} ${topUpMethod})`
@@ -615,7 +615,7 @@ export default function TournamentRegister() {
                           type="button"
                           onClick={() => setConfirming(false)}
                           disabled={busy}
-                          className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                          className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
                         >
                           Back
                         </button>

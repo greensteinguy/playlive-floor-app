@@ -6,7 +6,7 @@
 export function Section({ title, children }) {
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">{title}</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">{title}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-felt-800 border border-white/5 rounded-lg p-4">
         {children}
       </div>
@@ -15,7 +15,7 @@ export function Section({ title, children }) {
 }
 
 function fieldLabel(label) {
-  return <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{label}</span>
+  return <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">{label}</span>
 }
 
 export function Text({ label, value, onChange, placeholder, disabled, inputMode }) {
@@ -40,7 +40,7 @@ export function Money({ label, value, onChange, disabled }) {
     <label className="flex flex-col gap-1">
       {fieldLabel(label)}
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">$</span>
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/45 text-sm pointer-events-none">$</span>
         <input
           type="text"
           inputMode="decimal"
@@ -113,7 +113,7 @@ export function Toggle({ label, checked, onChange, disabled, hint }) {
     <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} disabled={disabled} className="accent-gold-500" />
       {label}
-      {hint && <span className="text-[10px] text-white/30">({hint})</span>}
+      {hint && <span className="text-[10px] text-white/45">({hint})</span>}
     </label>
   )
 }
@@ -131,12 +131,12 @@ export function BountyValues({ values, onChange, disabled }) {
         </button>
       </div>
       {values.length === 0 ? (
-        <p className="text-xs text-white/40">Add at least one bounty value.</p>
+        <p className="text-xs text-white/55">Add at least one bounty value.</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {values.map((v, i) => (
             <div key={i} className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">$</span>
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/45 text-sm pointer-events-none">$</span>
               <input
                 type="text"
                 inputMode="decimal"
@@ -151,7 +151,7 @@ export function BountyValues({ values, onChange, disabled }) {
                 onClick={() => removeAt(i)}
                 disabled={disabled}
                 aria-label="Remove value"
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-white/30 hover:text-red-300 text-sm"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-white/45 hover:text-red-300 text-sm"
               >
                 ×
               </button>
@@ -168,7 +168,7 @@ export function EmptyState({ title, body, tone = 'neutral' }) {
   return (
     <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
       <div className="font-display text-lg text-white mb-1">{title}</div>
-      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
+      {body && <p className="text-sm text-white/65 max-w-md mx-auto">{body}</p>}
     </div>
   )
 }

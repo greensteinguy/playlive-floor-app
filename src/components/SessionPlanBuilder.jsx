@@ -135,7 +135,7 @@ export default function SessionPlanBuilder({ value, onChange, structure, disable
 
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Days &amp; flights</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Days &amp; flights</h3>
       <div className="bg-felt-800 border border-white/5 rounded-lg p-4 space-y-4">
         <div className="flex flex-wrap gap-2">
           {SHAPES.map((s) => {
@@ -154,7 +154,7 @@ export default function SessionPlanBuilder({ value, onChange, structure, disable
                 }
               >
                 <span className="block text-sm font-medium">{s.label}</span>
-                <span className="block text-[10px] text-white/40 mt-0.5">{s.hint}</span>
+                <span className="block text-[10px] text-white/55 mt-0.5">{s.hint}</span>
               </button>
             )
           })}
@@ -183,7 +183,7 @@ export default function SessionPlanBuilder({ value, onChange, structure, disable
                     {multiFlight ? ` — flights A–${letter(stage.flights.length - 1)}` : ''}
                   </span>
                   {isFinal && (
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">
                       plays to a winner
                     </span>
                   )}
@@ -225,7 +225,7 @@ export default function SessionPlanBuilder({ value, onChange, structure, disable
                             aria-label={`Remove flight ${letter(f)}`}
                             disabled={disabled}
                             onClick={() => removeFlight(i, f)}
-                            className="text-white/30 hover:text-red-300 text-sm px-2 disabled:opacity-40"
+                            className="text-white/45 hover:text-red-300 text-sm px-2 disabled:opacity-40"
                           >
                             ×
                           </button>
@@ -239,7 +239,7 @@ export default function SessionPlanBuilder({ value, onChange, structure, disable
                       />
                       {i > 0 && (
                         <div className="mt-2">
-                          <span className="block text-[10px] font-mono uppercase tracking-widest text-white/40 mb-1">
+                          <span className="block text-[10px] font-mono uppercase tracking-widest text-white/55 mb-1">
                             Survivors from
                           </span>
                           <div className="flex flex-wrap gap-1.5">
@@ -256,7 +256,7 @@ export default function SessionPlanBuilder({ value, onChange, structure, disable
                                     'px-2.5 py-1 rounded-full text-[11px] border transition-colors disabled:opacity-50 ' +
                                     (on
                                       ? 'bg-gold-500/20 border-gold-500/40 text-gold-100'
-                                      : 'bg-felt-900 border-white/10 text-white/50 hover:bg-white/5')
+                                      : 'bg-felt-900 border-white/10 text-white/65 hover:bg-white/5')
                                   }
                                 >
                                   {lbl}
@@ -286,7 +286,7 @@ export default function SessionPlanBuilder({ value, onChange, structure, disable
         {planError ? (
           <p className="text-[11px] text-amber-300/90">⚠ {planError}</p>
         ) : (
-          <p className="text-[11px] text-white/40">
+          <p className="text-[11px] text-white/55">
             Creates: <span className="text-white/70">{labels.join(', ')}</span>{' '}
             ({labels.length} session{labels.length === 1 ? '' : 's'})
           </p>
@@ -302,7 +302,7 @@ function Stepper({ label, value, onChange, min = 1, max, disabled }) {
     'w-8 h-8 rounded-lg bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed'
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{label}</span>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">{label}</span>
       <div className="flex items-center gap-3">
         <button type="button" aria-label={`Decrease ${label}`} disabled={disabled || value <= min} onClick={() => onChange(clamp(value - 1))} className={btn}>
           −
@@ -319,7 +319,7 @@ function Stepper({ label, value, onChange, min = 1, max, disabled }) {
 function PctField({ label, value, onChange, disabled }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">{label}</span>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">{label}</span>
       <div className="relative">
         <input
           type="number"
@@ -332,7 +332,7 @@ function PctField({ label, value, onChange, disabled }) {
           disabled={disabled}
           className="w-full bg-felt-900 border border-white/10 rounded pl-3 pr-7 py-2 text-sm disabled:opacity-50"
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">%</span>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/45 text-sm pointer-events-none">%</span>
       </div>
     </label>
   )

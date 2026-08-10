@@ -10,7 +10,7 @@ export default function Placeholder({ title, phase, task, description }) {
       <div className="flex items-baseline justify-between gap-4 mb-6">
         <h1 className="font-display text-3xl md:text-4xl text-gold-400">{title}</h1>
         {phase && (
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
             Phase {phase}
             {task ? ` — task ${task}` : ''}
           </span>
@@ -19,7 +19,7 @@ export default function Placeholder({ title, phase, task, description }) {
 
       <div className="bg-felt-800 border border-white/5 rounded-lg p-6 md:p-8 space-y-4">
         <p className="text-white/70 leading-relaxed">{description}</p>
-        <p className="text-xs text-white/40">
+        <p className="text-xs text-white/55">
           Placeholder — this page is scaffolded but not yet built. See the Action Plan for
           when the implementation lands.
         </p>

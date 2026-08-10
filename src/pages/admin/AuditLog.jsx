@@ -36,7 +36,7 @@ const ROLE_CLASSES = {
   manager: 'bg-gold-500/15 text-gold-300',
   td:      'bg-emerald-500/15 text-emerald-300',
   cashier: 'bg-sky-500/15 text-sky-300',
-  readonly:'bg-white/10 text-white/60',
+  readonly:'bg-white/10 text-white/70',
   system:  'bg-violet-500/15 text-violet-300',
 }
 
@@ -134,11 +134,11 @@ export default function AuditLog() {
       {/* Header */}
       <div className="flex items-baseline justify-between gap-4 mb-2">
         <h1 className="font-display text-3xl md:text-4xl text-gold-400">Audit log</h1>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
           Phase 1 — task 1.9
         </span>
       </div>
-      <p className="text-white/50 text-sm mb-6">
+      <p className="text-white/65 text-sm mb-6">
         Every staff action is logged here. Manager-only.
       </p>
 
@@ -146,7 +146,7 @@ export default function AuditLog() {
       <div className="bg-felt-800 border border-white/5 rounded-lg p-4 md:p-5 mb-4 space-y-3">
         {/* Row 1: date presets */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 mr-2">Date</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 mr-2">Date</span>
           {/* py-2 chips ≈ 36px tap height — wider gives the iPad finger room. */}
           {DATE_PRESETS.map((p) => (
             <button
@@ -157,7 +157,7 @@ export default function AuditLog() {
                 'px-3 py-2 rounded-full text-xs font-mono uppercase tracking-wider ' +
                 (datePresetId === p.id
                   ? 'bg-gold-500/20 text-gold-300'
-                  : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white active:bg-white/15')
+                  : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white active:bg-white/15')
               }
             >
               {p.label}
@@ -168,7 +168,7 @@ export default function AuditLog() {
             <button
               type="button"
               onClick={clearFilters}
-              className="px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white hover:bg-white/5 active:bg-white/10"
+              className="px-3 py-2 rounded-lg text-xs text-white/65 hover:text-white hover:bg-white/5 active:bg-white/10"
             >
               Clear filters
             </button>
@@ -179,7 +179,7 @@ export default function AuditLog() {
               className={
                 'px-3 py-2 rounded-lg text-xs font-medium ' +
                 (exporting || mockMode
-                  ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                  ? 'bg-white/5 text-white/45 cursor-not-allowed'
                   : 'bg-gold-500/15 text-gold-300 hover:bg-gold-500/25 active:bg-gold-500/35')
               }
             >
@@ -191,7 +191,7 @@ export default function AuditLog() {
         {/* Row 2: custom date pickers, only when preset='custom' */}
         {datePresetId === 'custom' && (
           <div className="flex flex-wrap items-center gap-3">
-            <label className="text-xs text-white/60 flex items-center gap-2">
+            <label className="text-xs text-white/70 flex items-center gap-2">
               From
               <input
                 type="date"
@@ -200,7 +200,7 @@ export default function AuditLog() {
                 className="bg-felt-900 border border-white/10 rounded px-2 py-1 text-sm"
               />
             </label>
-            <label className="text-xs text-white/60 flex items-center gap-2">
+            <label className="text-xs text-white/70 flex items-center gap-2">
               To
               <input
                 type="date"
@@ -214,7 +214,7 @@ export default function AuditLog() {
 
         {/* Row 3: other filters */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <label className="text-xs text-white/60 flex flex-col gap-1">
+          <label className="text-xs text-white/70 flex flex-col gap-1">
             Action type
             <select
               value={actionType}
@@ -230,7 +230,7 @@ export default function AuditLog() {
             </select>
           </label>
 
-          <label className="text-xs text-white/60 flex flex-col gap-1">
+          <label className="text-xs text-white/70 flex flex-col gap-1">
             Actor ID
             <input
               type="text"
@@ -241,7 +241,7 @@ export default function AuditLog() {
             />
           </label>
 
-          <label className="text-xs text-white/60 flex flex-col gap-1">
+          <label className="text-xs text-white/70 flex flex-col gap-1">
             Target type
             <input
               type="text"
@@ -252,7 +252,7 @@ export default function AuditLog() {
             />
           </label>
 
-          <label className="text-xs text-white/60 flex flex-col gap-1">
+          <label className="text-xs text-white/70 flex flex-col gap-1">
             Target ID
             <input
               type="text"
@@ -305,7 +305,7 @@ export default function AuditLog() {
       )}
 
       {loading && entries.length === 0 && !mockMode && (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       )}
     </div>
   )
@@ -343,7 +343,7 @@ function EmptyState({ title, body, tone = 'neutral' }) {
   return (
     <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
       <div className="font-display text-lg text-white mb-1">{title}</div>
-      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
+      {body && <p className="text-sm text-white/65 max-w-md mx-auto">{body}</p>}
     </div>
   )
 }
@@ -353,7 +353,7 @@ function EntriesTable({ entries, expandedId, onToggleExpand }) {
     <div className="bg-felt-800 border border-white/5 rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
             <tr>
               <th className="text-left px-4 py-2 whitespace-nowrap">Timestamp</th>
               <th className="text-left px-4 py-2 whitespace-nowrap">Actor</th>
@@ -382,7 +382,7 @@ function EntriesTable({ entries, expandedId, onToggleExpand }) {
 }
 
 function Row({ entry, expanded, onToggle }) {
-  const roleClass = ROLE_CLASSES[entry.actorRole] ?? 'bg-white/10 text-white/60'
+  const roleClass = ROLE_CLASSES[entry.actorRole] ?? 'bg-white/10 text-white/70'
   const isoTs = entry.timestamp?.toDate?.().toISOString?.() ?? '—'
 
   return (
@@ -410,15 +410,15 @@ function Row({ entry, expanded, onToggle }) {
         <td className="px-4 py-3 whitespace-nowrap text-xs text-white/70">
           {entry.targetType ? (
             <>
-              <span className="text-white/40">{entry.targetType}</span>
-              <span className="mx-1 text-white/20">/</span>
+              <span className="text-white/55">{entry.targetType}</span>
+              <span className="mx-1 text-white/35">/</span>
               <span className="font-mono">{entry.targetId ?? '—'}</span>
             </>
           ) : (
-            <span className="text-white/30">—</span>
+            <span className="text-white/45">—</span>
           )}
         </td>
-        <td className="px-4 py-3 text-right text-xs text-white/40">
+        <td className="px-4 py-3 text-right text-xs text-white/55">
           {entry.metadata && Object.keys(entry.metadata).length > 0
             ? expanded
               ? 'Hide'

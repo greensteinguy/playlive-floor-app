@@ -23,7 +23,7 @@ export default function LandingTile({ to, icon, label, description, badge, disab
           {icon}
         </span>
         {badge && (
-          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/35 whitespace-nowrap">
+          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/50 whitespace-nowrap">
             {badge}
           </span>
         )}
@@ -37,7 +37,7 @@ export default function LandingTile({ to, icon, label, description, badge, disab
           </span>
         )}
       </div>
-      {description && <p className="text-sm text-white/55 leading-relaxed">{description}</p>}
+      {description && <p className="text-sm text-white/70 leading-relaxed">{description}</p>}
     </>
   )
 

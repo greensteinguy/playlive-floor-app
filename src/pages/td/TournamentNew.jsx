@@ -322,15 +322,15 @@ export default function TournamentNew() {
       content: (
         <>
           <section className="mb-5">
-            <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Format</h3>
+            <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Format</h3>
             <div className="bg-felt-800 border border-white/5 rounded-lg p-4 flex flex-col gap-2">
               <Toggle label="Upper deck / main deck" checked={form.hasUpperDeckMainDeck} onChange={(v) => set({ hasUpperDeckMainDeck: v })} disabled={d} />
-              <p className="text-[11px] text-white/40">Multi-day and multi-flight are configured on the Days &amp; flights step.</p>
+              <p className="text-[11px] text-white/55">Multi-day and multi-flight are configured on the Days &amp; flights step.</p>
             </div>
           </section>
 
           <section className="mb-5">
-            <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Blind structure</h3>
+            <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Blind structure</h3>
             <div className="bg-felt-800 border border-white/5 rounded-lg p-4 space-y-3">
               <div className="max-w-sm">
                 <Select
@@ -401,7 +401,7 @@ export default function TournamentNew() {
             <Section title="Mystery bounty">
               <div className="md:col-span-2">
                 <BountyValues values={form.bountyValues} onChange={(vals) => set({ bountyValues: vals })} disabled={d} />
-                <p className="text-[11px] text-white/40 mt-2">Total bounty pool is the sum of the values above.</p>
+                <p className="text-[11px] text-white/55 mt-2">Total bounty pool is the sum of the values above.</p>
               </div>
             </Section>
           )}
@@ -418,12 +418,12 @@ export default function TournamentNew() {
         disabled={d || mockMode}
         className={
           'px-4 py-2 rounded-lg text-sm font-medium ' +
-          (d || mockMode ? 'bg-white/5 text-white/30 cursor-not-allowed' : 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30')
+          (d || mockMode ? 'bg-white/5 text-white/45 cursor-not-allowed' : 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30')
         }
       >
         {d ? 'Creating…' : 'Create tournament'}
       </button>
-      <button type="button" onClick={() => navigate('/td/tournaments')} disabled={d} className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5">
+      <button type="button" onClick={() => navigate('/td/tournaments')} disabled={d} className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5">
         Cancel
       </button>
     </>
@@ -431,15 +431,15 @@ export default function TournamentNew() {
 
   return (
     <div className="w-full">
-      <button type="button" onClick={() => navigate('/td/tournaments')} className="text-sm text-white/50 hover:text-white mb-4">
+      <button type="button" onClick={() => navigate('/td/tournaments')} className="text-sm text-white/65 hover:text-white mb-4">
         ← Back to tournaments
       </button>
 
       <h2 className="font-display text-2xl text-white mb-1">Create tournament</h2>
-      <p className="text-sm text-white/50 mb-5">Manager-only. Seed from a template, then adjust as needed.</p>
+      <p className="text-sm text-white/65 mb-5">Manager-only. Seed from a template, then adjust as needed.</p>
 
       {mockMode && (
-        <div className="bg-felt-800 border border-gold-500/30 rounded-lg p-3 mb-5 text-xs text-white/60">
+        <div className="bg-felt-800 border border-gold-500/30 rounded-lg p-3 mb-5 text-xs text-white/70">
           Mock mode — saving is disabled. Run <span className="font-mono text-gold-300">npm run emulator</span> (and{' '}
           <span className="font-mono text-gold-300">npm run seed:templates</span> for template/structure pickers) to persist.
         </div>

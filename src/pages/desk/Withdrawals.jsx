@@ -55,7 +55,7 @@ const PAYOUT_METHODS = [
 const STATE_BADGE_CLASSES = {
   pending: 'bg-amber-500/15 text-amber-300',
   completed: 'bg-emerald-500/15 text-emerald-300',
-  cancelled: 'bg-white/10 text-white/50',
+  cancelled: 'bg-white/10 text-white/65',
 }
 
 // Surface the typed domain/wallet errors verbatim (they're written for staff);
@@ -81,7 +81,7 @@ function fmtDateTime(ts) {
 function Panel({ title, children }) {
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">{title}</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">{title}</h3>
       <div className="bg-felt-800 border border-white/5 rounded-lg p-4">{children}</div>
     </section>
   )
@@ -267,7 +267,7 @@ export default function Withdrawals() {
       <button
         type="button"
         onClick={() => navigate('/desk')}
-        className="text-sm text-white/50 hover:text-white mb-4"
+        className="text-sm text-white/65 hover:text-white mb-4"
       >
         ← Back to desk
       </button>
@@ -275,11 +275,11 @@ export default function Withdrawals() {
       <div className="mb-5">
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="font-display text-3xl md:text-4xl text-gold-400">Withdrawals</h1>
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
             Phase 4 — task 4.8
           </span>
         </div>
-        <p className="mt-2 text-sm text-white/50">
+        <p className="mt-2 text-sm text-white/65">
           Two-step pattern: the desk creates a pending request; a manager completes it once the money
           has been paid out through the venue's own systems. Completing is what debits the wallet.
         </p>
@@ -293,7 +293,7 @@ export default function Withdrawals() {
       ) : loadError ? (
         <EmptyState title="Couldn't load the withdrawal queue." body={loadError.message} tone="error" />
       ) : loading ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : creating ? (
         <CreateFlow
           players={players}
@@ -340,11 +340,11 @@ export default function Withdrawals() {
                     'px-3 py-1.5 rounded-full text-xs font-medium ' +
                     (filter === f.id
                       ? 'bg-gold-500/20 text-gold-300'
-                      : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80')
+                      : 'bg-white/5 text-white/65 hover:bg-white/10 hover:text-white/80')
                   }
                 >
                   {f.label}
-                  <span className="ml-1.5 text-white/30">{counts[f.id]}</span>
+                  <span className="ml-1.5 text-white/45">{counts[f.id]}</span>
                 </button>
               ))}
             </div>
@@ -376,7 +376,7 @@ export default function Withdrawals() {
           ) : (
             <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+                <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
                   <tr>
                     <th className="text-left px-4 py-2">Player</th>
                     <th className="text-right px-4 py-2 whitespace-nowrap">Amount</th>
@@ -411,7 +411,7 @@ export default function Withdrawals() {
             </div>
           )}
 
-          <p className="text-xs text-white/30 mt-4">
+          <p className="text-xs text-white/45 mt-4">
             Creating a request does not touch the wallet. Completing (manager-only) records that the
             money was paid out and debits the wallet in the same transaction. Cancelling a pending
             request has no wallet impact.
@@ -441,7 +441,7 @@ function QueueRow({
 }) {
   const name = player ? playerDisplayName(player) : request.playerId
   const isPending = request.state === 'pending'
-  const badgeClass = STATE_BADGE_CLASSES[request.state] ?? 'bg-white/10 text-white/60'
+  const badgeClass = STATE_BADGE_CLASSES[request.state] ?? 'bg-white/10 text-white/70'
   // Completion enforces walletBalance ≥ 0 — surface the shortfall before the
   // manager reaches for the till.
   const shortfall = player ? request.amount - player.walletBalance : 0
@@ -455,12 +455,12 @@ function QueueRow({
               {name}
             </Link>
           ) : (
-            <span className="font-mono text-xs text-white/60" title={request.playerId}>
+            <span className="font-mono text-xs text-white/70" title={request.playerId}>
               {request.playerId}
             </span>
           )}
           {player && isPending && (
-            <div className="text-xs text-white/40 mt-0.5">Wallet {formatMoney(player.walletBalance)}</div>
+            <div className="text-xs text-white/55 mt-0.5">Wallet {formatMoney(player.walletBalance)}</div>
           )}
         </td>
         <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap text-white/90">
@@ -471,11 +471,11 @@ function QueueRow({
         </td>
         <td className="px-4 py-3 text-white/70 whitespace-nowrap">{payoutMethodLabel(request.payoutMethod)}</td>
         <td className="px-4 py-3 whitespace-nowrap">
-          <span className="font-mono text-xs text-white/60 truncate inline-block max-w-[9rem]" title={request.requestedBy}>
+          <span className="font-mono text-xs text-white/70 truncate inline-block max-w-[9rem]" title={request.requestedBy}>
             {request.requestedBy}
           </span>
         </td>
-        <td className="px-4 py-3 text-white/50 whitespace-nowrap">{fmtDateTime(request.requestedAt)}</td>
+        <td className="px-4 py-3 text-white/65 whitespace-nowrap">{fmtDateTime(request.requestedAt)}</td>
         <td className="px-4 py-3 whitespace-nowrap">
           <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${badgeClass}`}>
             {withdrawalStateLabel(request.state)}
@@ -498,7 +498,7 @@ function QueueRow({
                 type="button"
                 onClick={() => onStartAction('cancel')}
                 disabled={busy}
-                className="px-4 py-2.5 rounded text-sm bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90 disabled:opacity-40"
+                className="px-4 py-2.5 rounded text-sm bg-white/5 text-white/70 hover:bg-white/10 hover:text-white/90 disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -517,7 +517,7 @@ function QueueRow({
               Pay out <span className="text-gold-300">{formatMoney(request.amount)}</span> to{' '}
               <span className="text-white">{name}</span> via {payoutMethodLabel(request.payoutMethod)}.
             </p>
-            <p className="text-sm text-white/50 mb-3">
+            <p className="text-sm text-white/65 mb-3">
               The money moves through the venue's own systems (till, EFTPOS, bank transfer) —
               completing records that it happened and debits the wallet
               {player && (
@@ -549,7 +549,7 @@ function QueueRow({
                 type="button"
                 onClick={onClearAction}
                 disabled={busy}
-                className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
               >
                 Back
               </button>
@@ -587,7 +587,7 @@ function QueueRow({
                 type="button"
                 onClick={onClearAction}
                 disabled={busy}
-                className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
               >
                 Back
               </button>
@@ -610,7 +610,7 @@ function QueueRow({
 function ResolvedNote({ request }) {
   if (request.state === 'completed') {
     return (
-      <span className="text-xs text-white/40" title={request.externalReference ?? undefined}>
+      <span className="text-xs text-white/55" title={request.externalReference ?? undefined}>
         {fmtDateTime(request.completedAt)}
         {request.externalReference ? ` · ${request.externalReference}` : ''}
       </span>
@@ -618,13 +618,13 @@ function ResolvedNote({ request }) {
   }
   if (request.state === 'cancelled') {
     return (
-      <span className="text-xs text-white/40" title={request.cancelReason ?? undefined}>
+      <span className="text-xs text-white/55" title={request.cancelReason ?? undefined}>
         {fmtDateTime(request.cancelledAt)}
         {request.cancelReason ? ` · ${request.cancelReason}` : ''}
       </span>
     )
   }
-  return <span className="text-white/30">—</span>
+  return <span className="text-white/45">—</span>
 }
 
 // ── Create flow (player → amount → payout method → review) ───────────────────
@@ -659,7 +659,7 @@ function CreateFlow({
           type="button"
           onClick={onExit}
           disabled={busy}
-          className="px-3 py-1.5 rounded text-xs bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90"
+          className="px-3 py-1.5 rounded text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white/90"
         >
           ← Back to queue
         </button>
@@ -671,7 +671,7 @@ function CreateFlow({
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-white/90 font-medium">{playerDisplayName(selectedPlayer)}</div>
-              <div className="text-xs text-white/50 mt-0.5">
+              <div className="text-xs text-white/65 mt-0.5">
                 {selectedPlayer.phone} · Wallet {formatMoney(selectedPlayer.walletBalance)} · Tickets{' '}
                 {formatMoney(selectedPlayer.ticketBalance)}
               </div>
@@ -696,7 +696,7 @@ function CreateFlow({
             <div className="max-w-[12rem]">
               <Money label="Withdrawal amount" value={amountStr} onChange={onChangeAmount} disabled={busy} />
             </div>
-            <p className="text-xs text-white/40 mt-2">
+            <p className="text-xs text-white/55 mt-2">
               Current wallet balance {formatMoney(selectedPlayer.walletBalance)}
               {amountValid && (
                 <>
@@ -729,14 +729,14 @@ function CreateFlow({
                     'px-4 py-2 rounded-lg text-sm font-medium ' +
                     (payoutMethod === m.id
                       ? 'bg-gold-500/25 text-gold-200'
-                      : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/90')
+                      : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white/90')
                   }
                 >
                   {m.label}
                 </button>
               ))}
             </div>
-            <p className="text-xs text-white/40 mt-3">
+            <p className="text-xs text-white/55 mt-3">
               How the venue will pay the player out. The payout reference (bank transfer ref, EFTPOS
               approval) is recorded by the manager at completion.
             </p>
@@ -763,7 +763,7 @@ function CreateFlow({
                     for <span className="text-white">{playerDisplayName(selectedPlayer)}</span> via{' '}
                     {payoutMethodLabel(payoutMethod)}.
                   </p>
-                  <p className="text-sm text-white/50 mb-3">
+                  <p className="text-sm text-white/65 mb-3">
                     The wallet is not debited now — a manager completes the request once the money has
                     been paid out.
                   </p>
@@ -772,7 +772,7 @@ function CreateFlow({
                       type="button"
                       onClick={() => setConfirming(false)}
                       disabled={busy}
-                      className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                      className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5"
                     >
                       Back
                     </button>

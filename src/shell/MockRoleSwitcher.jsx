@@ -47,7 +47,7 @@ export default function MockRoleSwitcher() {
         type="button"
         onClick={() => persist(false)}
         title="Show mock role switcher"
-        className="fixed bottom-4 left-4 z-40 glass rounded-full pl-2.5 pr-3 py-1.5 flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-white/65 hover:text-white transition"
+        className="fixed bottom-4 left-4 z-40 glass rounded-full pl-2.5 pr-3 py-1.5 flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-white/75 hover:text-white transition"
       >
         <span className="w-2 h-2 rounded-full bg-brand-500 shadow-[0_0_10px_2px_rgba(239,43,43,0.7)]" />
         {role ?? 'dev'}
@@ -66,7 +66,7 @@ export default function MockRoleSwitcher() {
           onClick={() => persist(true)}
           aria-label="Minimize"
           title="Minimize"
-          className="-mr-1 w-5 h-5 grid place-items-center rounded text-white/40 hover:text-white hover:bg-white/10 text-base leading-none"
+          className="-mr-1 w-5 h-5 grid place-items-center rounded text-white/55 hover:text-white hover:bg-white/10 text-base leading-none"
         >
           –
         </button>
@@ -82,7 +82,7 @@ export default function MockRoleSwitcher() {
               className={`px-2.5 py-1 rounded-lg font-mono uppercase tracking-wider text-[10px] transition ${
                 active
                   ? 'bg-brand-500/25 text-brand-300 shadow-[0_0_16px_-4px_rgba(239,43,43,0.7)]'
-                  : 'titanium text-white/60 hover:text-white'
+                  : 'titanium text-white/70 hover:text-white'
               }`}
             >
               {r}

@@ -82,12 +82,12 @@ export default function TournamentTemplatesPanel() {
     )
   }
   if (error) return <EmptyState title="Couldn't load tournament templates." body={error.message} tone="error" />
-  if (loading) return <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+  if (loading) return <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
 
   return (
     <>
       <div className="flex items-center justify-between mb-3 gap-3">
-        <div className="text-xs text-white/40 font-mono">
+        <div className="text-xs text-white/55 font-mono">
           {templates.length} active template{templates.length === 1 ? '' : 's'}
         </div>
         <div className="flex items-center gap-2">
@@ -116,7 +116,7 @@ export default function TournamentTemplatesPanel() {
       ) : (
         <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
               <tr>
                 <th className="text-left px-4 py-2">Name</th>
                 <th className="text-left px-4 py-2">Game</th>
@@ -131,12 +131,12 @@ export default function TournamentTemplatesPanel() {
                   <td className="px-4 py-3 text-white/90">
                     {t.name}
                     {t.config.name !== t.name && (
-                      <span className="block text-[11px] text-white/40">→ {t.config.name}</span>
+                      <span className="block text-[11px] text-white/55">→ {t.config.name}</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-white/70">{GAME_TYPE_LABEL[t.config.gameType] ?? t.config.gameType}</td>
                   <td className="px-4 py-3 text-white/70 whitespace-nowrap">{formatMoney(t.config.buyIn)}</td>
-                  <td className="px-4 py-3 text-xs text-white/50">
+                  <td className="px-4 py-3 text-xs text-white/65">
                     {t.config.isMultiFlight ? 'Multi-flight' : t.config.isMultiDay ? 'Multi-day' : 'Single day'}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -401,12 +401,12 @@ function TournamentTemplateEditor({ template, onDone, onCancel }) {
         disabled={d}
         className={
           'px-4 py-2 rounded-lg text-sm font-medium ' +
-          (d ? 'bg-white/5 text-white/30 cursor-not-allowed' : 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30')
+          (d ? 'bg-white/5 text-white/45 cursor-not-allowed' : 'bg-gold-500/20 text-gold-200 hover:bg-gold-500/30')
         }
       >
         {d ? 'Saving…' : isEdit ? 'Save changes' : 'Create template'}
       </button>
-      <button type="button" onClick={onCancel} disabled={d} className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5">
+      <button type="button" onClick={onCancel} disabled={d} className="px-4 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/5">
         Cancel
       </button>
 
@@ -414,11 +414,11 @@ function TournamentTemplateEditor({ template, onDone, onCancel }) {
         <div className="ml-1 sm:ml-3">
           {confirmArchive ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-white/60">Archive this template?</span>
+              <span className="text-xs text-white/70">Archive this template?</span>
               <button type="button" onClick={handleArchive} disabled={d} className="px-3 py-2 rounded-lg text-xs font-medium bg-red-500/20 text-red-200 hover:bg-red-500/30">
                 Confirm
               </button>
-              <button type="button" onClick={() => setConfirmArchive(false)} disabled={d} className="px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white">
+              <button type="button" onClick={() => setConfirmArchive(false)} disabled={d} className="px-3 py-2 rounded-lg text-xs text-white/65 hover:text-white">
                 Keep
               </button>
             </div>
@@ -434,7 +434,7 @@ function TournamentTemplateEditor({ template, onDone, onCancel }) {
 
   return (
     <div className="w-full">
-      <button type="button" onClick={onCancel} className="text-sm text-white/50 hover:text-white mb-4">
+      <button type="button" onClick={onCancel} className="text-sm text-white/65 hover:text-white mb-4">
         ← Back to templates
       </button>
 

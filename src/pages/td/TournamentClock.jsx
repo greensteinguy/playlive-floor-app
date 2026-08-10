@@ -149,7 +149,7 @@ export default function TournamentClock() {
   if (sx.list === null || (selectedId && clock.loading)) {
     return (
       <Shell id={id}>
-        <p className="text-white/50">Loading clock…</p>
+        <p className="text-white/65">Loading clock…</p>
       </Shell>
     )
   }
@@ -170,7 +170,7 @@ export default function TournamentClock() {
   if (!clock.ready || !tournament || !session || !derived) {
     return (
       <Shell id={id}>
-        <p className="text-white/50">Loading clock…</p>
+        <p className="text-white/65">Loading clock…</p>
       </Shell>
     )
   }
@@ -221,7 +221,7 @@ export default function TournamentClock() {
       : badge === 'PAUSED'
         ? 'text-amber-300'
         : badge === 'FINISHED'
-          ? 'text-white/40'
+          ? 'text-white/55'
           : 'text-sky-300'
 
   return (
@@ -239,7 +239,7 @@ export default function TournamentClock() {
                   'text-xs px-3 py-1.5 rounded-lg border ' +
                   (s.id === selectedId
                     ? 'bg-gold-500/20 border-gold-500/40 text-gold-100'
-                    : 'bg-felt-900 border-white/10 text-white/60 hover:bg-white/5')
+                    : 'bg-felt-900 border-white/10 text-white/70 hover:bg-white/5')
                 }
               >
                 {s.sessionLabel}
@@ -265,7 +265,7 @@ export default function TournamentClock() {
           <div className="font-display text-6xl md:text-8xl text-white mb-2 tabular-nums">{blinds ?? '—'}</div>
         )}
         {!onBreak && heroEntry?.ante > 0 && (
-          <div className="text-white/50 text-lg md:text-xl mb-2">ante {heroEntry.ante.toLocaleString()}</div>
+          <div className="text-white/65 text-lg md:text-xl mb-2">ante {heroEntry.ante.toLocaleString()}</div>
         )}
 
         <div className="font-display text-7xl md:text-[10rem] leading-none text-white tabular-nums my-4">
@@ -273,11 +273,11 @@ export default function TournamentClock() {
         </div>
 
         {heroNext ? (
-          <div className="text-white/40 text-sm">
+          <div className="text-white/55 text-sm">
             Next: {heroNext.type === 'break' ? entryLabel(heroNext) : entryBlinds(heroNext)}
           </div>
         ) : (
-          <div className="text-white/30 text-sm">Final level of this session</div>
+          <div className="text-white/45 text-sm">Final level of this session</div>
         )}
       </div>
 
@@ -339,10 +339,10 @@ export default function TournamentClock() {
               )}
             </>
           )}
-          {isFinished && <p className="text-white/40 text-sm">This session has finished.</p>}
+          {isFinished && <p className="text-white/55 text-sm">This session has finished.</p>}
         </div>
       ) : (
-        <p className="text-white/40 text-sm mt-6">Read-only — a manager or TD controls the clock.</p>
+        <p className="text-white/55 text-sm mt-6">Read-only — a manager or TD controls the clock.</p>
       )}
     </Shell>
   )
@@ -352,7 +352,7 @@ function Shell({ id, children }) {
   return (
     <div className=" mx-auto px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-4">
-        <Link to={`/td/tournaments/${id}`} className="text-sm text-white/50 hover:text-white">
+        <Link to={`/td/tournaments/${id}`} className="text-sm text-white/65 hover:text-white">
           ← Back to tournament
         </Link>
         {/* The venue TV view, pinned to this tournament — opened on the TV's
@@ -361,7 +361,7 @@ function Shell({ id, children }) {
           href={`/display?tournamentId=${id}`}
           target="_blank"
           rel="noreferrer"
-          className="text-sm text-white/50 hover:text-white"
+          className="text-sm text-white/65 hover:text-white"
         >
           TV display ↗
         </a>
@@ -374,7 +374,7 @@ function Shell({ id, children }) {
 function Stat({ label, value }) {
   return (
     <div className="bg-felt-800 border border-white/5 rounded-lg px-3 py-2 text-center">
-      <div className="text-[10px] font-mono uppercase tracking-widest text-white/30">{label}</div>
+      <div className="text-[10px] font-mono uppercase tracking-widest text-white/45">{label}</div>
       <div className="text-lg text-white/90 tabular-nums">{value}</div>
     </div>
   )
@@ -402,7 +402,7 @@ function Notice({ title, children }) {
   return (
     <div className="bg-felt-800 border border-white/5 rounded-lg px-5 py-8 text-center">
       <h2 className="font-display text-xl text-gold-300 mb-2">{title}</h2>
-      <p className="text-white/50 text-sm max-w-md mx-auto">{children}</p>
+      <p className="text-white/65 text-sm max-w-md mx-auto">{children}</p>
     </div>
   )
 }

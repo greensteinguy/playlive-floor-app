@@ -61,7 +61,7 @@ export default function DeskLanding() {
         <h1 className="font-display text-3xl md:text-4xl text-white">
           What would you like to do?
         </h1>
-        <p className="text-white/50 text-sm mt-2">
+        <p className="text-white/65 text-sm mt-2">
           Player-facing operations — registration, wallet, payouts.
         </p>
       </div>

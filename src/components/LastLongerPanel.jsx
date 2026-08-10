@@ -56,7 +56,7 @@ export default function LastLongerPanel({ tournament, entries, nameOf, onChanged
 
   return (
     <section>
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">
         Last longer — Upper / Main deck
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -73,7 +73,7 @@ export default function LastLongerPanel({ tournament, entries, nameOf, onChanged
           />
         ))}
       </div>
-      <p className="text-[11px] text-white/40 mt-2">
+      <p className="text-[11px] text-white/55 mt-2">
         The winner is recorded here; the side pot itself is paid out at the venue.
       </p>
     </section>
@@ -97,13 +97,13 @@ function DeckCard({ deck, status, nameOf, canSettle, busy, onSettle, onUnsettle 
     <div className="bg-felt-800 border border-white/5 rounded-lg p-4">
       <div className="flex items-baseline justify-between gap-3 mb-1.5">
         <span className="text-sm font-medium text-white/90">{lastLongerDeckLabel(deck)}</span>
-        <span className="text-[10px] font-mono uppercase tracking-wider text-white/30">
+        <span className="text-[10px] font-mono uppercase tracking-wider text-white/45">
           {participants.length} player{participants.length === 1 ? '' : 's'}
         </span>
       </div>
 
       {participants.length > 0 && (
-        <p className="text-xs text-white/50 mb-2">{participants.map((e) => nameOf(e)).join(', ')}</p>
+        <p className="text-xs text-white/65 mb-2">{participants.map((e) => nameOf(e)).join(', ')}</p>
       )}
 
       {settledWinner ? (
@@ -135,8 +135,8 @@ function DeckCard({ deck, status, nameOf, canSettle, busy, onSettle, onUnsettle 
               Winner apparent: <span className="text-gold-300 font-medium">{nameOf(derivedWinner)}</span>
             </div>
           ) : (
-            <div className="text-sm text-white/40">
-              Undetermined <span className="block text-xs mt-0.5 text-white/35">{lastLongerReasonLabel(reason)}</span>
+            <div className="text-sm text-white/55">
+              Undetermined <span className="block text-xs mt-0.5 text-white/50">{lastLongerReasonLabel(reason)}</span>
             </div>
           )}
 
@@ -157,7 +157,7 @@ function DeckCard({ deck, status, nameOf, canSettle, busy, onSettle, onUnsettle 
               ) : picking ? (
                 <div className="flex items-end gap-2 flex-wrap">
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Winner</span>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Winner</span>
                     <select
                       value={pickId}
                       onChange={(e) => setPickId(e.target.value)}

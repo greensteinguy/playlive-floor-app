@@ -117,7 +117,7 @@ export default function PlayerDetail() {
       <button
         type="button"
         onClick={() => navigate('/desk/players')}
-        className="text-sm text-white/50 hover:text-white mb-4"
+        className="text-sm text-white/65 hover:text-white mb-4"
       >
         ← Back to players
       </button>
@@ -132,7 +132,7 @@ export default function PlayerDetail() {
       ) : notFound ? (
         <EmptyState title="Player not found." body="This player may have been removed, or the link is out of date." />
       ) : loading || !player || !form ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : (
         <>
           <TopBar player={player} canRegister={canRegister} />
@@ -148,7 +148,7 @@ export default function PlayerDetail() {
             </div>
           ) : (
             !canEdit && (
-              <div className="bg-felt-800 border border-white/10 rounded-lg px-4 py-2 mb-5 text-xs text-white/50">
+              <div className="bg-felt-800 border border-white/10 rounded-lg px-4 py-2 mb-5 text-xs text-white/65">
                 Read-only access — ask a manager or cashier to make changes.
               </div>
             )
@@ -164,7 +164,7 @@ export default function PlayerDetail() {
                   'px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ' +
                   (tab === tb.id
                     ? 'border-gold-400 text-gold-300'
-                    : 'border-transparent text-white/50 hover:text-white/80')
+                    : 'border-transparent text-white/65 hover:text-white/80')
                 }
               >
                 {tb.label}
@@ -207,12 +207,12 @@ function TopBar({ player, canRegister }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl md:text-3xl text-gold-300">{name}</h1>
-          <div className="mt-1 text-sm text-white/60 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="mt-1 text-sm text-white/70 flex flex-wrap items-center gap-x-3 gap-y-1">
             {player.displayName && name !== realName && <span>{realName}</span>}
             <span>{player.phone}</span>
-            {player.email && <span className="text-white/40">{player.email}</span>}
+            {player.email && <span className="text-white/55">{player.email}</span>}
           </div>
-          <div className="mt-1 text-[11px] font-mono uppercase tracking-widest text-white/30">
+          <div className="mt-1 text-[11px] font-mono uppercase tracking-widest text-white/45">
             Added {fmtDate(player.createdAt)}
           </div>
         </div>
@@ -236,7 +236,7 @@ function TopBar({ player, canRegister }) {
 function Stat({ label, value, accent }) {
   return (
     <div className="px-3 py-2 rounded-lg bg-felt-900/60 border border-white/5 text-right min-w-[5.5rem]">
-      <div className="text-[10px] font-mono uppercase tracking-widest text-white/30">{label}</div>
+      <div className="text-[10px] font-mono uppercase tracking-widest text-white/45">{label}</div>
       <div className={'text-base tabular-nums ' + (accent ? 'text-emerald-300' : 'text-white/80')}>{value}</div>
     </div>
   )
@@ -269,13 +269,13 @@ function ActivityTab({ playerId }) {
       ) : error ? (
         <EmptyState title="Couldn't load activity." body={error.message} tone="error" />
       ) : loading ? (
-        <div className="py-8 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-8 text-center text-white/55 text-sm">Loading…</div>
       ) : rows.length === 0 ? (
         <EmptyState title="No tournament history yet." body="Entries this player makes will appear here." />
       ) : (
         <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
               <tr>
                 <th className="text-left px-4 py-2">Tournament</th>
                 <th className="text-left px-4 py-2 whitespace-nowrap">Date</th>
@@ -289,19 +289,19 @@ function ActivityTab({ playerId }) {
               {rows.map((e) => (
                 <tr key={e.id} className="border-t border-white/5">
                   <td className="px-4 py-2.5 text-white/90">{tournamentNameById[e.tournamentId] ?? '—'}</td>
-                  <td className="px-4 py-2.5 text-white/50 whitespace-nowrap">{fmtDate(e.registeredAt)}</td>
-                  <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">
+                  <td className="px-4 py-2.5 text-white/65 whitespace-nowrap">{fmtDate(e.registeredAt)}</td>
+                  <td className="px-4 py-2.5 text-white/70 whitespace-nowrap">
                     {entryTypeLabel(e.entryType)} #{e.entryNumber}
                   </td>
                   <td className="px-4 py-2.5 text-right text-white/70 tabular-nums whitespace-nowrap">
                     {formatMoney(e.paymentAmount)}
                   </td>
-                  <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">{entryResultLabel(e)}</td>
+                  <td className="px-4 py-2.5 text-white/70 whitespace-nowrap">{entryResultLabel(e)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
                     {entryWinnings(e) > 0 ? (
                       <span className="text-emerald-300">{formatMoney(entryWinnings(e))}</span>
                     ) : (
-                      <span className="text-white/30">—</span>
+                      <span className="text-white/45">—</span>
                     )}
                   </td>
                 </tr>
@@ -328,7 +328,7 @@ function LedgerAmount({ delta, amount }) {
   if (tone === 'credit') return <span className="text-emerald-300">+{formatMoney(amount)}</span>
   if (tone === 'debit') return <span className="text-rose-300">−{formatMoney(amount)}</span>
   // No wallet-balance effect (cash buy-in, ticket use, withdrawal request/cancel).
-  return <span className="text-white/40">{formatMoney(amount)}</span>
+  return <span className="text-white/55">{formatMoney(amount)}</span>
 }
 
 function WalletTab({ player, canRegister }) {
@@ -382,7 +382,7 @@ function WalletTab({ player, canRegister }) {
       </div>
 
       <div className="flex items-center justify-between gap-3 mb-3">
-        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Transaction ledger</h3>
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55">Transaction ledger</h3>
         {canRegister && (
           <div className="flex items-center gap-2">
             <Link
@@ -409,7 +409,7 @@ function WalletTab({ player, canRegister }) {
       ) : error ? (
         <EmptyState title="Couldn't load wallet activity." body={error.message} tone="error" />
       ) : loading ? (
-        <div className="py-8 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-8 text-center text-white/55 text-sm">Loading…</div>
       ) : allRows.length === 0 ? (
         <EmptyState
           title="No wallet activity yet."
@@ -432,11 +432,11 @@ function WalletTab({ player, canRegister }) {
                     'px-3 py-1.5 rounded-full text-xs font-medium ' +
                     (filter === f.id
                       ? 'bg-gold-500/20 text-gold-300'
-                      : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80')
+                      : 'bg-white/5 text-white/65 hover:bg-white/10 hover:text-white/80')
                   }
                 >
                   {f.label}
-                  <span className="ml-1.5 text-white/30">{counts[f.id]}</span>
+                  <span className="ml-1.5 text-white/45">{counts[f.id]}</span>
                 </button>
               ))}
             </div>
@@ -454,7 +454,7 @@ function WalletTab({ player, canRegister }) {
           ) : (
             <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+                <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
                   <tr>
                     <th className="text-left px-4 py-2 whitespace-nowrap">Date</th>
                     <th className="text-left px-4 py-2">Type</th>
@@ -467,10 +467,10 @@ function WalletTab({ player, canRegister }) {
                 <tbody>
                   {visible.map(({ tx, delta, balanceAfter }) => (
                     <tr key={tx.id} className="border-t border-white/5">
-                      <td className="px-4 py-2.5 text-white/50 whitespace-nowrap">{fmtDateTime(tx.timestamp)}</td>
+                      <td className="px-4 py-2.5 text-white/65 whitespace-nowrap">{fmtDateTime(tx.timestamp)}</td>
                       <td className="px-4 py-2.5 text-white/80 whitespace-nowrap">{ledgerTypeLabel(tx)}</td>
-                      <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">{ledgerMethodLabel(tx)}</td>
-                      <td className="px-4 py-2.5 text-white/40 break-all">{tx.reference || tx.notes || '—'}</td>
+                      <td className="px-4 py-2.5 text-white/70 whitespace-nowrap">{ledgerMethodLabel(tx)}</td>
+                      <td className="px-4 py-2.5 text-white/55 break-all">{tx.reference || tx.notes || '—'}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
                         <LedgerAmount delta={delta} amount={tx.amount} />
                       </td>
@@ -484,11 +484,11 @@ function WalletTab({ player, canRegister }) {
             </div>
           )}
 
-          <p className="text-xs text-white/30 mt-4">
-            Running <span className="text-white/50">Balance</span> is the wallet balance after each
+          <p className="text-xs text-white/45 mt-4">
+            Running <span className="text-white/65">Balance</span> is the wallet balance after each
             transaction; rows with no wallet effect (a cash buy-in, a ticket used, a withdrawal
             request) leave it unchanged. Withdrawals live in the{' '}
-            <Link to="/desk/withdrawals" className="underline hover:text-white/60">
+            <Link to="/desk/withdrawals" className="underline hover:text-white/70">
               withdrawal queue
             </Link>
             .
@@ -502,7 +502,7 @@ function WalletTab({ player, canRegister }) {
 function BalanceCard({ label, value, accent }) {
   return (
     <div className="bg-felt-800 border border-white/5 rounded-lg p-4">
-      <div className="text-[10px] font-mono uppercase tracking-widest text-white/30 mb-1">{label}</div>
+      <div className="text-[10px] font-mono uppercase tracking-widest text-white/45 mb-1">{label}</div>
       <div className={'text-2xl tabular-nums ' + (accent ? 'text-emerald-300' : 'text-white/80')}>{value}</div>
     </div>
   )
@@ -513,7 +513,7 @@ function EmptyState({ title, body, tone = 'neutral' }) {
   return (
     <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
       <div className="font-display text-lg text-white mb-1">{title}</div>
-      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
+      {body && <p className="text-sm text-white/65 max-w-md mx-auto">{body}</p>}
     </div>
   )
 }

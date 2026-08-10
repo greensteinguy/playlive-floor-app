@@ -109,7 +109,7 @@ export default function TournamentResults() {
 
   return (
     <div className="px-6 py-8 md:px-10 md:py-10">
-      <Link to={`/td/tournaments/${id}`} className="text-sm text-white/50 hover:text-white mb-4 inline-block">
+      <Link to={`/td/tournaments/${id}`} className="text-sm text-white/65 hover:text-white mb-4 inline-block">
         ← Back to tournament
       </Link>
 
@@ -123,13 +123,13 @@ export default function TournamentResults() {
       ) : notFound ? (
         <EmptyState title="Tournament not found." body="This tournament may have been removed, or the link is out of date." />
       ) : loading || entriesLoading || !tournament ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : (
         <>
           <div className="flex items-center gap-3 flex-wrap mb-2">
             <h1 className="font-display text-2xl md:text-3xl text-gold-400">{tournament.name}</h1>
             <StatusBadge status={tournament.status} />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Results</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Results</span>
           </div>
 
           <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 flex flex-wrap gap-x-8 gap-y-3 mb-5">
@@ -180,7 +180,7 @@ export default function TournamentResults() {
 function Meta({ label, value }) {
   return (
     <div className="flex flex-col">
-      <span className="text-[10px] font-mono uppercase tracking-widest text-white/30">{label}</span>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-white/45">{label}</span>
       <span className="text-sm text-white/80 tabular-nums">{value}</span>
     </div>
   )
@@ -200,14 +200,14 @@ function StandingsTable({ standings, flat, nameOf, onExport }) {
   return (
     <section className="mb-5">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Final standings</h3>
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55">Final standings</h3>
         <button type="button" onClick={onExport} disabled={flat.length === 0} className={btnPlain}>
           ⤓ Export CSV
         </button>
       </div>
       <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
             <tr>
               <th className="text-left px-4 py-2 w-16">Place</th>
               <th className="text-left px-4 py-2">Player</th>
@@ -221,7 +221,7 @@ function StandingsTable({ standings, flat, nameOf, onExport }) {
           <tbody>
             {flat.length === 0 ? (
               <tr>
-                <td colSpan={colCount} className="px-4 py-6 text-center text-white/40">
+                <td colSpan={colCount} className="px-4 py-6 text-center text-white/55">
                   No entries yet — results appear once players are registered.
                 </td>
               </tr>
@@ -250,7 +250,7 @@ function GroupRows({ group, rows, nameOf, hasBounty, hasTicket, colCount }) {
     <>
       {group !== 'placed' && (
         <tr className="border-t border-white/10 bg-felt-900/40">
-          <td colSpan={colCount} className="px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest text-white/40">
+          <td colSpan={colCount} className="px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest text-white/55">
             {RESULTS_GROUP_LABEL[group]}
           </td>
         </tr>
@@ -261,30 +261,30 @@ function GroupRows({ group, rows, nameOf, hasBounty, hasTicket, colCount }) {
             {r.place != null ? (
               ordinal(r.place)
             ) : (
-              <span className="text-white/40">
+              <span className="text-white/55">
                 {group === 'ticketWinners' ? 'ticket' : group === 'stillIn' ? 'in play' : '—'}
               </span>
             )}
           </td>
           <td className="px-4 py-2.5 text-white/90">{nameOf(r.playerId)}</td>
           <td className="px-4 py-2.5 text-right text-white/80 tabular-nums whitespace-nowrap">
-            {r.cash > 0 ? formatMoney(r.cash) : <span className="text-white/25">—</span>}
+            {r.cash > 0 ? formatMoney(r.cash) : <span className="text-white/40">—</span>}
           </td>
           {hasBounty && (
             <td className="px-4 py-2.5 text-right text-white/80 tabular-nums whitespace-nowrap">
-              {r.bounty > 0 ? formatMoney(r.bounty) : <span className="text-white/25">—</span>}
+              {r.bounty > 0 ? formatMoney(r.bounty) : <span className="text-white/40">—</span>}
             </td>
           )}
           {hasTicket && (
             <td className="px-4 py-2.5 text-right text-white/80 tabular-nums whitespace-nowrap">
-              {r.ticket > 0 ? formatMoney(r.ticket) : <span className="text-white/25">—</span>}
+              {r.ticket > 0 ? formatMoney(r.ticket) : <span className="text-white/40">—</span>}
             </td>
           )}
           <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
             {r.total > 0 ? (
               <span className="text-gold-200">{formatMoney(r.total)}</span>
             ) : (
-              <span className="text-white/25">—</span>
+              <span className="text-white/40">—</span>
             )}
           </td>
           <td className="px-4 py-2.5 whitespace-nowrap">
@@ -293,7 +293,7 @@ function GroupRows({ group, rows, nameOf, hasBounty, hasTicket, colCount }) {
             ) : r.paidState === 'staged' ? (
               <span className="text-amber-300/90">Awaiting cashier</span>
             ) : (
-              <span className="text-white/25">—</span>
+              <span className="text-white/40">—</span>
             )}
           </td>
         </tr>
@@ -339,7 +339,7 @@ function DealNote({ tournamentId }) {
   if (!deal) return null
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Deal</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Deal</h3>
       <div className="bg-felt-800 border border-amber-500/20 rounded-lg px-4 py-3 text-sm text-white/80">
         <p>
           A deal was entered {fmtTime(deal.timestamp)}
@@ -347,7 +347,7 @@ function DealNote({ tournamentId }) {
           {deal.grandTotal != null && (
             <>
               {' '}— total <span className="text-gold-200 tabular-nums">{formatMoney(deal.grandTotal)}</span>
-              {deal.prizePool != null && <span className="text-white/50"> vs {formatMoney(deal.prizePool)} pool</span>}
+              {deal.prizePool != null && <span className="text-white/65"> vs {formatMoney(deal.prizePool)} pool</span>}
               {deal.delta != null && deal.delta !== 0 && (
                 <span className="text-amber-300">
                   {' '}({deal.delta > 0 ? '+' : '−'}{formatMoney(Math.abs(deal.delta))}
@@ -358,7 +358,7 @@ function DealNote({ tournamentId }) {
           )}
           .
         </p>
-        {deal.notes && <p className="text-white/50 mt-1">“{deal.notes}”</p>}
+        {deal.notes && <p className="text-white/65 mt-1">“{deal.notes}”</p>}
       </div>
     </section>
   )
@@ -399,10 +399,10 @@ function BountySummary({ tournament, entries, players }) {
 
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Mystery bounties</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Mystery bounties</h3>
       <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
         {drawsLoading ? (
-          <div className="py-6 text-center text-white/40 text-sm">Loading draws…</div>
+          <div className="py-6 text-center text-white/55 text-sm">Loading draws…</div>
         ) : drawsError ? (
           <div className="py-6 text-center text-red-300/80 text-sm">Couldn't load bounty draws: {drawsError.message}</div>
         ) : (
@@ -412,10 +412,10 @@ function BountySummary({ tournament, entries, players }) {
               <Meta label="Remaining" value={`${summary.count} — ${formatMoney(summary.total)}`} />
             </div>
             {board.length === 0 ? (
-              <div className="py-4 text-center text-white/40 text-sm">No bounties were drawn.</div>
+              <div className="py-4 text-center text-white/55 text-sm">No bounties were drawn.</div>
             ) : (
               <table className="w-full text-sm">
-                <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+                <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
                   <tr>
                     <th className="text-left px-4 py-2">Drawn</th>
                     <th className="text-left px-4 py-2">Winner (knocker)</th>
@@ -427,9 +427,9 @@ function BountySummary({ tournament, entries, players }) {
                 <tbody>
                   {board.map((d) => (
                     <tr key={d.id} className="border-t border-white/5">
-                      <td className="px-4 py-2.5 text-white/50 whitespace-nowrap">{fmtTime(d.drawnAt)}</td>
+                      <td className="px-4 py-2.5 text-white/65 whitespace-nowrap">{fmtTime(d.drawnAt)}</td>
                       <td className="px-4 py-2.5 text-white/90">{d.knockerName}</td>
-                      <td className="px-4 py-2.5 text-white/60">{d.knockedOutName}</td>
+                      <td className="px-4 py-2.5 text-white/70">{d.knockedOutName}</td>
                       <td className="px-4 py-2.5 text-right text-white/80 tabular-nums whitespace-nowrap">
                         {formatMoney(d.bountyValue)}
                       </td>
@@ -462,16 +462,16 @@ function LastLongerSummary({ entries, nameOf }) {
 
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">Last longer</h3>
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Last longer</h3>
       <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3">
         <ul className="text-sm space-y-1.5">
           {decks.map((s) => (
             <li key={s.deck} className="flex items-center gap-3 flex-wrap">
-              <span className="text-white/50 w-28">{lastLongerDeckLabel(s.deck)}</span>
+              <span className="text-white/65 w-28">{lastLongerDeckLabel(s.deck)}</span>
               {s.settledWinner ? (
                 <span className="text-gold-200">🏆 {nameOf(s.settledWinner.playerId)}</span>
               ) : (
-                <span className="text-white/40">
+                <span className="text-white/55">
                   Not settled — {s.participants.length}{' '}
                   {s.participants.length === 1 ? 'participant' : 'participants'}
                 </span>

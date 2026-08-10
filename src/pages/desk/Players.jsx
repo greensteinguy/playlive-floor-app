@@ -65,11 +65,11 @@ export default function Players() {
     <div className="px-6 py-8 md:px-10 md:py-10">
       <div className="flex items-baseline justify-between gap-4 mb-2">
         <h1 className="font-display text-3xl md:text-4xl text-gold-400">Players</h1>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
           Phase 3 — task 3.2
         </span>
       </div>
-      <p className="text-white/50 text-sm mb-6">
+      <p className="text-white/65 text-sm mb-6">
         Search by name, phone, or email. Open a player to view their profile and wallet.
       </p>
 
@@ -81,7 +81,7 @@ export default function Players() {
       ) : error ? (
         <EmptyState title="Couldn't load players." body={error.message} tone="error" />
       ) : loading ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -92,7 +92,7 @@ export default function Players() {
               placeholder="Search players…"
               autoFocus
               aria-label="Search players"
-              className="flex-1 min-w-[14rem] bg-felt-900 border border-white/10 rounded-lg px-4 py-3 text-sm placeholder:text-white/30"
+              className="flex-1 min-w-[14rem] bg-felt-900 border border-white/10 rounded-lg px-4 py-3 text-sm placeholder:text-white/45"
             />
             <button
               type="button"
@@ -119,7 +119,7 @@ export default function Players() {
           ) : results.length === 0 ? (
             <div className="bg-felt-800 border border-white/5 rounded-lg p-8 text-center">
               <div className="font-display text-lg text-white mb-1">No players match "{q}".</div>
-              <p className="text-sm text-white/50 mb-4">Check the spelling, or add them as a new player.</p>
+              <p className="text-sm text-white/65 mb-4">Check the spelling, or add them as a new player.</p>
               {canCreate && (
                 <Link
                   to="/desk/players/new"
@@ -131,12 +131,12 @@ export default function Players() {
             </div>
           ) : (
             <>
-              <div className="text-[11px] font-mono uppercase tracking-widest text-white/30 mb-2">
+              <div className="text-[11px] font-mono uppercase tracking-widest text-white/45 mb-2">
                 {results.length}{results.length === RESULT_LIMIT ? '+' : ''} {results.length === 1 ? 'player' : 'players'}
               </div>
               <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+                  <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
                     <tr>
                       <th className="text-left px-4 py-2">Name</th>
                       <th className="text-left px-4 py-2 whitespace-nowrap">Phone</th>
@@ -162,7 +162,7 @@ export default function Players() {
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-white/70 whitespace-nowrap">{p.phone}</td>
-                        <td className="px-4 py-3 text-white/50 whitespace-nowrap">{p.email ?? '—'}</td>
+                        <td className="px-4 py-3 text-white/65 whitespace-nowrap">{p.email ?? '—'}</td>
                         <td className="px-4 py-3 text-right text-white/70 tabular-nums whitespace-nowrap">{formatMoney(p.walletBalance)}</td>
                         <td className="px-4 py-3 text-right text-white/70 tabular-nums whitespace-nowrap">{formatMoney(p.ticketBalance)}</td>
                       </tr>
@@ -183,7 +183,7 @@ function EmptyState({ title, body, tone = 'neutral' }) {
   return (
     <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
       <div className="font-display text-lg text-white mb-1">{title}</div>
-      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
+      {body && <p className="text-sm text-white/65 max-w-md mx-auto">{body}</p>}
     </div>
   )
 }

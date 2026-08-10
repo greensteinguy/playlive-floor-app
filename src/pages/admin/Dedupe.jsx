@@ -69,11 +69,11 @@ export default function Dedupe() {
     <div className="px-6 py-8 md:px-10 md:py-10">
       <div className="flex items-baseline justify-between gap-4 mb-2">
         <h1 className="font-display text-3xl md:text-4xl text-gold-400">Dedupe players</h1>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 whitespace-nowrap">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-white/55 whitespace-nowrap">
           Phase 1 — task 1.8
         </span>
       </div>
-      <p className="text-white/50 text-sm mb-6">
+      <p className="text-white/65 text-sm mb-6">
         Suspected duplicates by normalized phone number. Manager-only. Merges are permanent.
       </p>
 
@@ -85,7 +85,7 @@ export default function Dedupe() {
       ) : error ? (
         <EmptyState title="Couldn't load players." body={error.message} tone="error" />
       ) : loading ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : selectedGroup ? (
         <CompareView
           group={selectedGroup}
@@ -120,7 +120,7 @@ function ListView({ groups, onPick, onExport }) {
   return (
     <>
       <div className="flex items-center justify-between mb-3">
-        <div className="text-xs text-white/40 font-mono">
+        <div className="text-xs text-white/55 font-mono">
           {groups.length} group{groups.length === 1 ? '' : 's'} found · {groups.reduce((n, g) => n + g.members.length, 0)} players involved
         </div>
         <button
@@ -134,7 +134,7 @@ function ListView({ groups, onPick, onExport }) {
 
       <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
             <tr>
               <th className="text-left px-4 py-2 whitespace-nowrap">Phone key</th>
               <th className="text-left px-4 py-2 whitespace-nowrap">Members</th>
@@ -218,12 +218,12 @@ function CompareView({ group, onBack, onMerged }) {
       <button
         type="button"
         onClick={onBack}
-        className="text-sm text-white/50 hover:text-white mb-4"
+        className="text-sm text-white/65 hover:text-white mb-4"
       >
         ← Back to candidates
       </button>
 
-      <div className="mb-3 text-xs font-mono text-white/40">
+      <div className="mb-3 text-xs font-mono text-white/55">
         Group key: {group.key} · {group.members.length} member{group.members.length === 1 ? '' : 's'}
       </div>
 
@@ -260,7 +260,7 @@ function CompareView({ group, onBack, onMerged }) {
           )}
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs text-white/60 flex items-center gap-2">
+          <label className="text-xs text-white/70 flex items-center gap-2">
             Type <code className="bg-felt-950/80 px-1 py-0.5 rounded text-red-200">MERGE</code> to confirm
             <input
               type="text"
@@ -279,7 +279,7 @@ function CompareView({ group, onBack, onMerged }) {
               'px-4 py-2 rounded-lg text-sm font-medium ' +
               (canMerge
                 ? 'bg-red-500/20 text-red-200 hover:bg-red-500/30'
-                : 'bg-white/5 text-white/30 cursor-not-allowed')
+                : 'bg-white/5 text-white/45 cursor-not-allowed')
             }
           >
             {submitting ? 'Merging…' : 'Commit merge'}
@@ -301,7 +301,7 @@ function PlayerColumn({ label, tone, members, selectedId, otherId, onSelect }) {
   const selected = members.find((m) => m.id === selectedId) ?? null
   return (
     <div className={`bg-felt-800 border rounded-lg p-4 ${accent}`}>
-      <div className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">
+      <div className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">
         {label}
       </div>
       <select
@@ -315,7 +315,7 @@ function PlayerColumn({ label, tone, members, selectedId, otherId, onSelect }) {
           </option>
         ))}
       </select>
-      {selected ? <PlayerFacts player={selected} /> : <div className="text-white/40 text-sm">Pick one.</div>}
+      {selected ? <PlayerFacts player={selected} /> : <div className="text-white/55 text-sm">Pick one.</div>}
     </div>
   )
 }
@@ -335,7 +335,7 @@ function PlayerFacts({ player }) {
     <dl className="space-y-1.5 text-sm">
       {rows.map(([k, v], i) => (
         <div key={i} className="flex justify-between gap-4">
-          <dt className="text-white/40 text-xs uppercase tracking-wider">{k}</dt>
+          <dt className="text-white/55 text-xs uppercase tracking-wider">{k}</dt>
           <dd className="text-white/80 text-right truncate">{v}</dd>
         </div>
       ))}
@@ -350,7 +350,7 @@ function EmptyState({ title, body, tone = 'neutral' }) {
   return (
     <div className={`bg-felt-800 border ${border} rounded-lg p-8 text-center`}>
       <div className="font-display text-lg text-white mb-1">{title}</div>
-      {body && <p className="text-sm text-white/50 max-w-md mx-auto">{body}</p>}
+      {body && <p className="text-sm text-white/65 max-w-md mx-auto">{body}</p>}
     </div>
   )
 }

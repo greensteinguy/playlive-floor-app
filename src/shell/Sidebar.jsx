@@ -40,7 +40,7 @@ export default function Sidebar({ onNavigate }) {
         <span className="font-brand text-xl tracking-[0.13em] text-brand-400 [text-shadow:0_0_20px_rgba(239,43,43,0.55)] whitespace-nowrap">
           CHECK RAISE
         </span>
-        <p className="text-[10px] font-mono text-white/35 mt-1 tracking-[0.35em] uppercase">
+        <p className="text-[10px] font-mono text-white/50 mt-1 tracking-[0.35em] uppercase">
           Floor OS · by PlayLive
         </p>
       </div>
@@ -49,7 +49,7 @@ export default function Sidebar({ onNavigate }) {
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
         {grouped.map((section) => (
           <div key={section.id}>
-            <div className="px-3 mb-2 text-[10px] font-mono uppercase tracking-[0.25em] text-white/30">
+            <div className="px-3 mb-2 text-[10px] font-mono uppercase tracking-[0.25em] text-white/45">
               {section.label}
             </div>
             <div className="space-y-1">
@@ -64,7 +64,7 @@ export default function Sidebar({ onNavigate }) {
                     `group relative flex items-center gap-3 px-3 py-3 rounded-xl text-sm transition-all duration-150 ${
                       isActive
                         ? 'bg-brand-500/[0.12] text-brand-300 font-medium'
-                        : 'text-white/55 hover:text-white hover:bg-white/[0.06] active:translate-y-px'
+                        : 'text-white/70 hover:text-white hover:bg-white/[0.06] active:translate-y-px'
                     }`
                   }
                 >
@@ -77,7 +77,7 @@ export default function Sidebar({ onNavigate }) {
                         className={`text-base w-5 text-center transition ${
                           isActive
                             ? 'text-brand-400 [text-shadow:0_0_12px_rgba(239,43,43,0.7)]'
-                            : 'text-white/40 group-hover:text-white/80'
+                            : 'text-white/55 group-hover:text-white/80'
                         }`}
                       >
                         {item.icon}
@@ -98,14 +98,14 @@ export default function Sidebar({ onNavigate }) {
           <div className="text-white/70 font-mono truncate" title={user?.email ?? ''}>
             {user?.email ?? '(no user)'}
           </div>
-          <div className="text-white/35 font-mono uppercase tracking-[0.25em] text-[10px] mt-0.5">
+          <div className="text-white/50 font-mono uppercase tracking-[0.25em] text-[10px] mt-0.5">
             {role ?? '(no role)'}
           </div>
         </div>
         <button
           type="button"
           onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-white/50 hover:text-white hover:bg-white/[0.06] active:translate-y-px transition-all duration-150"
+          className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-white/65 hover:text-white hover:bg-white/[0.06] active:translate-y-px transition-all duration-150"
         >
           <span className="text-base w-5 text-center">⎋</span>
           Sign out

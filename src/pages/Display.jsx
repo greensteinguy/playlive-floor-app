@@ -222,7 +222,7 @@ export default function Display() {
       <FullScreen timeOfDay={timeOfDay}>
         <div className="text-center max-w-xl mx-auto">
           <h1 className="font-display text-3xl text-gold-300 mb-3">Display needs live data</h1>
-          <p className="text-white/50">
+          <p className="text-white/65">
             The venue display runs against real tournament data. Switch off pure-mock mode (use the
             Firestore emulator or production) to drive it.
           </p>
@@ -234,7 +234,7 @@ export default function Display() {
   if (tournaments === null) {
     return (
       <FullScreen timeOfDay={timeOfDay}>
-        <p className="text-white/40 font-mono uppercase tracking-[0.3em]">Connecting…</p>
+        <p className="text-white/55 font-mono uppercase tracking-[0.3em]">Connecting…</p>
       </FullScreen>
     )
   }
@@ -276,7 +276,7 @@ function FullScreen({ timeOfDay, rotation, children }) {
         <span className="font-brand text-[2.3vmin] tracking-[0.22em] text-brand-400 [text-shadow:0_0_20px_rgba(239,43,43,0.55)]">
           PLAYLIVE
         </span>
-        <span className="font-display text-[2.7vmin] text-white/60 tabular-nums">{timeOfDay}</span>
+        <span className="font-display text-[2.7vmin] text-white/70 tabular-nums">{timeOfDay}</span>
       </div>
       <div className="absolute inset-0 flex items-center justify-center">{children}</div>
       {rotation && (
@@ -302,7 +302,7 @@ function IdleScreen() {
       <div className="font-brand text-[6vh] tracking-[0.3em] text-brand-400 [text-shadow:0_0_40px_rgba(239,43,43,0.5)] mb-[2vh]">
         PLAYLIVE
       </div>
-      <p className="font-mono uppercase tracking-[0.4em] text-[1.8vh] text-white/35">
+      <p className="font-mono uppercase tracking-[0.4em] text-[1.8vh] text-white/50">
         No tournaments on the floor
       </p>
     </div>
@@ -325,7 +325,7 @@ function CounterStrip({ tournament, withPool = false }) {
     <div className="flex flex-wrap justify-center gap-x-[2vw] gap-y-[1.5vh] mt-[3vh]">
       {cells.map(([label, value]) => (
         <div key={label} className="text-center">
-          <div className="font-mono uppercase tracking-[0.2em] text-[1.5vmin] text-white/35 mb-[0.5vh] whitespace-nowrap">
+          <div className="font-mono uppercase tracking-[0.2em] text-[1.5vmin] text-white/50 mb-[0.5vh] whitespace-nowrap">
             {label}
           </div>
           <div className="font-display text-[3.4vmin] text-white/90 tabular-nums whitespace-nowrap">{value}</div>
@@ -371,7 +371,7 @@ function LevelTrack({ structure, heroIndex, sliceEnd }) {
 function RailRow({ label, value, tone = 'text-white/90' }) {
   return (
     <div>
-      <div className="font-mono uppercase tracking-[0.22em] text-[1.5vmin] text-white/35 mb-[0.4vh]">{label}</div>
+      <div className="font-mono uppercase tracking-[0.22em] text-[1.5vmin] text-white/50 mb-[0.4vh]">{label}</div>
       <div className={'font-display tabular-nums leading-tight text-[3.1vmin] ' + tone}>{value}</div>
     </div>
   )
@@ -422,7 +422,7 @@ function GameRail({ tournament, derived, badge, onBreak, heroNext, sliceEnd }) {
     else value = 'open'
     rows.push({ label: 'Late reg', value, tone: 'text-emerald-300' })
   } else if (tournament.status === 'lateRegClosed') {
-    rows.push({ label: 'Late reg', value: 'closed', tone: 'text-white/40' })
+    rows.push({ label: 'Late reg', value: 'closed', tone: 'text-white/55' })
   }
 
   return (
@@ -448,7 +448,7 @@ function MoneyRail({ tournament, payouts }) {
       }
     >
       <div>
-        <div className="font-mono uppercase tracking-[0.22em] text-[1.5vmin] text-white/35 mb-[0.4vh]">
+        <div className="font-mono uppercase tracking-[0.22em] text-[1.5vmin] text-white/50 mb-[0.4vh]">
           Prize pool
         </div>
         <div className="font-display text-[5.5vmin] leading-tight text-gold-300 tabular-nums">
@@ -464,14 +464,14 @@ function MoneyRail({ tournament, payouts }) {
         <div className="flex-1 flex flex-col justify-evenly mt-[2vh]">
           {shown.map(({ place, label, amount }) => (
             <div key={place} className="flex items-baseline justify-end gap-[1vw]">
-              <span className="font-mono uppercase tracking-[0.2em] text-[1.8vmin] text-white/45">{label}</span>
+              <span className="font-mono uppercase tracking-[0.2em] text-[1.8vmin] text-white/60">{label}</span>
               <span className="font-display text-[2.8vmin] text-white/90 tabular-nums">
                 {formatDisplayMoney(amount)}
               </span>
             </div>
           ))}
           {payouts.length > shown.length && (
-            <div className="font-mono uppercase tracking-[0.22em] text-[1.5vmin] text-white/30">
+            <div className="font-mono uppercase tracking-[0.22em] text-[1.5vmin] text-white/45">
               + {payouts.length - shown.length} more
             </div>
           )}
@@ -535,7 +535,7 @@ function ClockSlide({ tournament, sessions, nowMs }) {
     heroRemainingMs = null
   } else if (session.status === 'finished') {
     badge = 'FINISHED'
-    badgeTone = 'text-white/40'
+    badgeTone = 'text-white/55'
     heroIndex = session.actualEndIndex ?? session.maximumStartIndex
     heroRemainingMs = 0
   } else if (derived.state === CLOCK_STOPPED) {
@@ -629,7 +629,7 @@ function ClockSlide({ tournament, sessions, nowMs }) {
             {heroEntry ? (
               <>
                 <div key={pulseKey} className={'shrink-0 ' + (pulseKey > 0 ? 'display-level-pulse' : '')}>
-                  <div className="font-display text-[3.2vmin] text-white/60 mb-[0.5vh]">{entryLabel(heroEntry)}</div>
+                  <div className="font-display text-[3.2vmin] text-white/70 mb-[0.5vh]">{entryLabel(heroEntry)}</div>
                   {onBreak ? (
                     <div className="font-display text-[min(9.5vmin,5.5vw)] leading-tight text-sky-200">Break</div>
                   ) : (
@@ -638,7 +638,7 @@ function ClockSlide({ tournament, sessions, nowMs }) {
                     </div>
                   )}
                   {!onBreak && heroEntry.ante > 0 && (
-                    <div className="text-white/50 text-[2.8vmin]">ante {heroEntry.ante.toLocaleString()}</div>
+                    <div className="text-white/65 text-[2.8vmin]">ante {heroEntry.ante.toLocaleString()}</div>
                   )}
                 </div>
 
@@ -686,7 +686,7 @@ function ClockSlide({ tournament, sessions, nowMs }) {
                       {startTime}
                     </div>
                   )}
-                  <div className="text-white/50 text-[2.8vmin]">{untilStart ?? 'Registration at the desk'}</div>
+                  <div className="text-white/65 text-[2.8vmin]">{untilStart ?? 'Registration at the desk'}</div>
                 </div>
                 <CounterStrip tournament={tournament} />
               </>
@@ -712,7 +712,7 @@ function PrizesSlide({ tournament }) {
     <>
       <div className="relative text-center w-full">
         <div className="font-display text-[4.4vmin] text-gold-300 mb-[1vh] truncate">{tournament.name}</div>
-        <div className="font-mono uppercase tracking-[0.35em] text-[1.9vmin] text-white/40 mb-[3vh]">Prize pool</div>
+        <div className="font-mono uppercase tracking-[0.35em] text-[1.9vmin] text-white/55 mb-[3vh]">Prize pool</div>
 
         <div className="font-display text-[min(16vmin,11vw)] leading-none text-white tabular-nums">
           {formatDisplayMoney(tournament.totalPrizePool)}
@@ -732,14 +732,14 @@ function PrizesSlide({ tournament }) {
           >
             {shown.map(({ place, label, amount }) => (
               <div key={place} className="flex items-baseline gap-[1.5vw] justify-between">
-                <span className="font-mono uppercase tracking-[0.2em] text-[2vmin] text-white/45">{label}</span>
+                <span className="font-mono uppercase tracking-[0.2em] text-[2vmin] text-white/60">{label}</span>
                 <span className="font-display text-[3.4vmin] text-white/90 tabular-nums">
                   {formatDisplayMoney(amount)}
                 </span>
               </div>
             ))}
             {payouts.length > shown.length && (
-              <div className="col-span-full font-mono text-[1.6vmin] text-white/30 uppercase tracking-[0.25em]">
+              <div className="col-span-full font-mono text-[1.6vmin] text-white/45 uppercase tracking-[0.25em]">
                 + {payouts.length - shown.length} more
               </div>
             )}

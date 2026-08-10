@@ -103,7 +103,7 @@ export default function TournamentPayouts() {
 
   return (
     <div className="px-6 py-8 md:px-10 md:py-10">
-      <Link to={`/td/tournaments/${id}`} className="text-sm text-white/50 hover:text-white mb-4 inline-block">
+      <Link to={`/td/tournaments/${id}`} className="text-sm text-white/65 hover:text-white mb-4 inline-block">
         ← Back to tournament
       </Link>
 
@@ -117,13 +117,13 @@ export default function TournamentPayouts() {
       ) : notFound ? (
         <EmptyState title="Tournament not found." body="This tournament may have been removed, or the link is out of date." />
       ) : loading || entriesLoading || !tournament ? (
-        <div className="py-12 text-center text-white/40 text-sm">Loading…</div>
+        <div className="py-12 text-center text-white/55 text-sm">Loading…</div>
       ) : (
         <>
           <div className="flex items-center gap-3 flex-wrap mb-2">
             <h1 className="font-display text-2xl md:text-3xl text-gold-400">{tournament.name}</h1>
             <StatusBadge status={tournament.status} />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Payouts</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Payouts</span>
           </div>
           <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 flex flex-wrap gap-x-8 gap-y-3 mb-5">
             <Meta label="Prize pool" value={formatMoney(tournament.totalPrizePool)} />
@@ -304,7 +304,7 @@ function PayoutEngineCard({ tournament, canStage, user, role, toast, onChanged }
       {/* Knobs */}
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3 mb-4">
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Spots paid (1 in X)</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Spots paid (1 in X)</span>
           <input
             type="number"
             inputMode="numeric"
@@ -317,7 +317,7 @@ function PayoutEngineCard({ tournament, canStage, user, role, toast, onChanged }
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Min cash</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Min cash</span>
           <select
             value={form.minCashMultiplier}
             onChange={(e) => setForm((f) => ({ ...f, minCashMultiplier: e.target.value }))}
@@ -331,7 +331,7 @@ function PayoutEngineCard({ tournament, canStage, user, role, toast, onChanged }
         </label>
         {hasAddOn && (
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Add-ons sold</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Add-ons sold</span>
             <input
               type="number"
               inputMode="numeric"
@@ -344,7 +344,7 @@ function PayoutEngineCard({ tournament, canStage, user, role, toast, onChanged }
           </label>
         )}
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Equity refunds ($)</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Equity refunds ($)</span>
           <input
             type="text"
             inputMode="decimal"
@@ -378,13 +378,13 @@ function PayoutEngineCard({ tournament, canStage, user, role, toast, onChanged }
 
       {/* The stored table */}
       {!table ? (
-        <p className="text-sm text-white/40">
+        <p className="text-sm text-white/55">
           No payout table computed yet
           {tournament.entryCount < 1 ? ' — it computes automatically with the first entry.' : ' — press "Recompute now".'}
         </p>
       ) : (
         <>
-          <div className="flex flex-wrap gap-x-8 gap-y-2 mb-3 text-sm text-white/60">
+          <div className="flex flex-wrap gap-x-8 gap-y-2 mb-3 text-sm text-white/70">
             <span>
               Places paid <span className="text-white/90 tabular-nums">{table.placesPaid}</span>
             </span>
@@ -408,7 +408,7 @@ function PayoutEngineCard({ tournament, canStage, user, role, toast, onChanged }
           <div className="overflow-x-auto">
             <table className="text-sm">
               <thead>
-                <tr className="text-[10px] font-mono uppercase tracking-widest text-white/35">
+                <tr className="text-[10px] font-mono uppercase tracking-widest text-white/50">
                   <th className="text-left pr-8 pb-1">Place</th>
                   <th className="text-right pr-8 pb-1">Payout</th>
                   {table.seriesEvent && <th className="text-right pb-1">Points</th>}
@@ -422,7 +422,7 @@ function PayoutEngineCard({ tournament, canStage, user, role, toast, onChanged }
                     </td>
                     <td className="pr-8 py-1.5 text-right tabular-nums text-white/90">{formatMoney(r.amount)}</td>
                     {table.seriesEvent && (
-                      <td className="py-1.5 text-right tabular-nums text-white/60">
+                      <td className="py-1.5 text-right tabular-nums text-white/70">
                         {r.points == null ? '—' : Math.round(r.points * 100) / 100}
                       </td>
                     )}
@@ -440,7 +440,7 @@ function PayoutEngineCard({ tournament, canStage, user, role, toast, onChanged }
 function Meta({ label, value }) {
   return (
     <div className="flex flex-col">
-      <span className="text-[10px] font-mono uppercase tracking-widest text-white/30">{label}</span>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-white/45">{label}</span>
       <span className="text-sm text-white/80 tabular-nums">{value}</span>
     </div>
   )
@@ -472,17 +472,17 @@ function WinnerCard({ tournament, alive, winner, nameOf, canStage, user, role, t
     <section className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3 mb-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Winner</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Winner</span>
           {winner ? (
             <span className="text-sm text-gold-300">
-              🏆 {nameOf(winner.playerId)} <span className="text-white/40">— 1st place recorded</span>
+              🏆 {nameOf(winner.playerId)} <span className="text-white/55">— 1st place recorded</span>
             </span>
           ) : alive.length === 1 ? (
             <span className="text-sm text-white/80">
               {nameOf(alive[0].playerId)} is the last player standing.
             </span>
           ) : (
-            <span className="text-sm text-white/40">
+            <span className="text-sm text-white/55">
               {alive.length} players remain — the winner is recorded when one remains (busts assign every other place).
             </span>
           )}
@@ -631,10 +631,10 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
   return (
     <section className="mb-5">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55">
           Payouts — {tournament.payoutStructure.type === 'byPercent' ? 'percentage structure' : 'fixed amounts'}
           {tournament.payoutStructure.type === 'byPercent' && (
-            <span className="text-white/25"> · rounding {tournament.payoutStructure.rounding === 'none' ? 'exact' : tournament.payoutStructure.rounding === 'nearest5' ? 'to $5' : 'to $10'}, residue to 1st</span>
+            <span className="text-white/40"> · rounding {tournament.payoutStructure.rounding === 'none' ? 'exact' : tournament.payoutStructure.rounding === 'nearest5' ? 'to $5' : 'to $10'}, residue to 1st</span>
           )}
         </h3>
         {canStage && !dealMode && (
@@ -659,7 +659,7 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
 
       <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+          <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
             <tr>
               <th className="text-left px-4 py-2 w-16">Place</th>
               <th className="text-left px-4 py-2">Player</th>
@@ -672,7 +672,7 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-white/40">
+                <td colSpan={6} className="px-4 py-6 text-center text-white/55">
                   No paid places configured — set up the payout structure on the tournament's Payouts tab.
                 </td>
               </tr>
@@ -680,19 +680,19 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
               rows.map((r, i) => (
                 <tr key={r.entryId ?? `place-${r.place ?? i}`} className="border-t border-white/5">
                   <td className="px-4 py-2.5 font-mono text-gold-300/90 tabular-nums">
-                    {r.place != null ? ordinal(r.place) : <span className="text-white/40">in play</span>}
+                    {r.place != null ? ordinal(r.place) : <span className="text-white/55">in play</span>}
                   </td>
                   <td className="px-4 py-2.5 text-white/90">
-                    {r.entryId ? nameOf(r.playerId) : <span className="text-white/30">— not decided —</span>}
+                    {r.entryId ? nameOf(r.playerId) : <span className="text-white/45">— not decided —</span>}
                     {r.alive && r.place == null && <span className="ml-2 text-[10px] text-emerald-300/70 uppercase">alive</span>}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-white/50 tabular-nums whitespace-nowrap">
+                  <td className="px-4 py-2.5 text-right text-white/65 tabular-nums whitespace-nowrap">
                     {formatMoney(r.calculatedAmount)}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
                     {dealMode && r.entryId && !r.isPaid ? (
                       <span className="relative inline-block w-28">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/30 text-sm pointer-events-none">$</span>
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-white/45 text-sm pointer-events-none">$</span>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -709,9 +709,9 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-white/60 whitespace-nowrap">
+                  <td className="px-4 py-2.5 text-white/70 whitespace-nowrap">
                     {r.isPaid ? (
-                      <span className="text-emerald-300">Paid ✓ <span className="text-white/30 text-xs">{fmtTime(r.entry.winningsPaidAt)}</span></span>
+                      <span className="text-emerald-300">Paid ✓ <span className="text-white/45 text-xs">{fmtTime(r.entry.winningsPaidAt)}</span></span>
                     ) : r.isStaged ? (
                       'Staged'
                     ) : r.entryId ? (
@@ -725,7 +725,7 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
                       {canConfirm && r.entryId && !r.isPaid && r.payableAmount > 0 && (
                         confirmEntryId === r.entryId ? (
                           <span className="inline-flex items-center gap-3">
-                            <span className="text-[11px] text-white/50">
+                            <span className="text-[11px] text-white/65">
                               Credit {formatMoney(r.payableAmount)} to {nameOf(r.playerId)}'s wallet?
                             </span>
                             <button type="button" disabled={busy} onClick={() => confirmRow(r)} className={btnGreen}>
@@ -749,16 +749,16 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
           </tbody>
           <tfoot className="border-t border-white/10">
             <tr className="text-[11px]">
-              <td className="px-4 py-2 font-mono uppercase tracking-widest text-white/40" colSpan={3}>
+              <td className="px-4 py-2 font-mono uppercase tracking-widest text-white/55" colSpan={3}>
                 Total {dealMode ? '(deal)' : ''}
               </td>
               <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
                 <span className={displayDelta === 0 ? 'text-emerald-300' : 'text-amber-300'}>
                   {formatMoney(displayTotal)}
                 </span>
-                <span className="text-white/40"> / {formatMoney(prizePool)} pool</span>
+                <span className="text-white/55"> / {formatMoney(prizePool)} pool</span>
               </td>
-              <td colSpan={2} className="px-4 py-2 text-white/40">
+              <td colSpan={2} className="px-4 py-2 text-white/55">
                 {displayDelta !== 0 && (
                   <span className="text-amber-300">
                     {displayDelta > 0 ? '+' : '−'}{formatMoney(Math.abs(displayDelta))} vs pool
@@ -771,7 +771,7 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
       </div>
 
       {!canConfirm && !dealMode && (
-        <p className="text-[11px] text-white/40 mt-2">
+        <p className="text-[11px] text-white/55 mt-2">
           Payout confirmation is a cashier / manager action — each row is confirmed individually before the wallet is credited.
         </p>
       )}
@@ -779,7 +779,7 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
       {dealMode && (
         <div className="bg-felt-800 border border-white/5 rounded-lg p-4 mt-3 space-y-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Deal notes (what was agreed, and why)</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-white/55">Deal notes (what was agreed, and why)</span>
             <input
               value={dealNotes}
               onChange={(e) => setDealNotes(e.target.value)}
@@ -823,7 +823,7 @@ function PayoutTable({ tournament, rows, nameOf, canStage, canConfirm, user, rol
                 )}
                 . Each player still needs a cashier confirmation before their wallet is credited.
               </p>
-              <ul className="text-xs text-white/60 mb-3 space-y-0.5">
+              <ul className="text-xs text-white/70 mb-3 space-y-0.5">
                 {editableRows.map((r) => (
                   <li key={r.entryId}>
                     {nameOf(r.playerId)}{r.place != null ? ` (${ordinal(r.place)})` : ' (in play)'} — {formatMoney(editedCents(r))}
@@ -911,19 +911,19 @@ function BountySection({ tournament, entries, nameOf, canConfirm, user, role, to
 
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">
         Mystery bounties — cashier confirms each draw
       </h3>
       <div className="bg-felt-800 border border-white/5 rounded-lg overflow-x-auto">
         {drawsLoading ? (
-          <div className="py-6 text-center text-white/40 text-sm">Loading draws…</div>
+          <div className="py-6 text-center text-white/55 text-sm">Loading draws…</div>
         ) : drawsError ? (
           <div className="py-6 text-center text-red-300/80 text-sm">Couldn't load bounty draws: {drawsError.message}</div>
         ) : draws.length === 0 ? (
-          <div className="py-6 text-center text-white/40 text-sm">No bounties drawn yet.</div>
+          <div className="py-6 text-center text-white/55 text-sm">No bounties drawn yet.</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/40">
+            <thead className="bg-felt-900/60 text-[10px] font-mono uppercase tracking-widest text-white/55">
               <tr>
                 <th className="text-left px-4 py-2">Drawn</th>
                 <th className="text-left px-4 py-2">Winner (knocker)</th>
@@ -935,7 +935,7 @@ function BountySection({ tournament, entries, nameOf, canConfirm, user, role, to
             <tbody>
               {draws.map((d) => (
                 <tr key={d.id} className="border-t border-white/5">
-                  <td className="px-4 py-2.5 text-white/50 whitespace-nowrap">{fmtTime(d.drawnAt)}</td>
+                  <td className="px-4 py-2.5 text-white/65 whitespace-nowrap">{fmtTime(d.drawnAt)}</td>
                   <td className="px-4 py-2.5 text-white/90">{nameOf(knockerPlayerId(d))}</td>
                   <td className="px-4 py-2.5 text-right text-white/80 tabular-nums whitespace-nowrap">
                     {formatMoney(d.bountyValue)}
@@ -944,14 +944,14 @@ function BountySection({ tournament, entries, nameOf, canConfirm, user, role, to
                     {d.walletTransactionId ? (
                       <span className="text-emerald-300">Paid ✓</span>
                     ) : (
-                      <span className="text-white/50">Unpaid</span>
+                      <span className="text-white/65">Unpaid</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     {canConfirm && !d.walletTransactionId && (
                       confirmDrawId === d.id ? (
                         <span className="inline-flex items-center gap-3">
-                          <span className="text-[11px] text-white/50">
+                          <span className="text-[11px] text-white/65">
                             Credit {formatMoney(d.bountyValue)} to {nameOf(knockerPlayerId(d))}?
                           </span>
                           <button type="button" disabled={busy} onClick={() => confirmDraw(d)} className={btnGreen}>
@@ -1007,26 +1007,26 @@ function TicketSection({ tournament, entries, nameOf, canConfirm, user, role, to
 
   return (
     <section className="mb-5">
-      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-2">
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">
         Satellite tickets — cashier confirms each win
       </h3>
       <div className="bg-felt-800 border border-white/5 rounded-lg px-4 py-3">
         {ticketRows.length === 0 ? (
-          <p className="text-sm text-white/40">No ticket winnings recorded on entries yet.</p>
+          <p className="text-sm text-white/55">No ticket winnings recorded on entries yet.</p>
         ) : (
           <ul className="text-sm space-y-1.5">
             {ticketRows.map((e) => (
               <li key={e.id} className="flex items-center gap-3 flex-wrap">
                 <span className="text-white/90">{nameOf(e.playerId)}</span>
-                <span className="text-white/60 tabular-nums">{formatMoney(e.ticketWinnings)} ticket</span>
+                <span className="text-white/70 tabular-nums">{formatMoney(e.ticketWinnings)} ticket</span>
                 {e.ticketIssuedAt != null ? (
                   <span className="ml-auto text-emerald-300">
-                    Issued ✓ <span className="text-white/30 text-xs">{fmtTime(e.ticketIssuedAt)}</span>
+                    Issued ✓ <span className="text-white/45 text-xs">{fmtTime(e.ticketIssuedAt)}</span>
                   </span>
                 ) : canConfirm ? (
                   confirmEntryId === e.id ? (
                     <span className="ml-auto inline-flex items-center gap-3">
-                      <span className="text-[11px] text-white/50">
+                      <span className="text-[11px] text-white/65">
                         Issue a {formatMoney(e.ticketWinnings)} ticket to {nameOf(e.playerId)}?
                       </span>
                       <button type="button" disabled={busy} onClick={() => issueRow(e)} className={btnGreen}>
@@ -1042,13 +1042,13 @@ function TicketSection({ tournament, entries, nameOf, canConfirm, user, role, to
                     </button>
                   )
                 ) : (
-                  <span className="ml-auto text-white/50">Unissued</span>
+                  <span className="ml-auto text-white/65">Unissued</span>
                 )}
               </li>
             ))}
           </ul>
         )}
-        <p className="text-[11px] text-white/40 mt-2">
+        <p className="text-[11px] text-white/55 mt-2">
           Issuing creates the wallet-side ticket and credits the player's ticket balance in one step — each win is
           confirmed individually by a cashier or manager.
         </p>
