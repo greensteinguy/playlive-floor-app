@@ -69,7 +69,7 @@ export default function AppShell() {
           >
             ☰
           </button>
-          <span className="font-brand text-base tracking-[0.2em] text-brand-400 [text-shadow:0_0_18px_rgba(239,43,43,0.55)]">
+          <span className="font-brand text-lg tracking-[0.18em] text-brand-400 [text-shadow:0_0_18px_rgba(239,43,43,0.55)] whitespace-nowrap">
             CHECK RAISE
           </span>
         </header>
