@@ -6,6 +6,24 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 10 August 2026 — Venue TV display (Phase 5.1–5.3): auth via the readonly account, selection rules, rotation model
+
+The `/display` venue TV view landed. The calls:
+
+**1. TVs authenticate with the shared `readonly@playlive.melbourne` account — no rules change, no public read.** The Firestore rules require a signed-in role for every read, and opening tournament data to unauthenticated clients just for TVs would widen the attack surface for one device class. So `/display` sits behind `ProtectedRoute` (any role) but renders full-screen OUTSIDE the AppShell (no sidebar). Venue setup = sign the TV's browser into the readonly account once and leave `/display` open. Rejected alternatives: a public read grant on tournaments/sessions (weakens the rules posture); a token-in-URL scheme (more moving parts than a login the venue already has).
+
+**2. What shows on the TVs (pure, unit-tested selection):** `lateRegOpen` / `lateRegClosed` always; `scheduled` only on its start day (a pre-start "starts at 7:30 PM" screen) or once its start time has passed (running late); `draft`/`finished`/`cancelled` never. Rotation order = soonest scheduled start first. Session pick mirrors the TD clock page: inProgress → next scheduled → last finished. A finished tournament drops off the TVs (results stay an operator screen).
+
+**3. Rotation model: a slide deck of (tournament × screen), clock 25s / prizes 10s, 700ms crossfade.** Per SOW v0.5 the deck is blind-countdown + prize-pool only (stats screen stays v1.5+). Dedicated TVs pin via query params: `?tournamentId=` (one tournament) and/or `?screen=clock|prizes` (one screen kind). Rotation dots render only when the deck has >1 slide. The prize screen derives its payout table live from `materializePayouts(payoutStructure, totalPrizePool)` — same SSOT as the payouts screen, nothing new stored. **NB the payout curve itself is still the 2.3 placeholder — Guy is providing a venue CSV whose algorithm we'll reverse-engineer and swap in (10 Aug).**
+
+**4. The TV clock is a pure read-only mirror of the anchor** — `deriveClock` + a local 250ms tick, no optimistic-anchor machinery (that exists solely to keep the TD's *write* gestures smooth). Every TV and the TD screen sharing an anchor show the same time by construction. A `navigator.wakeLock` request (best-effort) keeps the TV from sleeping. Hidden-tab timer throttling can slow the *rotation* while a TV window is fully occluded — cosmetic, since the clock re-derives correctly on every repaint.
+
+**5. Data invariant carried into the new subscription:** the display's live tournaments subscription keeps the `orderBy('scheduledStartTime')` clause — it's what excludes the ~1,800 legacy Casinoware docs (they lack the field) from the validating snapshot. Documented in `useDisplay.js`; any future tournaments query must keep it or filter equivalently.
+
+**Verified:** 894 tests (873→894), lint + build clean, emulator browser pass (pre-start preview, RUNNING clock to-the-second against a 17-min-old anchor, payout table summing exactly to pool, pinning, idle screen, rotation + crossfade; zero console errors).
+
+**Decider:** Claude; Guy to ratify the screen hold times (25s/10s), the scheduled-day selection rule, and the readonly-account-per-TV setup at the next review.
+
 ## 16 July 2026 — Before-real-money hardening: gesture idempotency, deterministic ids, transactional guards, voidEntry
 
 The 10-July review's "before first real-money tournament" tier, in one session. Five linked calls:

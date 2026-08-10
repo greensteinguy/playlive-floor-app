@@ -351,10 +351,20 @@ export default function TournamentClock() {
 function Shell({ id, children }) {
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between gap-4">
         <Link to={`/td/tournaments/${id}`} className="text-sm text-white/50 hover:text-white">
           ← Back to tournament
         </Link>
+        {/* The venue TV view, pinned to this tournament — opened on the TV's
+            browser (or for a quick check from the floor). */}
+        <a
+          href={`/display?tournamentId=${id}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm text-white/50 hover:text-white"
+        >
+          TV display ↗
+        </a>
       </div>
       {children}
     </div>

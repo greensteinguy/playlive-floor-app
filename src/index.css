@@ -168,6 +168,26 @@ body::after {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+   Venue display (/display) — crossfade between rotating TV slides. The two
+   layers are absolutely stacked; the incoming one fades in while the
+   outgoing fades out, then the old layer unmounts (Display.jsx trims it).
+   ───────────────────────────────────────────────────────────────────────── */
+@keyframes display-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes display-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.display-fade-in {
+  animation: display-fade-in 700ms ease both;
+}
+.display-fade-out {
+  animation: display-fade-out 700ms ease both;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
    App-wide glass upgrade. The two solid panel fills used across every page
    (`bg-felt-800` cards/tables, `bg-felt-900` sub-surfaces) become frosted &
    translucent, so the red-glow environment reads through every surface — the

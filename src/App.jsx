@@ -1,7 +1,8 @@
 // App shell. Wraps the route tree with auth, toast, and error boundaries,
 // then renders the persona-aware layout (sidebar + content area).
 //
-// Public routes (no auth): /login, /forbidden, /display.
+// Public routes (no auth): /login, /forbidden.
+// /display needs auth (any role) but lives OUTSIDE AppShell — full-screen TVs.
 // Protected routes are children of AppShell so they all share the sidebar.
 
 import { Routes, Route, Navigate } from 'react-router-dom'
@@ -15,6 +16,7 @@ import RoleHome from './shell/RoleHome'
 
 import Login from './pages/Login'
 import Forbidden from './pages/Forbidden'
+import Display from './pages/Display'
 
 // Desk persona
 import DeskLanding from './pages/desk/DeskLanding'
@@ -45,17 +47,6 @@ import AdminAudit from './pages/admin/AuditLog'
 import AdminDedupe from './pages/admin/Dedupe'
 import AdminReconciliation from './pages/admin/Reconciliation'
 
-function Display() {
-  return (
-    <div className="min-h-screen bg-felt-950 text-white flex items-center justify-center font-body">
-      <div className="text-center">
-        <h2 className="font-display text-6xl text-gold-500 mb-4">Venue Display</h2>
-        <p className="text-white/60">Phase 5 builds this out as the cycling TV view.</p>
-      </div>
-    </div>
-  )
-}
-
 export default function App() {
   return (
     <AuthProvider>
@@ -65,7 +56,19 @@ export default function App() {
             {/* Public */}
             <Route path="/login" element={<Login />} />
             <Route path="/forbidden" element={<Forbidden />} />
-            <Route path="/display" element={<Display />} />
+
+            {/* Venue TVs — needs a signed-in user (any role; TVs use the shared
+                readonly account) but renders full-screen OUTSIDE the AppShell. */}
+            <Route
+              path="/display"
+              element={
+                <ProtectedRoute>
+                  <ErrorBoundary>
+                    <Display />
+                  </ErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
 
             {/* Protected — share the AppShell chrome */}
             <Route

@@ -173,9 +173,9 @@ TV display app and iPad-specific UX polish. Runs partly in parallel with Phase 4
 
 | # | Task | Output | Owner |
 |---|---|---|---|
-| 5.1 | Display app at /display: full-screen view for tournament TVs. | Display URL working | Claude |
-| 5.2 | Cycling display: blind countdown and prize-pool screen. (Stats screen moved to v1.5+ in SOW v0.5.) | Cycling display working | Claude |
-| 5.3 | Display styling: lift colours and typography from the analytics dashboard. Smooth transitions. Multi-tournament rotation. | Polished display | Claude |
+| 5.1 | ✅ **DONE 10 Aug 2026.** `/display` full-screen TV view — behind ProtectedRoute (any role; TVs sign into the shared readonly account) but OUTSIDE the AppShell. Live subscriptions (tournaments + per-tournament sessions) so status/counter/clock changes land on the TVs by themselves; `orderBy(scheduledStartTime)` legacy-doc invariant kept. Best-effort screen wake lock. DECISIONS 10 Aug. | Display URL working | Claude |
+| 5.2 | ✅ **DONE 10 Aug 2026.** Cycling deck per displayable tournament (lateRegOpen/lateRegClosed always; scheduled on start day = pre-start "starts at" screen): blind-countdown screen (anchor-derived, 250ms local tick, level progress bar, next-level preview) + prize-pool screen (pool, guarantee, live payout table via `materializePayouts`, counters). Stats screen NOT built (v1.5+ per SOW v0.5). | Cycling display working | Claude |
+| 5.3 | ✅ **DONE 10 Aug 2026** (built with 5.1/5.2). Reskin-native styling (brand chrome, vh-scaled typography for TV distances, `formatDisplayMoney`), 700ms crossfade between slides, multi-tournament rotation (clock 25s / prizes 10s, rotation dots) + dedicated-TV pinning via `?tournamentId=` / `?screen=`. | Polished display | Claude |
 | 5.4 | iPad-specific pass: every operator screen usable on iPad with touch input. Performance check on older iPads. | iPad pass report | Claude |
 
 ### Phase 6 — Consumer-app Adaptors  (Week 12)
