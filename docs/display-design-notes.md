@@ -6,12 +6,21 @@ These notes drive the `feature/display-v2` work on `/display`.
 
 ## Direction
 
-Keep the *identity* of the v1 display — dark, red-accented, giant digits, one
-centered hero column, crossfading slide rotation. The complaint was that it is
-static and sparse, not that it is minimal. Fix it by adding **stage-awareness**
-(the display tells the right story for the current moment of the tournament)
-and **peripheral richness** (ticker, level track, pulses) around the hero,
-never by crowding the screen with permanent panels.
+Keep the *identity* of the v1 display — dark, red-accented, giant digits,
+crossfading slide rotation — but **use the whole screen** (Guy's overriding
+note: the v1 single centered stack wasted the sides). The clock slide is a
+**three-zone layout** in the Tournament Director tradition, which Guy did NOT
+dislike (only the top/bottom broadcast bands and the half/half split screen):
+
+- **Left rail — the game:** buy-in, starting stack, level length, next level,
+  next break countdown, late-reg status.
+- **Center — the hero:** level, blinds, ante, giant countdown, progress bar,
+  level track, player counters. Still the dominant zone.
+- **Right rail — the money:** prize pool, guarantee, payout ladder.
+
+On top of the layout, add **stage-awareness** (the display tells the right
+story for the current moment of the tournament) and **peripheral richness**
+(ticker, level track, pulses).
 
 ## Keep as-is
 
@@ -46,10 +55,15 @@ never by crowding the screen with permanent panels.
 
 ## Explicitly out (disliked)
 
-- Side panels (three-panel grid, split screen), top/bottom broadcast bands
+- Top/bottom broadcast bands; half/half split screen (clock left, payouts right)
 - Progress ring around the countdown
 - Everything-at-once dense static layout
 - Permanent chip color-up notices
+
+(First draft of these notes wrongly listed the three-panel grid as out — Guy
+never downvoted it, and after seeing the centered-stack v2 draft he explicitly
+asked for the screen real estate to be used. The three-zone layout above is
+the correction.)
 
 ## Degrade gracefully
 

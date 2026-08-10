@@ -56,7 +56,6 @@ import {
   msUntilLateRegClose,
   msUntilNextBreak,
   formatCloseIn,
-  structureSummary,
   tickerItems,
   ordinalPlace,
 } from '../lib/display'
@@ -267,7 +266,7 @@ function IdleScreen() {
   )
 }
 
-function CounterStrip({ tournament }) {
+function CounterStrip({ tournament, withPool = false }) {
   const { entries, remaining, reentries, avgStack, totalChips } = displayCounters(tournament)
   const cells = [
     ['Entries', entries.toLocaleString()],
@@ -275,7 +274,9 @@ function CounterStrip({ tournament }) {
     ['Re-entries', reentries.toLocaleString()],
     ['Avg stack', avgStack != null ? avgStack.toLocaleString() : '—'],
     ['Total chips', totalChips != null ? totalChips.toLocaleString() : '—'],
-    ['Prize pool', formatDisplayMoney(tournament.totalPrizePool)],
+    // The clock slide carries the pool in its money rail; the prizes slide
+    // (no rails) keeps it in the strip.
+    ...(withPool ? [['Prize pool', formatDisplayMoney(tournament.totalPrizePool)]] : []),
   ]
   return (
     <div className="flex justify-center gap-[2.6vw] mt-[4vh]">
@@ -296,12 +297,11 @@ function CounterStrip({ tournament }) {
  * stretch. Hidden when the segment is trivial or absurdly long (a wall of
  * slivers reads worse than nothing).
  */
-function LevelTrack({ structure, heroIndex, sliceEnd, breakInMs }) {
+function LevelTrack({ structure, heroIndex, sliceEnd }) {
   const segment = levelTrackSegment(structure, heroIndex, sliceEnd)
   if (!segment || segment.blocks.length > LEVEL_TRACK_MAX_BLOCKS) return null
-  const breakIn = segment.endsInBreak && breakInMs != null ? formatCloseIn(breakInMs) : null
   return (
-    <div className="mx-auto w-[46vw] flex items-center gap-[0.5vw] mb-[2vh]">
+    <div className="mx-auto w-[42vw] flex items-center gap-[0.5vw] mb-[2vh]">
       {segment.blocks.map((b) => (
         <span
           key={b.index}
@@ -316,22 +316,55 @@ function LevelTrack({ structure, heroIndex, sliceEnd, breakInMs }) {
         />
       ))}
       <span className="font-mono uppercase tracking-[0.2em] text-[1.3vh] text-sky-300/80 ml-[0.6vw] whitespace-nowrap">
-        {segment.endsInBreak ? (breakIn ? `Break in ${breakIn}` : 'Break') : 'End'}
+        {segment.endsInBreak ? 'Break' : 'End'}
       </span>
     </div>
   )
 }
 
+/** One label-over-value block in a side rail. */
+function RailRow({ label, value, tone = 'text-white/90', big = false }) {
+  return (
+    <div>
+      <div className="font-mono uppercase tracking-[0.25em] text-[1.4vh] text-white/35 mb-[0.4vh]">{label}</div>
+      <div className={'font-display tabular-nums leading-tight ' + (big ? 'text-[5vh] ' : 'text-[2.9vh] ') + tone}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
 /**
- * Stage-aware registration slot. Late reg open → closes-in countdown (or
- * "through level N" before the clock runs); late reg closed → confirmation +
- * places paid. Any other status renders nothing.
+ * Left rail — the game's story: cost to play, what you get, where the
+ * structure is heading, and whether you can still enter. Rows self-hide when
+ * they have nothing to say.
  */
-function RegSlot({ tournament, derived, payoutCount }) {
-  const status = tournament.status
-  if (status === 'lateRegOpen') {
-    const running = derived && derived.state !== CLOCK_STOPPED
-    const closeMs = running
+function GameRail({ tournament, derived, badge, onBreak, heroNext, sliceEnd }) {
+  const rows = []
+  if (tournament.buyIn > 0) rows.push({ label: 'Buy-in', value: formatDisplayMoney(tournament.buyIn) })
+  if (tournament.startingStack > 0)
+    rows.push({ label: 'Starting stack', value: tournament.startingStack.toLocaleString() })
+  const firstLevel = (tournament.structure ?? []).find((e) => e.type === 'level')
+  if (firstLevel?.durationMinutes > 0) rows.push({ label: 'Levels', value: `${firstLevel.durationMinutes} min` })
+
+  if (heroNext) {
+    rows.push({
+      label: onBreak ? 'Back to' : 'Next level',
+      value:
+        heroNext.type === 'break'
+          ? entryLabel(heroNext)
+          : entryBlinds(heroNext) + (heroNext.ante > 0 ? ` (${heroNext.ante.toLocaleString()})` : ''),
+    })
+  }
+
+  const live = derived && derived.state !== CLOCK_STOPPED && badge !== 'STARTS SOON'
+  if (live && !onBreak) {
+    const breakMs = msUntilNextBreak(tournament.structure, derived.currentIndex, derived.remainingMs, sliceEnd)
+    if (breakMs != null) rows.push({ label: 'Next break', value: `in ${formatCloseIn(breakMs)}` })
+  }
+
+  if (tournament.status === 'lateRegOpen') {
+    const closeMs = live
       ? msUntilLateRegClose(
           tournament.structure,
           derived.currentIndex,
@@ -339,29 +372,63 @@ function RegSlot({ tournament, derived, payoutCount }) {
           tournament.lateRegCutoffLevel,
         )
       : null
-    const buyIn = tournament.buyIn > 0 ? `${formatDisplayMoney(tournament.buyIn)} buy-in` : null
-    let lead
-    if (closeMs != null && closeMs > 0) lead = `Late reg closes in ${formatCloseIn(closeMs)}`
-    else if (closeMs === 0) lead = 'Late reg closing'
-    else if (tournament.lateRegCutoffLevel != null)
-      lead = `Late reg open through level ${tournament.lateRegCutoffLevel}`
-    else lead = 'Late reg open'
-    return (
-      <div className="font-mono uppercase tracking-[0.25em] text-[1.9vh] text-emerald-300 mt-[2.2vh]">
-        {lead}
-        {buyIn ? <span className="text-emerald-300/60"> · {buyIn}</span> : null}
-      </div>
-    )
+    let value
+    if (closeMs != null && closeMs > 0) value = `closes in ${formatCloseIn(closeMs)}`
+    else if (closeMs === 0) value = 'closing'
+    else if (tournament.lateRegCutoffLevel != null) value = `thru level ${tournament.lateRegCutoffLevel}`
+    else value = 'open'
+    rows.push({ label: 'Late reg', value, tone: 'text-emerald-300' })
+  } else if (tournament.status === 'lateRegClosed') {
+    rows.push({ label: 'Late reg', value: 'closed', tone: 'text-white/40' })
   }
-  if (status === 'lateRegClosed') {
-    return (
-      <div className="font-mono uppercase tracking-[0.25em] text-[1.7vh] text-white/40 mt-[2.2vh]">
-        Registration closed
-        {payoutCount > 0 ? ` · paying ${payoutCount} places` : ''}
+
+  return (
+    <div className="w-[21vw] shrink-0 flex flex-col gap-[3.2vh] text-left">
+      {rows.map((r) => (
+        <RailRow key={r.label} label={r.label} value={r.value} tone={r.tone} />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Right rail — the money's story: pool, guarantee, and the payout ladder.
+ * Right-aligned so the numbers sit on the screen edge.
+ */
+function MoneyRail({ tournament, payouts }) {
+  const shown = payouts.slice(0, 6)
+  return (
+    <div className="w-[21vw] shrink-0 flex flex-col gap-[3.2vh] text-right">
+      <div>
+        <div className="font-mono uppercase tracking-[0.25em] text-[1.4vh] text-white/35 mb-[0.4vh]">Prize pool</div>
+        <div className="font-display text-[5vh] leading-tight text-gold-300 tabular-nums">
+          {formatDisplayMoney(tournament.totalPrizePool)}
+        </div>
+        {tournament.guarantee > 0 && (
+          <div className="text-[1.9vh] text-brand-300">{formatDisplayMoney(tournament.guarantee)} GTD</div>
+        )}
       </div>
-    )
-  }
-  return null
+      {shown.length > 0 && (
+        <div className="flex flex-col gap-[1.1vh]">
+          {shown.map(({ place, amount }) => (
+            <div key={place} className="flex items-baseline justify-end gap-[1vw]">
+              <span className="font-mono uppercase tracking-[0.2em] text-[1.7vh] text-white/45">
+                {ordinalPlace(place)}
+              </span>
+              <span className="font-display text-[2.6vh] text-white/90 tabular-nums">
+                {formatDisplayMoney(amount)}
+              </span>
+            </div>
+          ))}
+          {payouts.length > shown.length && (
+            <div className="font-mono uppercase tracking-[0.25em] text-[1.4vh] text-white/30">
+              +{payouts.length - shown.length} more places
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -466,116 +533,108 @@ function ClockSlide({ tournament, sessions, nowMs }) {
   // Break mode: "back at H:MM" only means something while the clock is moving.
   const backAt = onBreak && isRunning && heroRemainingMs > 0 ? formatWallTime(nowMs + heroRemainingMs) : null
 
+  // Long countdowns (H:MM:SS) drop a size so seven digits never spill out of
+  // the center column.
+  const remainStr = formatRemaining(heroRemainingMs)
+  const countdownSize = remainStr.length > 5 ? 'text-[16vh]' : 'text-[21vh]'
+
   return (
     <>
       {onBreak && (
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(56,152,255,0.14),transparent_70%)]" />
       )}
-      <div className="relative text-center w-full max-w-[92vw]">
-        <div className="font-display text-[4.2vh] text-gold-300 mb-[1vh] truncate">{tournament.name}</div>
-        <div
-          className={
-            'font-mono uppercase tracking-[0.35em] text-[1.8vh] mb-[3vh] ' +
-            (onBreak ? 'text-sky-300' : badgeTone)
-          }
-        >
-          {onBreak ? 'ON BREAK' : badge}
-          {multiSession && session ? ` · ${session.sessionLabel}` : ''}
+      <div className="relative w-full h-full flex flex-col">
+        {/* full-width header: name + state */}
+        <div className="text-center shrink-0">
+          <div className="font-display text-[4.2vh] text-gold-300 mb-[0.6vh] truncate">{tournament.name}</div>
+          <div
+            className={
+              'font-mono uppercase tracking-[0.35em] text-[1.8vh] ' + (onBreak ? 'text-sky-300' : badgeTone)
+            }
+          >
+            {onBreak ? 'ON BREAK' : badge}
+            {multiSession && session ? ` · ${session.sessionLabel}` : ''}
+          </div>
         </div>
 
-        {heroEntry ? (
-          <>
-            <div key={pulseKey} className={pulseKey > 0 ? 'display-level-pulse' : ''}>
-              <div className="font-display text-[3vh] text-white/60 mb-[0.5vh]">{entryLabel(heroEntry)}</div>
-              {onBreak ? (
-                <div className="font-display text-[9vh] leading-tight text-sky-200">Break</div>
-              ) : (
-                <div className="font-display text-[9vh] leading-tight text-white tabular-nums">
-                  {entryBlinds(heroEntry)}
-                </div>
-              )}
-              {!onBreak && heroEntry.ante > 0 && (
-                <div className="text-white/50 text-[2.6vh]">ante {heroEntry.ante.toLocaleString()}</div>
-              )}
-            </div>
-            <div
-              className={
-                'font-display text-[22vh] leading-none tabular-nums my-[2vh] ' +
-                (hurry
-                  ? 'display-hurry text-brand-400 [text-shadow:0_0_50px_rgba(239,43,43,0.55)]'
-                  : onBreak
-                    ? 'text-sky-100'
-                    : 'text-white')
-              }
-            >
-              {formatRemaining(heroRemainingMs)}
-            </div>
-            {backAt && (
-              <div className="text-sky-200/80 text-[2.6vh] -mt-[1vh] mb-[1.5vh]">back at {backAt}</div>
-            )}
-            {onBreak && heroEntry.isColorUp && (
-              <div className="font-mono uppercase tracking-[0.25em] text-[1.7vh] text-amber-300 mb-[1.5vh]">
-                Chip color-up this break
-              </div>
-            )}
-            {/* level progress */}
-            <div className="mx-auto w-[46vw] h-[0.5vh] rounded-full bg-white/10 overflow-hidden mb-[1.2vh]">
-              <div
-                className={
-                  'h-full transition-[width] duration-300 ' +
-                  (hurry ? 'bg-brand-400' : 'bg-gradient-to-r from-brand-500 to-brand-400')
-                }
-                style={{ width: `${Math.round(progress * 100)}%` }}
-              />
-            </div>
-            <LevelTrack
-              structure={tournament.structure}
-              heroIndex={heroIndex}
-              sliceEnd={sliceEnd}
-              breakInMs={
-                !onBreak && derived && badge !== 'STARTS SOON'
-                  ? msUntilNextBreak(tournament.structure, heroIndex, heroRemainingMs, sliceEnd)
-                  : null
-              }
-            />
-            <div className={'text-[2.2vh] ' + (onBreak ? 'text-white/70' : 'text-white/40')}>
-              {heroNext
-                ? `Next: ${
-                    heroNext.type === 'break'
-                      ? entryLabel(heroNext)
-                      : entryBlinds(heroNext) +
-                        (heroNext.ante > 0 ? ` · ante ${heroNext.ante.toLocaleString()}` : '')
-                  }`
-                : 'Final level'}
-            </div>
-            {badge === 'STARTS SOON' && <PreStartInfo tournament={tournament} />}
-          </>
-        ) : (
-          <>
-            {startTime && (
-              <div className="font-display text-[16vh] leading-none text-white tabular-nums my-[3vh]">{startTime}</div>
-            )}
-            <div className="text-white/50 text-[2.6vh]">{untilStart ?? 'Registration at the desk'}</div>
-            <PreStartInfo tournament={tournament} />
-          </>
-        )}
+        {/* three-zone body: game rail | hero clock | money rail */}
+        <div className="flex-1 flex items-center justify-between gap-[2.5vw] min-h-0">
+          <GameRail
+            tournament={tournament}
+            derived={derived}
+            badge={badge}
+            onBreak={onBreak}
+            heroNext={heroNext}
+            sliceEnd={sliceEnd}
+          />
 
-        <RegSlot tournament={tournament} derived={derived} payoutCount={payouts.length} />
-        <CounterStrip tournament={tournament} />
+          <div className="flex-1 text-center min-w-0">
+            {heroEntry ? (
+              <>
+                <div key={pulseKey} className={pulseKey > 0 ? 'display-level-pulse' : ''}>
+                  <div className="font-display text-[3vh] text-white/60 mb-[0.5vh]">{entryLabel(heroEntry)}</div>
+                  {onBreak ? (
+                    <div className="font-display text-[8vh] leading-tight text-sky-200">Break</div>
+                  ) : (
+                    <div className="font-display text-[8vh] leading-tight text-white tabular-nums">
+                      {entryBlinds(heroEntry)}
+                    </div>
+                  )}
+                  {!onBreak && heroEntry.ante > 0 && (
+                    <div className="text-white/50 text-[2.6vh]">ante {heroEntry.ante.toLocaleString()}</div>
+                  )}
+                </div>
+                <div
+                  className={
+                    `font-display ${countdownSize} leading-none tabular-nums my-[1.5vh] ` +
+                    (hurry
+                      ? 'display-hurry text-brand-400 [text-shadow:0_0_50px_rgba(239,43,43,0.55)]'
+                      : onBreak
+                        ? 'text-sky-100'
+                        : 'text-white')
+                  }
+                >
+                  {remainStr}
+                </div>
+                {backAt && (
+                  <div className="text-sky-200/80 text-[2.6vh] -mt-[0.5vh] mb-[1vh]">back at {backAt}</div>
+                )}
+                {onBreak && heroEntry.isColorUp && (
+                  <div className="font-mono uppercase tracking-[0.25em] text-[1.7vh] text-amber-300 mb-[1vh]">
+                    Chip color-up this break
+                  </div>
+                )}
+                {/* level progress */}
+                <div className="mx-auto w-[42vw] h-[0.5vh] rounded-full bg-white/10 overflow-hidden mb-[1.2vh]">
+                  <div
+                    className={
+                      'h-full transition-[width] duration-300 ' +
+                      (hurry ? 'bg-brand-400' : 'bg-gradient-to-r from-brand-500 to-brand-400')
+                    }
+                    style={{ width: `${Math.round(progress * 100)}%` }}
+                  />
+                </div>
+                <LevelTrack structure={tournament.structure} heroIndex={heroIndex} sliceEnd={sliceEnd} />
+              </>
+            ) : (
+              <>
+                {startTime && (
+                  <div className="font-display text-[15vh] leading-none text-white tabular-nums my-[2vh]">
+                    {startTime}
+                  </div>
+                )}
+                <div className="text-white/50 text-[2.6vh]">{untilStart ?? 'Registration at the desk'}</div>
+              </>
+            )}
+            <CounterStrip tournament={tournament} />
+          </div>
+
+          <MoneyRail tournament={tournament} payouts={payouts} />
+        </div>
       </div>
       <Ticker tournament={tournament} payouts={payouts} />
     </>
   )
-}
-
-/** Buy-in & structure line for the pre-start screen — when players deciding to enter need it. */
-function PreStartInfo({ tournament }) {
-  const parts = []
-  if (tournament.buyIn > 0) parts.push(`${formatDisplayMoney(tournament.buyIn)} buy-in`)
-  const summary = structureSummary(tournament)
-  if (summary) parts.push(summary)
-  if (parts.length === 0) return null
-  return <div className="text-gold-300/80 text-[2.4vh] mt-[1.5vh]">{parts.join(' · ')}</div>
 }
 
 /* ── Prize pool ──────────────────────────────────────────────────────────── */
@@ -625,7 +684,7 @@ function PrizesSlide({ tournament }) {
           </div>
         )}
 
-        <CounterStrip tournament={tournament} />
+        <CounterStrip tournament={tournament} withPool />
       </div>
       <Ticker tournament={tournament} payouts={payouts} />
     </>
