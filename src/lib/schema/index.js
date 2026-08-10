@@ -6,7 +6,7 @@
 //   const result = Tournament.safeParse(rawData)   // { success, data?, error? }
 
 // Top-level collections
-export { Tournament } from './tournament'
+export { Tournament, PayoutEngineConfig, PayoutTable, PAYOUT_ENGINE_CONFIG_DEFAULTS } from './tournament'
 export { Player } from './player'
 export { WithdrawalRequest } from './withdrawalRequest'
 export { StructureTemplate } from './structureTemplate'

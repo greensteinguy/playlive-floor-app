@@ -372,14 +372,28 @@ function ClockSlide({ tournament, sessions, nowMs }) {
 /* ── Prize pool ──────────────────────────────────────────────────────────── */
 
 function PrizesSlide({ tournament }) {
+  // The STORED venue payout table is the SSOT when present (run-once engine,
+  // 10 Aug 2026) — its band rows ("10 to 12") render directly. Legacy
+  // fallback: the embedded payoutStructure, materialized on the fly.
   const payouts = useMemo(() => {
+    if (tournament.payoutTable?.rows?.length) {
+      return tournament.payoutTable.rows.map((r) => ({
+        place: r.fromPlace,
+        label: r.fromPlace === r.toPlace ? ordinal(r.fromPlace) : `${r.fromPlace} – ${r.toPlace}`,
+        amount: r.amount,
+      }))
+    }
     if (!tournament.payoutStructure || tournament.totalPrizePool <= 0) return []
     try {
-      return materializePayouts(tournament.payoutStructure, tournament.totalPrizePool)
+      return materializePayouts(tournament.payoutStructure, tournament.totalPrizePool).map((p) => ({
+        place: p.place,
+        label: ordinal(p.place),
+        amount: p.amount,
+      }))
     } catch {
       return [] // a malformed structure must never take down the TV
     }
-  }, [tournament.payoutStructure, tournament.totalPrizePool])
+  }, [tournament.payoutTable, tournament.payoutStructure, tournament.totalPrizePool])
   const shown = payouts.slice(0, 9)
   const guaranteed = tournament.guarantee > 0
 
@@ -404,9 +418,9 @@ function PrizesSlide({ tournament }) {
             (shown.length > 5 ? 'grid-cols-2' : 'grid-cols-1')
           }
         >
-          {shown.map(({ place, amount }) => (
+          {shown.map(({ place, label, amount }) => (
             <div key={place} className="flex items-baseline gap-[1.5vw] justify-between">
-              <span className="font-mono uppercase tracking-[0.2em] text-[2vh] text-white/45">{ordinal(place)}</span>
+              <span className="font-mono uppercase tracking-[0.2em] text-[2vh] text-white/45">{label}</span>
               <span className="font-display text-[3.4vh] text-white/90 tabular-nums">
                 {formatDisplayMoney(amount)}
               </span>
@@ -414,7 +428,7 @@ function PrizesSlide({ tournament }) {
           ))}
           {payouts.length > shown.length && (
             <div className="col-span-full font-mono text-[1.6vh] text-white/30 uppercase tracking-[0.25em]">
-              {payouts.length - shown.length} more places paid
+              + {payouts.length - shown.length} more
             </div>
           )}
         </div>

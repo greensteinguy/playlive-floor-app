@@ -39,7 +39,10 @@ import {
   recordWinner,
   revertWinner,
   enterDeal,
+  refreshPayoutTable,
+  updatePayoutConfig,
   PayoutsError,
+  TournamentError,
 } from '../../lib/tournaments'
 import {
   confirmEntryWinCredit,
@@ -129,6 +132,15 @@ export default function TournamentPayouts() {
             <Meta label="Payable total" value={formatMoney(payoutRowsTotal(rows))} />
           </div>
 
+          <PayoutEngineCard
+            tournament={tournament}
+            canStage={canStage}
+            user={user}
+            role={role}
+            toast={toast}
+            onChanged={refreshAll}
+          />
+
           <WinnerCard
             tournament={tournament}
             alive={alive}
@@ -180,6 +192,248 @@ export default function TournamentPayouts() {
         </>
       )}
     </div>
+  )
+}
+
+/* ── Venue payout calculator (run-once engine, 10 Aug 2026) ────────────────
+   The knobs + the STORED table the engine computed. Settings save + recompute
+   in one transaction (updatePayoutConfig); "Recompute now" force-refreshes
+   (the automatic path is throttled to ~5 min and freezes at late-reg close).
+   The per-place confirm table below reads this same stored table via
+   buildPayoutRows — one source of truth on the tournament doc. */
+
+const RATIO_FLAG_META = {
+  ok: { label: '1st/2nd ratio OK', cls: 'bg-emerald-500/15 text-emerald-300' },
+  low: { label: '1st/2nd ratio LOW', cls: 'bg-red-500/15 text-red-300' },
+  high: { label: '1st/2nd ratio HIGH', cls: 'bg-amber-500/15 text-amber-200' },
+}
+
+function PayoutEngineCard({ tournament, canStage, user, role, toast, onChanged }) {
+  const cfg = tournament.payoutConfig
+  const table = tournament.payoutTable
+  const frozen = ['lateRegClosed', 'finished', 'cancelled'].includes(tournament.status)
+  const stale = table && table.entryCountAtCompute !== tournament.entryCount
+  const hasAddOn = Boolean(tournament.reentryConfig?.hasAddOn)
+
+  // Form state re-seeds when the saved config changes (render-time adjust
+  // pattern — no effect round-trip; same idiom as Display.jsx).
+  const seedForm = () => ({
+    spotsRatio: String(cfg.spotsRatio),
+    minCashMultiplier: String(cfg.minCashMultiplier),
+    seriesEvent: cfg.seriesEvent,
+    addOnCount: String(cfg.addOnCount),
+    equityRefunds: centsToStr(cfg.equityRefunds),
+  })
+  const cfgKey = JSON.stringify(cfg)
+  const [form, setForm] = useState(seedForm)
+  const [seededFrom, setSeededFrom] = useState(cfgKey)
+  if (seededFrom !== cfgKey) {
+    setSeededFrom(cfgKey)
+    setForm(seedForm())
+  }
+  const [busy, setBusy] = useState(false)
+
+  const dirty =
+    Number(form.spotsRatio) !== cfg.spotsRatio ||
+    Number(form.minCashMultiplier) !== cfg.minCashMultiplier ||
+    form.seriesEvent !== cfg.seriesEvent ||
+    Number(form.addOnCount) !== cfg.addOnCount ||
+    dollarsToCents(form.equityRefunds) !== cfg.equityRefunds
+
+  const run = async (fn, okMsg) => {
+    setBusy(true)
+    try {
+      await fn()
+      toast.success(okMsg)
+      onChanged()
+    } catch (e) {
+      toast.error(e instanceof TournamentError || e instanceof PayoutsError ? e.message : e?.message || 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveAndRecompute = () =>
+    run(
+      () =>
+        updatePayoutConfig({
+          tournamentId: tournament.id,
+          patch: {
+            spotsRatio: Number(form.spotsRatio),
+            minCashMultiplier: Number(form.minCashMultiplier),
+            seriesEvent: form.seriesEvent,
+            addOnCount: Number(form.addOnCount),
+            equityRefunds: dollarsToCents(form.equityRefunds),
+          },
+          actorId: user?.uid,
+          actorRole: role,
+        }),
+      'Payout settings saved — table recomputed.'
+    )
+
+  const recomputeNow = () =>
+    run(
+      () => refreshPayoutTable({ tournamentId: tournament.id, actorId: user?.uid, actorRole: role, force: true }),
+      'Payout table recomputed.'
+    )
+
+  const inputCls =
+    'bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm w-24 disabled:opacity-50'
+
+  return (
+    <section className="bg-felt-800 border border-white/5 rounded-lg px-4 py-4 mb-5">
+      <div className="flex items-center gap-3 flex-wrap mb-3">
+        <h2 className="font-display text-lg text-gold-300">Venue payout calculator</h2>
+        {table && table.ratioFlag && (
+          <span className={'text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded ' + RATIO_FLAG_META[table.ratioFlag].cls}>
+            {RATIO_FLAG_META[table.ratioFlag].label}
+          </span>
+        )}
+        {stale && (
+          <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded bg-amber-500/15 text-amber-200">
+            Stale — entries changed since compute
+          </span>
+        )}
+        {frozen && (
+          <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded bg-sky-500/15 text-sky-300">
+            Frozen ({tournament.status}) — recompute is manual
+          </span>
+        )}
+      </div>
+
+      {/* Knobs */}
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3 mb-4">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Spots paid (1 in X)</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min="2"
+            max="50"
+            value={form.spotsRatio}
+            onChange={(e) => setForm((f) => ({ ...f, spotsRatio: e.target.value }))}
+            disabled={!canStage || busy}
+            className={inputCls}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Min cash</span>
+          <select
+            value={form.minCashMultiplier}
+            onChange={(e) => setForm((f) => ({ ...f, minCashMultiplier: e.target.value }))}
+            disabled={!canStage || busy}
+            className="bg-felt-900 border border-white/10 rounded px-3 py-2 text-sm disabled:opacity-50"
+          >
+            <option value="1.5">1.5×</option>
+            <option value="1.75">1.75×</option>
+            <option value="2">2×</option>
+          </select>
+        </label>
+        {hasAddOn && (
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Add-ons sold</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="0"
+              value={form.addOnCount}
+              onChange={(e) => setForm((f) => ({ ...f, addOnCount: e.target.value }))}
+              disabled={!canStage || busy}
+              className={inputCls}
+            />
+          </label>
+        )}
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Equity refunds ($)</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.equityRefunds}
+            onChange={(e) => setForm((f) => ({ ...f, equityRefunds: e.target.value }))}
+            placeholder="0"
+            disabled={!canStage || busy}
+            className={inputCls}
+          />
+        </label>
+        <label className="flex items-center gap-2 pb-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.seriesEvent}
+            onChange={(e) => setForm((f) => ({ ...f, seriesEvent: e.target.checked }))}
+            disabled={!canStage || busy}
+          />
+          <span className="text-sm text-white/70">Series event (points)</span>
+        </label>
+        {canStage && (
+          <div className="flex gap-3 pb-0.5">
+            <button type="button" onClick={saveAndRecompute} disabled={busy || !dirty} className={btnGold}>
+              {busy ? 'Working…' : 'Save & recompute'}
+            </button>
+            <button type="button" onClick={recomputeNow} disabled={busy || tournament.entryCount < 1} className={btnPlain}>
+              Recompute now
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* The stored table */}
+      {!table ? (
+        <p className="text-sm text-white/40">
+          No payout table computed yet
+          {tournament.entryCount < 1 ? ' — it computes automatically with the first entry.' : ' — press "Recompute now".'}
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-x-8 gap-y-2 mb-3 text-sm text-white/60">
+            <span>
+              Places paid <span className="text-white/90 tabular-nums">{table.placesPaid}</span>
+            </span>
+            <span>
+              Min cash <span className="text-white/90 tabular-nums">{formatMoney(table.minCash)}</span>
+            </span>
+            <span>
+              Distributes <span className="text-white/90 tabular-nums">{formatMoney(table.adjPrizePool)}</span>
+            </span>
+            <span>
+              Computed {fmtTime(table.computedAt)} at {table.entryCountAtCompute} entries
+            </span>
+          </div>
+          {table.warnings.length > 0 && (
+            <ul className="mb-3 text-xs text-amber-200/80 list-disc list-inside">
+              {table.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
+          <div className="overflow-x-auto">
+            <table className="text-sm">
+              <thead>
+                <tr className="text-[10px] font-mono uppercase tracking-widest text-white/35">
+                  <th className="text-left pr-8 pb-1">Place</th>
+                  <th className="text-right pr-8 pb-1">Payout</th>
+                  {table.seriesEvent && <th className="text-right pb-1">Points</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.map((r) => (
+                  <tr key={r.fromPlace} className="border-t border-white/5">
+                    <td className="pr-8 py-1.5 text-white/70">
+                      {r.fromPlace === r.toPlace ? ordinal(r.fromPlace) : `${r.fromPlace} – ${r.toPlace}`}
+                    </td>
+                    <td className="pr-8 py-1.5 text-right tabular-nums text-white/90">{formatMoney(r.amount)}</td>
+                    {table.seriesEvent && (
+                      <td className="py-1.5 text-right tabular-nums text-white/60">
+                        {r.points == null ? '—' : Math.round(r.points * 100) / 100}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 

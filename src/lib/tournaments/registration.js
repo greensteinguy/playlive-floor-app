@@ -25,6 +25,7 @@ import {
   RegistrationClosedError,
 } from '../wallet'
 import { TournamentError } from './errors'
+import { refreshPayoutTable } from './payoutTable'
 
 // ── Pure planning helpers ──────────────────────────────────────────────────
 
@@ -333,6 +334,15 @@ export async function registerEntry({
     counters = null
   }
 
+  // Refresh the stored payout table (throttled to once per ~5 min inside the
+  // op; frozen after late reg closes). Best-effort — the registration stands
+  // regardless, and the table catches up on the next entry or manual compute.
+  try {
+    await refreshPayoutTable({ tournamentId: tournament.id, actorId, actorRole })
+  } catch {
+    /* best-effort */
+  }
+
   return {
     ...walletResult,
     entryType: plan.entryType,
@@ -380,6 +390,13 @@ export async function voidEntry({ tournament, entry, reason, actorId, actorRole 
     counters = await recountTournamentEntries({ tournamentId: tournament.id })
   } catch {
     counters = null
+  }
+
+  // Same best-effort, throttled payout-table refresh as registerEntry.
+  try {
+    await refreshPayoutTable({ tournamentId: tournament.id, actorId, actorRole })
+  } catch {
+    /* best-effort */
   }
 
   return { ...result, counters }
