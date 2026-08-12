@@ -25,6 +25,7 @@ import DeskPlayerNew from './pages/desk/PlayerNew'
 import DeskPlayerDetail from './pages/desk/PlayerDetail'
 import DeskDeposit from './pages/desk/Deposit'
 import DeskWithdrawals from './pages/desk/Withdrawals'
+import DeskAppRequests from './pages/desk/AppRequests'
 import DeskTickets from './pages/desk/Tickets'
 
 // TD persona
@@ -110,6 +111,16 @@ export default function App() {
                   <ErrorBoundary>
                     <ProtectedRoute requiredRoles={['cashier', 'manager']}>
                       <DeskWithdrawals />
+                    </ProtectedRoute>
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/desk/app-requests"
+                element={
+                  <ErrorBoundary>
+                    <ProtectedRoute requiredRoles={['cashier', 'manager']}>
+                      <DeskAppRequests />
                     </ProtectedRoute>
                   </ErrorBoundary>
                 }

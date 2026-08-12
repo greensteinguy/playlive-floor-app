@@ -40,6 +40,13 @@ const TILES = [
     description: 'Queue withdrawal requests; a manager completes them once the money is paid out.',
     badge: 'Phase 4',
   },
+  {
+    navPath: '/desk/app-requests',
+    icon: '📱',
+    label: 'App requests',
+    description: 'Player App registrations and account links waiting on the desk.',
+    badge: 'Phase 6',
+  },
   // Tickets tile removed — that page is a Phase-4 placeholder.
 ]
 

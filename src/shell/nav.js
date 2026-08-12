@@ -55,6 +55,14 @@ const NAV_ITEMS = [
     // deposit. Not readonly/td — the route is cashier+manager gated in App.jsx.
     allowedRoles: ['cashier'],
   },
+  {
+    section: 'desk',
+    to: '/desk/app-requests',
+    label: 'App requests',
+    icon: '📱',
+    // Player App registrations + account links needing the desk (Phase 6.2).
+    allowedRoles: ['cashier'],
+  },
   // NOTE: Tickets (/desk/tickets) is a Phase-4 placeholder — removed from the
   // sidebar so floor staff don't hit dead-ends. Re-add a row here when the real
   // page lands. The route still exists in App.jsx.

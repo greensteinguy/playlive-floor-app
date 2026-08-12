@@ -12,6 +12,8 @@
 export const TOURNAMENTS = 'tournaments'
 export const PLAYERS = 'players'
 export const WITHDRAWAL_REQUESTS = 'withdrawalRequests'
+export const REGISTRATION_REQUESTS = 'registrationRequests'
+export const LINK_REQUESTS = 'linkRequests'
 export const STRUCTURE_TEMPLATES = 'structureTemplates'
 export const TOURNAMENT_TEMPLATES = 'tournamentTemplates'
 export const AUDIT_LOG = 'auditLog'
@@ -34,6 +36,12 @@ export const playerPath = (id) => [PLAYERS, id]
 
 export const withdrawalRequestsCollectionPath = () => [WITHDRAWAL_REQUESTS]
 export const withdrawalRequestPath = (id) => [WITHDRAWAL_REQUESTS, id]
+
+export const registrationRequestsCollectionPath = () => [REGISTRATION_REQUESTS]
+export const registrationRequestPath = (id) => [REGISTRATION_REQUESTS, id]
+
+export const linkRequestsCollectionPath = () => [LINK_REQUESTS]
+export const linkRequestPath = (id) => [LINK_REQUESTS, id]
 
 export const structureTemplatesCollectionPath = () => [STRUCTURE_TEMPLATES]
 export const structureTemplatePath = (id) => [STRUCTURE_TEMPLATES, id]
