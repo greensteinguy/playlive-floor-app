@@ -53,7 +53,10 @@ export const ChipCount = z.number().int().nonnegative()
 export const Role = z.enum(['manager', 'td', 'cashier', 'readonly'])
 
 /** Role + a 'system' option, for fields where automated jobs (e.g., migration import) can be the actor. */
-export const ActorRole = z.enum(['manager', 'td', 'cashier', 'readonly', 'system'])
+// 'player' = a Player App self-service action (Phase 6.2 — e.g. the wallet
+// spend row written by the registerSelf Cloud Function; actorId is the
+// player's own auth uid).
+export const ActorRole = z.enum(['manager', 'td', 'cashier', 'readonly', 'system', 'player'])
 
 // ── Audit / lifecycle helpers ──────────────────────────────────────────────
 

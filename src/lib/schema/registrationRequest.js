@@ -37,7 +37,11 @@ export const RegistrationRequest = z
     requestedVia: z.literal('playerApp'),
 
     // Why the instant path didn't take it (shown to the desk).
-    reason: z.enum(['insufficientBalance', 'walletNotCovering', 'playerChoice']).nullable(),
+    //   insufficientBalance — wallet doesn't cover buyIn + hospitality
+    //   multiSession        — multi-day/flight event; the player must pick a
+    //                         flight at the desk
+    //   playerChoice        — app offered instant pay, player chose the desk
+    reason: z.enum(['insufficientBalance', 'multiSession', 'playerChoice']).nullable(),
 
     // confirmed (state='confirmed' only): the entry the desk created.
     entryId: DocumentRef.nullable(),

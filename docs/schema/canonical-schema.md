@@ -421,7 +421,7 @@ auditLog/{id}
   id:                          string          (UUID v4)
   timestamp:                   Timestamp
   actorId:                     string          (auth uid; 'system' for migration / scheduled jobs)
-  actorRole:                   'manager' | 'td' | 'cashier' | 'readonly' | 'system'
+  actorRole:                   'manager' | 'td' | 'cashier' | 'readonly' | 'system' | 'player'
 
   actionType:                  string          (dot-separated; see well-known types below)
 
@@ -497,7 +497,7 @@ registrationRequests/{id}
   requestedAt:      Timestamp
   requestedByUid:   string          (the player's own auth uid — not staff)
   requestedVia:     'playerApp'
-  reason:           'insufficientBalance' | 'walletNotCovering' | 'playerChoice' | null
+  reason:           'insufficientBalance' | 'multiSession' | 'playerChoice' | null
   entryId:          string | null   (set on confirm)
   resolvedBy, resolvedAt, cancelReason:  staff resolution fields
   createdAt, updatedAt
@@ -557,8 +557,9 @@ players/{pid}/walletTransactions/{id}
                               // entries/{id} for entryRefund (REQUIRED; notes carries the void reason)
                               // null otherwise
 
-  actorId:                     string          (auth uid; 'system' for openingBalance imports)
-  actorRole:                   'manager' | 'td' | 'cashier' | 'system'
+  actorId:                     string          (auth uid; 'system' for openingBalance imports;
+                                                the player's own uid for Player App self-service rows)
+  actorRole:                   'manager' | 'td' | 'cashier' | 'system' | 'player'
 
   timestamp:                   Timestamp
   notes:                       string | null
