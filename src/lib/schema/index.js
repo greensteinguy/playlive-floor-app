@@ -9,6 +9,8 @@
 export { Tournament, PayoutEngineConfig, PayoutTable, PAYOUT_ENGINE_CONFIG_DEFAULTS } from './tournament'
 export { Player } from './player'
 export { WithdrawalRequest } from './withdrawalRequest'
+export { RegistrationRequest } from './registrationRequest'
+export { LinkRequest } from './linkRequest'
 export { StructureTemplate } from './structureTemplate'
 export { TournamentTemplate } from './tournamentTemplate'
 export { AuditLogEntry, WELL_KNOWN_ACTION_TYPES } from './auditLog'

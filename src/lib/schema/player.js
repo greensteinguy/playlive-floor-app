@@ -31,6 +31,15 @@ export const Player = z
     // Country code (legacy 'ensign' field; for flag display)
     countryCode: CountryCode.nullable(),
 
+    // Player App account link (Phase 6.2). authUid = the Firebase Auth uid of
+    // the player's own phone-OTP account (NOT a staff uid). Set by the
+    // linkPlayerAccount Cloud Function (auto phone-match) or by desk-verified
+    // linking; the same operation stamps a `playerId` custom claim on the auth
+    // user, which the player-self-read rules branch keys on. Defaults keep
+    // every pre-existing doc valid on read.
+    authUid: z.string().nullable().default(null),
+    authLinkedAt: NullableTimestamp.default(null),
+
     // Derived / cached. Updated atomically alongside walletTransactions writes.
     // walletBalance is a HARD invariant >= 0 — see canonical-schema.md §6.2.
     walletBalance: Money,
@@ -56,6 +65,16 @@ export const Player = z
         code: z.ZodIssueCode.custom,
         path: ['walletBalance'],
         message: 'walletBalance must never be negative — hard invariant per canonical-schema.md §6.2',
+      })
+    }
+
+    // Invariant: authUid and authLinkedAt are both-or-neither (linking always
+    // stamps both; only post-Phase-6.2 code writes them).
+    if ((p.authUid === null) !== (p.authLinkedAt === null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['authLinkedAt'],
+        message: 'authUid and authLinkedAt must be set together',
       })
     }
 

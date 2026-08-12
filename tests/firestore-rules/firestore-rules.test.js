@@ -20,6 +20,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  collection,
   collectionGroup,
   query,
   where,
@@ -245,5 +246,126 @@ describe('firestore.rules — default deny on unknown collection paths', () => {
   })
   it.each(unknownPaths)('manager cannot write %s/%s', async (...pathParts) => {
     await assertFails(setDoc(doc(ctxFor('manager'), ...pathParts), { x: 1 }))
+  })
+})
+
+// ── Phase 6.2: Player App account branch ───────────────────────────────────
+// Players sign in with phone OTP; the linkPlayerAccount function stamps a
+// `playerId` custom claim. These tests cover the self-read branch that claim
+// unlocks — and that it unlocks nothing else.
+
+describe('firestore.rules — player-app accounts (playerId claim)', () => {
+  const linkedCtx = () =>
+    testEnv.authenticatedContext('app-user-1', { playerId: 'player-1' }).firestore()
+  const otherLinkedCtx = () =>
+    testEnv.authenticatedContext('app-user-2', { playerId: 'player-2' }).firestore()
+
+  describe('players self-read', () => {
+    it('linked player reads their own player doc', async () => {
+      await seed(['players', 'player-1'], { firstName: 'A' })
+      await assertSucceeds(getDoc(doc(linkedCtx(), 'players', 'player-1')))
+    })
+
+    it("linked player cannot read another player's doc", async () => {
+      await seed(['players', 'player-1'], { firstName: 'A' })
+      await assertFails(getDoc(doc(otherLinkedCtx(), 'players', 'player-1')))
+    })
+
+    it('phone-authed user with NO playerId claim reads nothing', async () => {
+      await seed(['players', 'player-1'], { firstName: 'A' })
+      await assertFails(getDoc(doc(ctxNoRole(), 'players', 'player-1')))
+    })
+
+    it('linked player cannot write their own player doc', async () => {
+      await assertFails(setDoc(doc(linkedCtx(), 'players', 'player-1'), { firstName: 'X' }))
+    })
+
+    it('linked player reads own walletTransactions and tickets', async () => {
+      await seed(['players', 'player-1', 'walletTransactions', 'tx1'], { amount: 100 })
+      await seed(['players', 'player-1', 'tickets', 't1'], { faceValue: 100 })
+      await assertSucceeds(getDoc(doc(linkedCtx(), 'players', 'player-1', 'walletTransactions', 'tx1')))
+      await assertSucceeds(getDoc(doc(linkedCtx(), 'players', 'player-1', 'tickets', 't1')))
+    })
+
+    it("linked player cannot read another player's ledger", async () => {
+      await seed(['players', 'player-1', 'walletTransactions', 'tx1'], { amount: 100 })
+      await assertFails(getDoc(doc(otherLinkedCtx(), 'players', 'player-1', 'walletTransactions', 'tx1')))
+    })
+
+    it('linked player cannot use the walletTransactions collection group', async () => {
+      await seed(['players', 'player-1', 'walletTransactions', 'tx1'], { amount: 100, playerId: 'player-1' })
+      await assertFails(getDocs(query(collectionGroup(linkedCtx(), 'walletTransactions'), where('playerId', '==', 'player-1'))))
+    })
+  })
+
+  describe('tournaments visibility', () => {
+    it('linked player reads a non-draft tournament', async () => {
+      await seed(['tournaments', 'tour-1'], { status: 'lateRegOpen' })
+      await assertSucceeds(getDoc(doc(linkedCtx(), 'tournaments', 'tour-1')))
+    })
+
+    it('linked player cannot read a draft tournament', async () => {
+      await seed(['tournaments', 'tour-1'], { status: 'draft' })
+      await assertFails(getDoc(doc(linkedCtx(), 'tournaments', 'tour-1')))
+    })
+
+    it('status-constrained list query succeeds for a linked player', async () => {
+      await seed(['tournaments', 'tour-1'], { status: 'scheduled' })
+      const q = query(
+        collection(linkedCtx(), 'tournaments'),
+        where('status', 'in', ['scheduled', 'lateRegOpen', 'lateRegClosed', 'finished'])
+      )
+      await assertSucceeds(getDocs(q))
+    })
+
+    it('UNconstrained list query fails for a linked player (could surface drafts)', async () => {
+      await seed(['tournaments', 'tour-1'], { status: 'scheduled' })
+      await assertFails(getDocs(collection(linkedCtx(), 'tournaments')))
+    })
+
+    it('linked player cannot read tournament subcollections (entries)', async () => {
+      await seed(['tournaments', 'tour-1', 'entries', 'e1'], { playerId: 'player-1' })
+      await assertFails(getDoc(doc(linkedCtx(), 'tournaments', 'tour-1', 'entries', 'e1')))
+    })
+
+    it('linked player cannot write tournaments', async () => {
+      await assertFails(setDoc(doc(linkedCtx(), 'tournaments', 'tour-1'), { status: 'scheduled' }))
+    })
+  })
+
+  describe('registrationRequests', () => {
+    it('linked player reads their own request', async () => {
+      await seed(['registrationRequests', 'rr1'], { playerId: 'player-1', state: 'pending' })
+      await assertSucceeds(getDoc(doc(linkedCtx(), 'registrationRequests', 'rr1')))
+    })
+
+    it("linked player cannot read another player's request", async () => {
+      await seed(['registrationRequests', 'rr1'], { playerId: 'player-1', state: 'pending' })
+      await assertFails(getDoc(doc(otherLinkedCtx(), 'registrationRequests', 'rr1')))
+    })
+
+    it('linked player cannot create a request directly (function-only)', async () => {
+      await assertFails(setDoc(doc(linkedCtx(), 'registrationRequests', 'rr2'), {
+        playerId: 'player-1', state: 'pending',
+      }))
+    })
+
+    it('cashier reads and resolves requests; readonly cannot resolve', async () => {
+      await seed(['registrationRequests', 'rr1'], { playerId: 'player-1', state: 'pending' })
+      await assertSucceeds(getDoc(doc(ctxFor('cashier'), 'registrationRequests', 'rr1')))
+      await assertSucceeds(setDoc(doc(ctxFor('cashier'), 'registrationRequests', 'rr1'), { state: 'cancelled' }, { merge: true }))
+      await assertFails(setDoc(doc(ctxFor('readonly'), 'registrationRequests', 'rr1'), { state: 'cancelled' }, { merge: true }))
+    })
+  })
+
+  describe('linkRequests (desk-only)', () => {
+    it('cashier + manager read; player and readonly cannot', async () => {
+      await seed(['linkRequests', 'lr1'], { authUid: 'app-user-1', state: 'pending' })
+      await assertSucceeds(getDoc(doc(ctxFor('cashier'), 'linkRequests', 'lr1')))
+      await assertSucceeds(getDoc(doc(ctxFor('manager'), 'linkRequests', 'lr1')))
+      await assertFails(getDoc(doc(ctxFor('readonly'), 'linkRequests', 'lr1')))
+      // even the player the request is ABOUT cannot read it
+      await assertFails(getDoc(doc(linkedCtx(), 'linkRequests', 'lr1')))
+    })
   })
 })

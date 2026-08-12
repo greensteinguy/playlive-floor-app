@@ -71,3 +71,25 @@ describe('Player', () => {
     expect(Player.safeParse(buildPlayer({ countryCode: 'AU' })).success).toBe(true)
   })
 })
+
+describe('Player.authUid link (Phase 6.2)', () => {
+  it('defaults authUid/authLinkedAt to null on pre-existing docs', () => {
+    const parsed = Player.parse(buildPlayer())
+    expect(parsed.authUid).toBeNull()
+    expect(parsed.authLinkedAt).toBeNull()
+  })
+
+  it('accepts a linked player (both fields set)', () => {
+    const parsed = Player.parse(buildPlayer({ authUid: 'auth-uid-1', authLinkedAt: ts() }))
+    expect(parsed.authUid).toBe('auth-uid-1')
+  })
+
+  it.each([
+    ['authUid without authLinkedAt', { authUid: 'auth-uid-1' }],
+    ['authLinkedAt without authUid', { authLinkedAt: ts() }],
+  ])('rejects %s', (_label, overrides) => {
+    const result = Player.safeParse(buildPlayer(overrides))
+    expect(result.success).toBe(false)
+    expect(result.error.issues.some((i) => i.path.includes('authLinkedAt'))).toBe(true)
+  })
+})
