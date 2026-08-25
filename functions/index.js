@@ -250,7 +250,11 @@ export const registerSelf = onCall(async (request) => {
     if (!tSnap.exists) throw new HttpsError('not-found', 'Tournament not found.')
     const t = tSnap.data()
     if (t.archivedAt != null) throw new HttpsError('not-found', 'Tournament not found.')
-    if (!registrationOpen(t)) throw new HttpsError('failed-precondition', 'registration-closed')
+    // `lateRegClosed` is decided after planEntry — re-entry may still be open to
+    // an already-entered player even once late reg has closed to new ones.
+    if (!registrationOpen(t) && t.status !== 'lateRegClosed') {
+      throw new HttpsError('failed-precondition', 'registration-closed')
+    }
 
     if (!pSnap.exists) throw new HttpsError('not-found', 'Player record not found.')
     const p = pSnap.data()
@@ -261,6 +265,9 @@ export const registerSelf = onCall(async (request) => {
     const playerEntries = allEntries.filter((e) => e.playerId === playerId)
     const plan = planEntry({ playerEntries, reentryConfig: t.reentryConfig })
     if (plan.blockedReason) throw new HttpsError('failed-precondition', plan.blockedReason)
+    if (!registrationOpen(t, plan.entryType)) {
+      throw new HttpsError('failed-precondition', 'registration-closed')
+    }
 
     const sessions = sessionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     const entryPoints = registrableSessions(sessions)

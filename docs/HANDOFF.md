@@ -2,6 +2,19 @@
 
 > This is the living "where we left off" doc. **Update it at the end of every Claude Code session and every Cowork planning session.** Commit alongside whatever else changed. It is how context survives between sessions and across tool switches.
 
+> **⇒ CURRENT WORK (24 Aug 2026) — branch `feature/floor-feedback-aug`, NOT merged, NOT pushed.**
+> Guy delivered a 14-item stakeholder feedback list; it's triaged in `docs/FLOOR_FEEDBACK.md` §D1 as **D1.1–D1.14**. Ten items are **built** on this branch; four are parked (see below).
+> **Gates green:** `npm test` **1012**, `npm run lint`, `npm run build`.
+> **Waiting on Guy:** UI test at `http://localhost:5173` (dev server), then merge. Per the standing workflow — no push until he says so.
+>
+> **Built:** D1.2 Enter-key row nav · D1.3 right-click/long-press marker lines (registration / re-entry / end-of-day, three colours) · D1.4 "+ Double ×2" smart key · D1.5 bulk minutes · D1.6 pointer drag-reorder · D1.7 `reentryCutoffLevel` + the asymmetric registration gate · D1.10 live level + late-reg countdown on the TD detail header · D1.11 pinned payout total · D1.12 Fixed-amount pre-fill from percentages · D1.13 explicit table numbers.
+>
+> **Verified live in the browser** (create wizard, mock mode): D1.2, D1.3, D1.4, D1.5, D1.6. **NOT verified live:** D1.7, D1.10, D1.11, D1.12, D1.13 — they need a tournament doc, and **the Firestore emulator could not start: port 8080 is held by a WSL relay process** (`wslrelay.exe`, PID 5428 on 24 Aug). Either free 8080 or run the emulator on another port (note `src/firebase/config.js:61` hardcodes `127.0.0.1:8080`) before the next emulator-backed pass.
+>
+> **Parked, needs Guy:** D1.1 (satellite milestone — the floor may expect it at the DESK, not the TD tables screen; Guy is asking) · D1.8 (**top-up rebuys are not built** — today `type: 'rebuy'` is a re-entry-after-bust with its own cap; a mid-period chip top-up has no flow, no chip-add, no prize-pool line; needs scoping) · D1.9 (player-account "registry" — Guy is getting specifics) · D1.14 (Mixed Game Academy review — Guy's call; note no mixed-game rotation engine exists in v1).
+>
+> **Schema note for the merging agent:** this branch adds ONE tournament field, `reentryCutoffLevel` (nullable, `.default(null)`), so every existing doc stays valid on read with no migration. **No Firestore rules or index changes needed.** The domain gate `registrationOpen(tournament, entryType)` gained a second argument and is mirrored in `functions/core/registration.js` — the parity suite covers it.
+
 > **⇒ MERGE/DEPLOY NOTES (10 Aug 2026, for the merging agent — Guy has approved merging today's work and pushing to hosting):**
 > **Branch state:** local `main` = origin/main + 2 merge commits (Phase 5 display `feature/phase5-display`; iPad pass `feature/ipad-touch-pass` — both already merged in, branches kept). **`feature/payout-engine` (5 commits, ends `278ce32`) is NOT merged** — it branched off current `main` tip, history is linear, so `git checkout main && git merge --no-ff feature/payout-engine` should conflict on nothing (HANDOFF leads were edited sequentially on the same line region — if git balks, keep BOTH "Previous update" chains in order, newest first).
 > **Gates before push:** `npm test` (expect **927**), `npm run lint`, `npm run build` — all green as of `278ce32`.

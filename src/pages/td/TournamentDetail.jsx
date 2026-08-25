@@ -40,6 +40,9 @@ import { Structure } from '../../lib/schema'
 import { centsToStr, dollarsToCents, intOrNull, intOf, formatMoney } from '../../lib/money'
 import { payoutCurve, paidPlaceCount, applyRounding } from '../../lib/payouts'
 import { GAME_TYPES, GAME_TYPE_LABEL, REENTRY_TYPES } from '../../lib/gameTypes'
+import { sessions as sessionsApi } from '../../lib/firestore'
+import { pickDisplaySession, msUntilLateRegClose, formatCloseIn } from '../../lib/display'
+import { deriveClock, CLOCK_RUNNING } from '../../lib/clock'
 import { Section, Text, Money, Num, Select, Toggle, DateTime, BountyValues, EmptyState } from '../../components/FormFields'
 import StructureEditor from '../../components/StructureEditor'
 import StatusBadge from '../../components/StatusBadge'
@@ -108,6 +111,7 @@ function formFromTournament(t) {
     structure: t.structure,
     scheduledStartTime: tsToLocalInput(t.scheduledStartTime),
     lateRegCutoffLevel: t.lateRegCutoffLevel != null ? String(t.lateRegCutoffLevel) : '',
+    reentryCutoffLevel: t.reentryCutoffLevel != null ? String(t.reentryCutoffLevel) : '',
     reentryType: t.reentryConfig.type,
     maxReentries: t.reentryConfig.maxReentries != null ? String(t.reentryConfig.maxReentries) : '',
     maxRebuys: t.reentryConfig.maxRebuys != null ? String(t.reentryConfig.maxRebuys) : '',
@@ -129,6 +133,16 @@ function formFromTournament(t) {
         percentStr: p.percent != null ? pctToStr(p.percent) : '',
       })),
   }
+}
+
+/** One label-over-value cell in the pinned payout summary bar. */
+function SummaryStat({ label, value, tone = 'text-white/80' }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-[9px] font-mono uppercase tracking-widest text-white/45">{label}</span>
+      <span className={`text-sm tabular-nums ${tone}`}>{value}</span>
+    </div>
+  )
 }
 
 // Stored percent fraction (0..1) ↔ editor percent string (e.g. 0.6667 ↔ "66.67").
@@ -159,6 +173,11 @@ function buildDetailsPatch(form) {
     startingStack: intOf(form.startingStack),
     scheduledStartTime: localToDate(form.scheduledStartTime),
     lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : intOf(form.lateRegCutoffLevel),
+    // A freezeout has no re-entry to close — same nulling as maxReentries below.
+    reentryCutoffLevel:
+      form.reentryType === 'freezeout' || form.reentryCutoffLevel === ''
+        ? null
+        : intOf(form.reentryCutoffLevel),
     reentryConfig: {
       type: t,
       maxReentries: t === 'reentry' ? intOrNull(form.maxReentries) : null,
@@ -183,20 +202,44 @@ function buildStructurePatch(form) {
     hasUpperDeckMainDeck: form.hasUpperDeckMainDeck,
     structureTemplateId: form.structureTemplateId === '' ? null : form.structureTemplateId,
     structure: form.structure,
+    // The cutoff markers are drawn on — and set from — the structure ladder
+    // (floor feedback D1.3), so this patch has to carry them too. They're also
+    // in buildDetailsPatch; both read the same form state, so either save
+    // writes the same value.
+    lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : intOf(form.lateRegCutoffLevel),
+    reentryCutoffLevel:
+      form.reentryType === 'freezeout' || form.reentryCutoffLevel === ''
+        ? null
+        : intOf(form.reentryCutoffLevel),
   }
 }
 
 function validateDetails(form) {
   if (form.name.trim() === '') return 'Tournament name is required.'
   if (!localToDate(form.scheduledStartTime)) return 'A valid scheduled start time is required.'
-  if (form.lateRegCutoffLevel !== '' && Number(form.lateRegCutoffLevel) > form.structure.filter((e) => e.type === 'level').length)
-    return 'The late-reg cutoff level is beyond the blind structure.'
+  const cutoffProblem = validateCutoffs(form)
+  if (cutoffProblem) return cutoffProblem
   if (form.gameType === 'mysteryBounty' && form.bountyValues.length < 1) return 'Mystery bounty needs at least one bounty value.'
   if (form.hasAddOn && intOf(form.addOnChips) <= 0) return 'An add-on must grant a positive number of chips.'
   return null
 }
 
+// Shared by the Details and Structure tabs — both can now move the cutoffs.
+// Ordering (re-entry at or after late reg) is a WARNING, not an error: managers
+// override defaults (DECISIONS.md), and an earlier re-entry close is a coherent,
+// if unusual, choice.
+function validateCutoffs(form) {
+  const levels = form.structure.filter((e) => e.type === 'level').length
+  if (form.lateRegCutoffLevel !== '' && Number(form.lateRegCutoffLevel) > levels)
+    return 'The late-reg cutoff level is beyond the blind structure.'
+  if (form.reentryCutoffLevel !== '' && Number(form.reentryCutoffLevel) > levels)
+    return 'The re-entry cutoff level is beyond the blind structure.'
+  return null
+}
+
 function validateStructure(form) {
+  const cutoffProblem = validateCutoffs(form)
+  if (cutoffProblem) return cutoffProblem
   if (form.structure.length === 0 || !Structure.safeParse(form.structure).success) {
     return 'Add at least one valid blind level (fix the highlighted rows).'
   }
@@ -238,6 +281,18 @@ function validatePayouts(form) {
 
 // Late-reg cutoff options: "no cutoff" + one per blind level in the structure
 // (value = blindNumber). Late reg closes at the END of the chosen level.
+// Re-entry can outlast late registration: closing late reg shuts out players who
+// never entered, while an already-entered player keeps re-entering to this level
+// (Guy, 24 Aug 2026). Blank keeps the old behaviour — both close together.
+function reentryLevelOptions(structure) {
+  return [
+    { value: '', label: 'Closes with late registration' },
+    ...(structure ?? [])
+      .filter((e) => e.type === 'level')
+      .map((e) => ({ value: String(e.blindNumber), label: `Through Level ${e.blindNumber} (${e.smallBlind}/${e.bigBlind})` })),
+  ]
+}
+
 function lateRegLevelOptions(structure) {
   return [
     { value: '', label: 'No cutoff (close manually)' },
@@ -409,6 +464,15 @@ export default function TournamentDetail() {
 
               <Section title="Re-entry">
                 <Select label="Type" value={form.reentryType} onChange={(v) => set({ reentryType: v })} options={REENTRY_TYPES} disabled={d} />
+                {form.reentryType !== 'freezeout' && (
+                  <Select
+                    label="Re-entry cutoff (blank = closes with late reg)"
+                    value={form.reentryCutoffLevel}
+                    onChange={(v) => set({ reentryCutoffLevel: v })}
+                    options={reentryLevelOptions(form.structure)}
+                    disabled={d}
+                  />
+                )}
                 {form.reentryType === 'reentry' && (
                   <Num label="Max re-entries (blank = unlimited)" value={form.maxReentries} onChange={(v) => set({ maxReentries: v })} disabled={d} allowEmpty />
                 )}
@@ -471,7 +535,23 @@ export default function TournamentDetail() {
                       disabled={d}
                     />
                   </div>
-                  <StructureEditor value={form.structure} onChange={(next) => set({ structure: next })} disabled={d} />
+                  <StructureEditor
+                    value={form.structure}
+                    onChange={(next) => set({ structure: next })}
+                    disabled={d}
+                    markers={{
+                      lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : Number(form.lateRegCutoffLevel),
+                      reentryCutoffLevel: form.reentryCutoffLevel === '' ? null : Number(form.reentryCutoffLevel),
+                    }}
+                    onMarkersChange={(patch) =>
+                      set(
+                        Object.fromEntries(
+                          Object.entries(patch).map(([k, v]) => [k, v == null ? '' : String(v)])
+                        )
+                      )
+                    }
+                    editableMarkers={form.reentryType === 'freezeout' ? ['rego'] : ['rego', 'reentry']}
+                  />
                 </div>
               </section>
 
@@ -688,11 +768,93 @@ function TopBar({ t, role }) {
         <Meta label="Buy-in" value={formatMoney(t.buyIn)} />
         <Meta label="Guarantee" value={formatMoney(t.guarantee)} />
         <Meta label="Scheduled start" value={fmtDateTime(t.scheduledStartTime)} />
+        <LiveStatus t={t} />
         <Meta label="Entries" value={t.entryCount} />
         <Meta label="Remaining" value={t.remainingPlayerCount} />
         <Meta label="Prize pool" value={formatMoney(t.totalPrizePool)} />
       </div>
     </div>
+  )
+}
+
+/**
+ * D1.10 (floor feedback, 24 Aug 2026) — the two live facts the venue display
+ * already shows, brought onto the TD's own page: WHICH LEVEL is running, and
+ * HOW LONG registration stays open.
+ *
+ * Reads the session, not tournament.currentStructureIndex: only the session
+ * carries the clock anchors a countdown can be derived from, and deriving is
+ * the rule (clock time is gospel — never snap a running clock to a stored
+ * index). Ticks only while the clock is actually running. A tournament with no
+ * sessions, or mock mode, renders nothing rather than a broken cell.
+ */
+function LiveStatus({ t }) {
+  const [session, setSession] = useState(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
+
+  useEffect(() => {
+    let unsub
+    try {
+      unsub = sessionsApi.subscribeToSessions(
+        t.id,
+        (list) => setSession(pickDisplaySession(list)),
+        undefined,
+        () => setSession(null), // mock mode / no read access — omit the live cells
+      )
+    } catch {
+      // Pure-mock mode throws synchronously from ensureLive(); session stays
+      // null and the header simply omits the live cells.
+    }
+    // Clearing on teardown (rather than at the top of the effect) keeps the
+    // previous tournament's level out of the header while the next one loads,
+    // without a synchronous setState inside the effect body.
+    return () => {
+      unsub?.()
+      setSession(null)
+    }
+  }, [t.id])
+
+  const derived = useMemo(
+    () => (session ? deriveClock(session, t.structure, nowMs) : null),
+    [session, t.structure, nowMs]
+  )
+  const running = derived?.state === CLOCK_RUNNING
+
+  useEffect(() => {
+    if (!running) return undefined
+    const id = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [running])
+
+  if (!session) return null
+
+  const entry = derived?.currentEntry
+  let level = 'Not started'
+  if (entry) {
+    level = entry.type === 'break' ? entry.label || 'Break' : `Level ${entry.blindNumber}`
+    if (derived.state !== CLOCK_RUNNING) level += ' (paused)'
+  }
+
+  let lateReg = null
+  if (t.status === 'lateRegOpen') {
+    const closeMs = running
+      ? msUntilLateRegClose(t.structure, derived.currentIndex, derived.remainingMs, t.lateRegCutoffLevel)
+      : null
+    if (closeMs != null && closeMs > 0) lateReg = `closes in ${formatCloseIn(closeMs)}`
+    else if (closeMs === 0) lateReg = 'closing'
+    else if (t.lateRegCutoffLevel != null) lateReg = `thru level ${t.lateRegCutoffLevel}`
+    else lateReg = 'open'
+  } else if (t.status === 'lateRegClosed') {
+    // Re-entry can outlast late reg (D1.7) — say so rather than a flat "closed".
+    lateReg =
+      t.reentryCutoffLevel != null ? `closed · re-entry thru level ${t.reentryCutoffLevel}` : 'closed'
+  }
+
+  return (
+    <>
+      <Meta label="Now playing" value={level} />
+      {lateReg && <Meta label="Late reg" value={lateReg} />}
+    </>
   )
 }
 
@@ -1035,6 +1197,8 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
   const byPercent = form.payoutType === 'byPercent'
   const rows = form.payoutPositions
 
+  const cashFor = (p) => applyRounding(prizePool * ((parseFloat(p.percentStr) || 0) / 100), form.payoutRounding)
+
   const setType = (type) => {
     if (type === form.payoutType) return
     // Switching to by-percent with no percents yet → seed the placeholder curve
@@ -1042,6 +1206,21 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
     if (type === 'byPercent' && rows.every((p) => p.percentStr === '')) {
       const curve = payoutCurve(rows.length)
       set({ payoutType: type, payoutPositions: rows.map((p, i) => ({ ...p, percentStr: pctToStr(curve[i]) })) })
+      return
+    }
+    // D1.12 (floor feedback, 24 Aug 2026) — the mirror image: switching to fixed
+    // amounts converts the percentages already on the rows into dollars (through
+    // the rounding rule) so the TD amends real numbers instead of retyping the
+    // whole ladder into empty boxes. Needs a prize pool to convert against; with
+    // none, the rows stay blank exactly as before.
+    if (type === 'byPlace' && prizePool > 0 && rows.some((p) => p.percentStr !== '')) {
+      set({
+        payoutType: type,
+        payoutPositions: rows.map((p) => ({
+          ...p,
+          payoutStr: p.percentStr === '' ? p.payoutStr : centsToStr(cashFor(p)),
+        })),
+      })
       return
     }
     set({ payoutType: type })
@@ -1064,7 +1243,6 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
 
   const pctSum = rows.reduce((a, p) => a + (parseFloat(p.percentStr) || 0), 0)
   const pctOk = Math.abs(pctSum - 100) <= 0.5
-  const cashFor = (p) => applyRounding(prizePool * ((parseFloat(p.percentStr) || 0) / 100), form.payoutRounding)
   const distributed = byPercent
     ? rows.reduce((a, p) => a + cashFor(p), 0)
     : rows.reduce((a, p) => a + dollarsToCents(p.payoutStr), 0)
@@ -1246,13 +1424,40 @@ function PayoutEditor({ form, set, disabled, entryCount, prizePool }) {
             </tfoot>
           </table>
         </div>
-        <p className="text-[11px] text-white/55 mt-2">
-          {byPercent
-            ? prizePool > 0
-              ? `Distributing ${formatMoney(distributed)} of the ${formatMoney(prizePool)} prize pool (estimate — rounding is applied per place).`
-              : 'Prize pool is $0.00 until players register; percentages are stored now and converted to cash at the end.'
-            : `${formatMoney(distributed)} across ${rows.length} place${rows.length === 1 ? '' : 's'}.`}
-        </p>
+        {/* D1.11 (floor feedback, 24 Aug 2026) — the running total follows you down
+            a long ladder instead of scrolling off, so you can see it hit 100%
+            (or match the pool) while you're still typing. */}
+        <div className="sticky bottom-0 z-10 mt-2 bg-felt-900/95 backdrop-blur border border-white/10 rounded-lg px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-1">
+          {byPercent ? (
+            <>
+              <SummaryStat
+                label="Total"
+                value={`${pctSum.toFixed(1)}% / 100%`}
+                tone={pctOk ? 'text-emerald-300' : 'text-amber-300'}
+              />
+              <SummaryStat label="Distributing" value={formatMoney(distributed)} />
+              <SummaryStat label="Prize pool" value={formatMoney(prizePool)} />
+              <p className="text-[11px] text-white/45 ml-auto">
+                {prizePool > 0
+                  ? 'Cash is an estimate — rounding is applied per place at the end.'
+                  : 'Prize pool is $0.00 until players register; percentages convert to cash at the end.'}
+              </p>
+            </>
+          ) : (
+            <>
+              <SummaryStat label="Total" value={formatMoney(distributed)} />
+              <SummaryStat label="Places" value={String(rows.length)} />
+              <SummaryStat label="Prize pool" value={formatMoney(prizePool)} />
+              {prizePool > 0 && (
+                <SummaryStat
+                  label={distributed > prizePool ? 'Over pool by' : 'Left in pool'}
+                  value={formatMoney(Math.abs(prizePool - distributed))}
+                  tone={distributed > prizePool ? 'text-amber-300' : 'text-white/70'}
+                />
+              )}
+            </>
+          )}
+        </div>
       </section>
     </div>
   )

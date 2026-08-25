@@ -52,7 +52,64 @@
 
 > Guy's stakeholders are testing on the live URL. As notes arrive, capture them below in the A/B format (quick win vs needs-design), triage against the still-open items above, and branch per the workflow (feature branch → Guy tests → merge).
 
-- _(nothing captured yet)_
+### D1 — Guy's list, 24 Aug 2026 (14 items) — 10 BUILT on `feature/floor-feedback-aug`, 4 parked
+
+Verbatim items are quoted; the note under each is Claude's read against the current code.
+
+**Structure editor (`src/components/StructureEditor.jsx`) — 5 items, one cluster**
+
+- [x] **D1.2 — "When typing in levels - enter key to go to next line = easier to type."**
+      Quick win. `NumField` has no key handling; add Enter → focus the same field on the next row, and Enter on the last row appends a level (which already carries the previous level's values forward). Shift+Enter goes back up.
+- [x] **D1.3 — "Set end of Rego on level page by right click for end of rego & End of day (different colour lines to represent each)."**
+      Medium. Two existing concepts, surfaced inline on the structure rows instead of in separate forms: **end of rego** = `tournament.lateRegCutoffLevel` (schema `tournament.js:213`, already validated against the structure length); **end of day** = the session slice boundary `maximumEndIndex` (`SessionPlanBuilder.jsx`). Right-click → context menu on a row, plus a coloured rule drawn under it (two distinct colours). **iPad needs long-press as the equivalent gesture** — right-click alone strands the touch persona.
+- [x] **D1.4 — "Smart key button to double blinds + copy 'Ante' over."**
+      Quick win. Per-row (or on `+ Level`) action: next level = previous SB/BB × 2, ante carried forward unchanged. *Assumption: literal doubling, not a venue-ladder step.*
+- [x] **D1.5 — "Ability to change minutes in bulk."**
+      Quick win. "Set all levels to N minutes" + ideally a range ("levels 1–12"). Breaks keep their own durations unless explicitly included.
+- [x] **D1.6 — "Drag drop feature on break levels when building."**
+      Medium. Replaces/supplements the ▲▼ `RowActions` buttons with drag-to-reorder. Must work with touch drag on iPad, and `renumber()` still runs on drop so `blindNumber` stays sequential.
+
+**Registration / re-entry — 2 items**
+
+- [x] **D1.7 — "Re-entry end of level 'x'."**
+      **✅ Answered 24 Aug (Guy):** they *can* differ, and the rule is asymmetric — *"if a player has already entered, they can re-enter, but if they haven't, late reg is closed to them."* So late-reg close stops **new** players; already-entered players keep re-entering until their own later cutoff. Needs `reentryCutoffLevel` on the tournament **and** an entry-type-aware registration gate (today `registrationOpen()` is a single status check for both).
+- [ ] **D1.8 — "Re-buy feature? Amount of rebuys?"**
+      **⚑ Real gap, needs a decision.** Today `reentryConfig.type: 'rebuy'` + `maxRebuys` exist and are enforced, but `planEntry` (`src/lib/tournaments/registration.js:78`) models a rebuy as *a new entry after busting* — i.e. functionally a re-entry with its own cap. A classic **top-up rebuy** (a still-seated short stack buys chips during the rebuy period, no new entry) is **not built**: no desk flow, no chip-add, no prize-pool line. Same shape as the already-flagged add-on gap (`payoutConfig.addOnCount` is still typed in by hand on the payouts screen). Scoping this is a conversation, not a quick win.
+
+**Payouts (`PayoutEditor` in `src/pages/td/TournamentDetail.jsx:1034`) — 2 items**
+
+- [x] **D1.11 — "Prizepool placement to be at the bottom when entering prize pool to assure 100% accuracy."**
+      There is already a `tfoot` Total row (percent sum vs 100%, and distributed cash) plus a summary line beneath. Read: make it **stick to the bottom of the viewport while scrolling a long place list**, so the running total is always visible while typing. *Assumption — confirm.*
+- [x] **D1.12 — "When going to 'fixed amount' have % value inputted with the ability to amend $ amount."**
+      Quick win, clearly specified. `setType()` currently seeds percentages when switching *into* byPercent but leaves `payoutStr` blank when switching to byPlace. Switching to **Fixed amount** should pre-fill each row's dollars from `percent × prize pool` (through the rounding rule), then let the TD edit dollars freely.
+
+**Tables — 1 item**
+
+- [x] **D1.13 — "Tables -> ability to select specific table numbers."**
+      Small/medium. `openTable` (`src/lib/tournaments/seating.js`) reads the current max `tableNumber` and writes max+1. Add an explicit-number path with a uniqueness check within the session (`tableNumber` is unique per `sessionId`, not per tournament). Batch open (A2) keeps auto-numbering.
+
+**Needs clarification before any code — 3 items**
+
+- [ ] **D1.1 — "Milestone feature -> leads to qualified winner on Ipad?"**
+      **⏸ PARKED 24 Aug (Guy):** *"maybe it was just unclear where this was done — I think in the past it needed to be done at the desk. Let me ask what they mean, for now ignore it."* Likely a Casinoware-habit mismatch: the venue expects this at the **desk**, the app puts it on the **TD tables** screen. Re-triage when the floor clarifies. Original note: the milestone flow is built (`src/lib/tournaments/satellite.js`, TD action on `/td/tables`): it seats-out the player, sets `ticketWinnings`, and leaves `finishingPlace` null. What it does *not* have is a visible **qualified-winners roster** — the only surface today is a count next to the "out" number. Three possible readings: (a) add that roster screen, (b) the flow is awkward/unreachable on the iPad, (c) qualified winners should appear in the **Player App** (Flutter) for the player. Which?
+- [ ] **D1.9 — "Have players account as a different registry? (Can track transfers/refunds are operating as required back into accounts.)"**
+      **⏸ PARKED 24 Aug (Guy):** *"I'll ask for specifics on this one, honestly not sure."* Original note: wallet + `walletTransactions` ledger already exist, with per-player history on `/desk/players/:id`. Read: a **separate reconciliation view for tournament-side money movement** (entry payments, voids, refunds, win credits) split out from desk deposits/withdrawals — i.e. prove refunds actually landed back in accounts. `/admin/reconciliation` may already be close. Confirm what "different registry" means.
+- [x] **D1.10 — "Tournament screen to show: how much long registration is opened for (minutes count down) / Which Level they are currently playing at."**
+      **✅ Answered 24 Aug (Guy): the TD tournament detail page** (`/td/tournaments/:id`) — add a late-reg minutes countdown + the current level to its header. Original note: the **venue display** (`/display`, `src/pages/Display.jsx`) already shows both: a "Late reg — closes in N" countdown row (`Display.jsx:409`) and the current level on the clock face plus the `LevelTrack` strip. So either the feedback predates that screen being seen, or it means a *different* screen — the TD clock, the tournament detail header, or the tournament list. Needs pointing at.
+
+**Process, not code**
+
+- [ ] **D1.14 — "Does this need to be texted [tested?] my Mixed game academy for the mixed game parts?"**
+      Guy's call, not a build item. The `mixed` / `horse` / `stud` game types exist in the schema and `bringIn` is on every level entry, but no mixed-game *rotation* logic is built (a HORSE game-change-per-level engine is not in v1 scope). If Mixed Game Academy is going to review, worth confirming what they'd be reviewing against.
+
+**Suggested build order** (quick wins first, all in one branch off `feature/player-accounts` or a fresh one):
+**BUILDING NOW** — branch `feature/floor-feedback-aug`, 24 Aug 2026:
+D1.2, D1.3, D1.4, D1.5, D1.6, D1.7, D1.10, D1.11, D1.12, D1.13.
+
+**Parked pending floor clarification:** D1.1, D1.9.
+**Parked pending a scoping conversation:** D1.8 (top-up rebuys).
+**Guy's call, not code:** D1.14.
+
 
 ## Suggested order (historical — the A items all shipped 1 July)
 

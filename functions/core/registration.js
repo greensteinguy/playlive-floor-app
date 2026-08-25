@@ -12,9 +12,67 @@ export function totalEntryCost(tournament) {
   return (tournament?.buyIn ?? 0) + (tournament?.hospitalityCost ?? 0)
 }
 
-/** Registration is open while the tournament is taking entries (pre-reg or late reg). */
-export function registrationOpen(tournament) {
-  return tournament?.status === 'scheduled' || tournament?.status === 'lateRegOpen'
+/**
+ * True once play has moved PAST the end of `cutoffLevel` (a blindNumber).
+ *
+ * Cutoffs are expressed as "closes at the END of level X", so:
+ *  - sitting ON level n  → passed when n > X
+ *  - sitting on a BREAK  → the preceding level is complete, so passed when that
+ *                          level's number >= X
+ *  - clock not started   → nothing has passed
+ */
+export function passedEndOfLevel(tournament, cutoffLevel) {
+  if (cutoffLevel == null) return false
+  const idx = tournament?.currentStructureIndex
+  if (idx == null) return false
+  const structure = tournament?.structure ?? []
+  const entry = structure[idx]
+  if (!entry) return false
+  if (entry.type === 'level') return entry.blindNumber > cutoffLevel
+  for (let i = idx - 1; i >= 0; i--) {
+    if (structure[i].type === 'level') return structure[i].blindNumber >= cutoffLevel
+  }
+  return false
+}
+
+/**
+ * Is the tournament taking THIS KIND of entry right now?
+ *
+ * The venue's rule is asymmetric (Guy, 24 Aug 2026): closing late registration
+ * shuts the door on players who have never entered, but a player who already
+ * entered and busted may keep re-entering until `reentryCutoffLevel`. So a
+ * `lateRegClosed` tournament can still be open to re-entries and closed to
+ * initial buy-ins at the same moment.
+ *
+ * `reentryCutoffLevel === null` means "re-entry closes with late registration"
+ * — the behaviour every tournament had before the field existed.
+ *
+ * @param entryType 'initial' | 'reentry' | 'rebuy' (defaults to the strictest)
+ */
+export function registrationOpen(tournament, entryType = 'initial') {
+  const status = tournament?.status
+  if (status === 'scheduled' || status === 'lateRegOpen') return true
+  if (status !== 'lateRegClosed') return false
+  if (entryType !== 'reentry' && entryType !== 'rebuy') return false
+  const cutoff = tournament?.reentryCutoffLevel ?? null
+  // null = re-entry closes WITH late registration (pre-field behaviour). Note
+  // this is the opposite polarity to passedEndOfLevel's null, which means
+  // "no cutoff to pass" — hence the explicit branch rather than a bare negation.
+  if (cutoff === null) return false
+  return !passedEndOfLevel(tournament, cutoff)
+}
+
+/** Floor-readable explanation for why `registrationOpen` said no. */
+export function registrationClosedReason(tournament, entryType) {
+  if (tournament?.status === 'lateRegClosed') {
+    if (entryType !== 'reentry' && entryType !== 'rebuy') {
+      return 'Late registration has closed — new entries are no longer accepted.'
+    }
+    const cutoff = tournament?.reentryCutoffLevel ?? null
+    if (cutoff === null) return 'Late registration has closed, and re-entry closed with it.'
+    return `Re-entry closed at the end of level ${cutoff}.`
+  }
+  return `Registration is not open for this tournament (status: ${tournament?.status}).`
 }
 
 /**

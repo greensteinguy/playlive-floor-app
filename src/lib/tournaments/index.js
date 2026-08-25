@@ -71,6 +71,7 @@ export {
   DEFAULT_SEAT_COUNT,
   SeatingError,
   TablesExistError,
+  TableNumberTakenError,
   NoSeatableEntriesError,
   SeatOccupiedError,
   SeatOutOfRangeError,

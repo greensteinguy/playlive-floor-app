@@ -87,6 +87,13 @@ export class NotBustedError extends SeatingError {
     this.name = 'NotBustedError'
   }
 }
+export class TableNumberTakenError extends SeatingError {
+  constructor(tableNumber) {
+    super(`Table ${tableNumber} is already open in this session — pick another number.`)
+    this.name = 'TableNumberTakenError'
+    this.tableNumber = tableNumber
+  }
+}
 export class LastPlayerStandingError extends SeatingError {
   constructor() {
     super('This is the last player standing — record them as the winner (payouts), not an elimination.')
@@ -1066,24 +1073,52 @@ export async function seatNextAlternate({ tournament, sessionId, entries, tables
  *
  * @returns {Promise<{ tableId: string, tableNumber: number }>}
  */
-export async function openTable({ tournament, sessionId, seatCount, active = false, actorId, actorRole }) {
+export async function openTable({
+  tournament,
+  sessionId,
+  seatCount,
+  active = false,
+  // Floor feedback D1.13 (24 Aug 2026): the venue's tables have painted numbers,
+  // so the TD needs to open "Table 7" rather than accept whatever comes next.
+  // null keeps the auto-numbering the batch-open flow relies on.
+  tableNumber: requestedNumber = null,
+  actorId,
+  actorRole,
+}) {
   requireActor(actorId)
+  if (requestedNumber != null && (!Number.isInteger(requestedNumber) || requestedNumber < 1)) {
+    throw new SeatingError('A table number must be a positive whole number.')
+  }
   const seats = seatCount ?? tournament.maxSeatsPerTable ?? DEFAULT_SEAT_COUNT
-  const existing = await listSessionTables(tournament.id, sessionId)
-  const startNumber = existing.reduce((max, t) => Math.max(max, t.tableNumber), 0) + 1
+  // Only the auto path needs to know what's already out there.
+  const startNumber =
+    requestedNumber != null
+      ? requestedNumber
+      : (await listSessionTables(tournament.id, sessionId)).reduce((max, t) => Math.max(max, t.tableNumber), 0) + 1
   const timestamp = now()
 
   const result = await runValidatedTransaction(async (tx) => {
     // Deterministic id + in-transaction probe: two devices opening tables at
     // once serialize on the same path and take consecutive numbers instead of
     // creating two "Table N"s. Probes upward from the listed next number (the
-    // batch-open flow opens several in quick succession).
+    // batch-open flow opens several in quick succession). An EXPLICIT number
+    // never probes — silently landing on a different table than the one the TD
+    // asked for would be worse than refusing.
     let tableNumber = null
-    for (let n = startNumber; n < startNumber + 50; n++) {
-      const taken = await tx.getOptional(paths.tablePath(tournament.id, tableDocId(sessionId, n)), Table)
-      if (!taken) {
-        tableNumber = n
-        break
+    if (requestedNumber != null) {
+      const taken = await tx.getOptional(
+        paths.tablePath(tournament.id, tableDocId(sessionId, requestedNumber)),
+        Table
+      )
+      if (taken) throw new TableNumberTakenError(requestedNumber)
+      tableNumber = requestedNumber
+    } else {
+      for (let n = startNumber; n < startNumber + 50; n++) {
+        const taken = await tx.getOptional(paths.tablePath(tournament.id, tableDocId(sessionId, n)), Table)
+        if (!taken) {
+          tableNumber = n
+          break
+        }
       }
     }
     if (tableNumber === null) {

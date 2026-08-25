@@ -22,10 +22,31 @@ describe('functions/core/registration.js parity with src/lib/tournaments/registr
   })
 
   it('registrationOpen matches', () => {
+    const structure = [
+      { type: 'level', blindNumber: 1, durationMinutes: 20 },
+      { type: 'level', blindNumber: 2, durationMinutes: 20 },
+      { type: 'break', durationMinutes: 10, label: 'Break', isColorUp: false },
+      { type: 'level', blindNumber: 3, durationMinutes: 20 },
+    ]
     for (const status of ['draft', 'scheduled', 'lateRegOpen', 'lateRegClosed', 'finished', 'cancelled']) {
+      for (const entryType of ['initial', 'reentry', 'rebuy', undefined]) {
+        for (const currentStructureIndex of [null, 0, 1, 2, 3]) {
+          for (const reentryCutoffLevel of [null, 1, 2, 3]) {
+            const t = { status, structure, currentStructureIndex, reentryCutoffLevel }
+            expect(fn.registrationOpen(t, entryType)).toBe(src.registrationOpen(t, entryType))
+            expect(fn.registrationClosedReason(t, entryType)).toBe(
+              src.registrationClosedReason(t, entryType)
+            )
+            expect(fn.passedEndOfLevel(t, reentryCutoffLevel)).toBe(
+              src.passedEndOfLevel(t, reentryCutoffLevel)
+            )
+          }
+        }
+      }
       expect(fn.registrationOpen({ status })).toBe(src.registrationOpen({ status }))
     }
     expect(fn.registrationOpen(null)).toBe(src.registrationOpen(null))
+    expect(fn.passedEndOfLevel(null, 3)).toBe(src.passedEndOfLevel(null, 3))
   })
 
   it('registrableSessions matches', () => {
