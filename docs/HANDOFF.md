@@ -3,15 +3,17 @@
 > This is the living "where we left off" doc. **Update it at the end of every Claude Code session and every Cowork planning session.** Commit alongside whatever else changed. It is how context survives between sessions and across tool switches.
 
 > **⇒ CURRENT WORK (24 Aug 2026) — branch `feature/floor-feedback-aug`, NOT merged, NOT pushed.**
-> Guy delivered a 14-item stakeholder feedback list; it's triaged in `docs/FLOOR_FEEDBACK.md` §D1 as **D1.1–D1.14**. Ten items are **built** on this branch; four are parked (see below).
+> Guy delivered a 14-item stakeholder feedback list; it's triaged in `docs/FLOOR_FEEDBACK.md` §D1 as **D1.1–D1.14**. Eleven items are **built** on this branch; three are parked (see below).
 > **Gates green:** `npm test` **1012**, `npm run lint`, `npm run build`.
 > **Waiting on Guy:** UI test at `http://localhost:5173` (dev server), then merge. Per the standing workflow — no push until he says so.
 >
-> **Built:** D1.2 Enter-key row nav · D1.3 right-click/long-press marker lines (registration / re-entry / end-of-day, three colours) · D1.4 "+ Double ×2" smart key · D1.5 bulk minutes · D1.6 pointer drag-reorder · D1.7 `reentryCutoffLevel` + the asymmetric registration gate · D1.10 live level + late-reg countdown on the TD detail header · D1.11 pinned payout total · D1.12 Fixed-amount pre-fill from percentages · D1.13 explicit table numbers.
+> **Built:** D1.2 Enter-key row nav · D1.3 right-click/long-press marker lines (registration / re-entry / end-of-day, three colours) · D1.4 "+ Double ×2" smart key · D1.5 bulk minutes · D1.6 pointer drag-reorder · D1.7 `reentryCutoffLevel` + the asymmetric registration gate · D1.8 rebuy count + correct label at the desk · D1.10 live level + late-reg countdown on the TD detail header · D1.11 pinned payout total · D1.12 Fixed-amount pre-fill from percentages · D1.13 explicit table numbers.
 >
 > **Verified live in the browser** (create wizard, mock mode): D1.2, D1.3, D1.4, D1.5, D1.6. **NOT verified live:** D1.7, D1.10, D1.11, D1.12, D1.13 — they need a tournament doc, and **the Firestore emulator could not start: port 8080 is held by a WSL relay process** (`wslrelay.exe`, PID 5428 on 24 Aug). Either free 8080 or run the emulator on another port (note `src/firebase/config.js:61` hardcodes `127.0.0.1:8080`) before the next emulator-backed pass.
 >
-> **Parked, needs Guy:** D1.1 (satellite milestone — the floor may expect it at the DESK, not the TD tables screen; Guy is asking) · D1.8 (**top-up rebuys are not built** — today `type: 'rebuy'` is a re-entry-after-bust with its own cap; a mid-period chip top-up has no flow, no chip-add, no prize-pool line; needs scoping) · D1.9 (player-account "registry" — Guy is getting specifics) · D1.14 (Mixed Game Academy review — Guy's call; note no mixed-game rotation engine exists in v1).
+> **Parked, needs Guy:** D1.1 (satellite milestone — the floor may expect the ACTION at the desk, not the TD tables screen; Guy is asking) · D1.9 (player-account "registry" — Guy is getting specifics) · D1.14 (Mixed Game Academy review — Guy's call; verified there is no mixed-game rotation engine in v1: `gameType` is tournament-level only and `LevelEntry` carries no game field).
+>
+> **⚠ Two claims from the first triage were WRONG and are corrected in FLOOR_FEEDBACK §D1:** (a) rebuys are NOT a gap — `type: 'rebuy'` + `maxRebuys` are configured and enforced, and Guy confirmed no top-up feature is wanted; the only real gap was that the desk couldn't see the count, now fixed. (b) milestone/qualified winners DO have a roster — the Results screen's `ticketWinners` group and the Payouts issue-ticket queue. Don't re-raise either as missing.
 >
 > **Schema note for the merging agent:** this branch adds ONE tournament field, `reentryCutoffLevel` (nullable, `.default(null)`), so every existing doc stays valid on read with no migration. **No Firestore rules or index changes needed.** The domain gate `registrationOpen(tournament, entryType)` gained a second argument and is mirrored in `functions/core/registration.js` — the parity suite covers it.
 

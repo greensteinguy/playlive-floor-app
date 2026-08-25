@@ -52,7 +52,7 @@
 
 > Guy's stakeholders are testing on the live URL. As notes arrive, capture them below in the A/B format (quick win vs needs-design), triage against the still-open items above, and branch per the workflow (feature branch → Guy tests → merge).
 
-### D1 — Guy's list, 24 Aug 2026 (14 items) — 10 BUILT on `feature/floor-feedback-aug`, 4 parked
+### D1 — Guy's list, 24 Aug 2026 (14 items) — 11 BUILT on `feature/floor-feedback-aug`, 3 parked
 
 Verbatim items are quoted; the note under each is Claude's read against the current code.
 
@@ -73,8 +73,9 @@ Verbatim items are quoted; the note under each is Claude's read against the curr
 
 - [x] **D1.7 — "Re-entry end of level 'x'."**
       **✅ Answered 24 Aug (Guy):** they *can* differ, and the rule is asymmetric — *"if a player has already entered, they can re-enter, but if they haven't, late reg is closed to them."* So late-reg close stops **new** players; already-entered players keep re-entering until their own later cutoff. Needs `reentryCutoffLevel` on the tournament **and** an entry-type-aware registration gate (today `registrationOpen()` is a single status check for both).
-- [ ] **D1.8 — "Re-buy feature? Amount of rebuys?"**
-      **⚑ Real gap, needs a decision.** Today `reentryConfig.type: 'rebuy'` + `maxRebuys` exist and are enforced, but `planEntry` (`src/lib/tournaments/registration.js:78`) models a rebuy as *a new entry after busting* — i.e. functionally a re-entry with its own cap. A classic **top-up rebuy** (a still-seated short stack buys chips during the rebuy period, no new entry) is **not built**: no desk flow, no chip-add, no prize-pool line. Same shape as the already-flagged add-on gap (`payoutConfig.addOnCount` is still typed in by hand on the payouts screen). Scoping this is a conversation, not a quick win.
+- [x] **D1.8 — "Re-buy feature? Amount of rebuys?"**
+      **✅ Already built — my earlier "top-up rebuy gap" framing was wrong (Guy, 24 Aug: "we do not need a top up feature").** `reentryConfig.type: 'rebuy'` + `maxRebuys` are configurable on the create wizard, the detail page and tournament templates, and `planEntry` (`src/lib/tournaments/registration.js`) enforces the cap. The venue's rebuy IS a re-buy-after-bust, which is exactly what the model does.
+      **One real gap inside it, now fixed:** the desk couldn't SEE the count. The registration screen hard-coded the label "Re-entry — this will be entry #N" even in a rebuy tournament, and showed nothing about the cap — so a limit only announced itself by refusing the next entry. Now uses `entryTypeLabel` (so a rebuy reads "Rebuy") and shows "2 of 3 rebuys", or the allowance up front before the player's first re-entry.
 
 **Payouts (`PayoutEditor` in `src/pages/td/TournamentDetail.jsx:1034`) — 2 items**
 
@@ -91,7 +92,9 @@ Verbatim items are quoted; the note under each is Claude's read against the curr
 **Needs clarification before any code — 3 items**
 
 - [ ] **D1.1 — "Milestone feature -> leads to qualified winner on Ipad?"**
-      **⏸ PARKED 24 Aug (Guy):** *"maybe it was just unclear where this was done — I think in the past it needed to be done at the desk. Let me ask what they mean, for now ignore it."* Likely a Casinoware-habit mismatch: the venue expects this at the **desk**, the app puts it on the **TD tables** screen. Re-triage when the floor clarifies. Original note: the milestone flow is built (`src/lib/tournaments/satellite.js`, TD action on `/td/tables`): it seats-out the player, sets `ticketWinnings`, and leaves `finishingPlace` null. What it does *not* have is a visible **qualified-winners roster** — the only surface today is a count next to the "out" number. Three possible readings: (a) add that roster screen, (b) the flow is awkward/unreachable on the iPad, (c) qualified winners should appear in the **Player App** (Flutter) for the player. Which?
+      **⏸ PARKED 24 Aug (Guy):** *"maybe it was just unclear where this was done — I think in the past it needed to be done at the desk. Let me ask what they mean, for now ignore it."* Likely a Casinoware-habit mismatch: the venue expects this at the **desk**, the app puts the action on the **TD tables** screen.
+      **⚠ CORRECTION (24 Aug):** an earlier note here claimed the only surface for a milestone winner was a count beside the "out" number. **That was wrong.** Qualified winners appear in two places already: the **Results screen** groups them as `ticketWinners` with a "Ticket" place label and a Tickets column (`src/lib/tournaments/results.js` `standings()`, rendered by `TournamentResults.jsx`), and the **Payouts screen** lists every ticket winner by name in the cashier's issue-ticket queue (`TournamentPayouts.jsx`). So the roster is not missing — only the *action's location* is in question.
+
 - [ ] **D1.9 — "Have players account as a different registry? (Can track transfers/refunds are operating as required back into accounts.)"**
       **⏸ PARKED 24 Aug (Guy):** *"I'll ask for specifics on this one, honestly not sure."* Original note: wallet + `walletTransactions` ledger already exist, with per-player history on `/desk/players/:id`. Read: a **separate reconciliation view for tournament-side money movement** (entry payments, voids, refunds, win credits) split out from desk deposits/withdrawals — i.e. prove refunds actually landed back in accounts. `/admin/reconciliation` may already be close. Confirm what "different registry" means.
 - [x] **D1.10 — "Tournament screen to show: how much long registration is opened for (minutes count down) / Which Level they are currently playing at."**
@@ -104,10 +107,10 @@ Verbatim items are quoted; the note under each is Claude's read against the curr
 
 **Suggested build order** (quick wins first, all in one branch off `feature/player-accounts` or a fresh one):
 **BUILDING NOW** — branch `feature/floor-feedback-aug`, 24 Aug 2026:
-D1.2, D1.3, D1.4, D1.5, D1.6, D1.7, D1.10, D1.11, D1.12, D1.13.
+D1.2, D1.3, D1.4, D1.5, D1.6, D1.7, D1.8 (visibility fix), D1.10, D1.11, D1.12, D1.13.
 
 **Parked pending floor clarification:** D1.1, D1.9.
-**Parked pending a scoping conversation:** D1.8 (top-up rebuys).
+**D1.8:** already built; the count-visibility fix shipped with this branch.
 **Guy's call, not code:** D1.14.
 
 

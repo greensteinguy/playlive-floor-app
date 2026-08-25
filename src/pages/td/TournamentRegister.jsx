@@ -33,6 +33,7 @@ import {
 import { WalletError } from '../../lib/wallet'
 import { formatMoney } from '../../lib/money'
 import { statusLabel } from '../../lib/tournamentStatus'
+import { entryTypeLabel } from '../../lib/entryDisplay'
 import { emptyPlayerForm, validatePlayerForm, buildPlayerArgs } from '../../lib/playerForm'
 import { Text, Select, EmptyState } from '../../components/FormFields'
 import PlayerProfileFields from '../../components/PlayerProfileFields'
@@ -129,6 +130,17 @@ export default function TournamentRegister() {
     () => (selectedPlayer && tournament ? planEntry({ playerEntries, reentryConfig: tournament.reentryConfig }) : null),
     [selectedPlayer, tournament, playerEntries]
   )
+  // D1.8 (floor feedback, 24 Aug 2026) — "amount of rebuys?". planEntry already
+  // ENFORCES maxRebuys / maxReentries, but the desk couldn't see how many a
+  // player had used, so a cap only announced itself by refusing the next one.
+  // Mirrors planEntry's own counting: non-voided, non-initial entries.
+  const reentryUsage = useMemo(() => {
+    const cfg = tournament?.reentryConfig
+    if (!cfg || cfg.type === 'freezeout') return null
+    const used = playerEntries.filter((e) => e.voidedAt === null && e.entryType !== 'initial').length
+    const max = cfg.type === 'rebuy' ? cfg.maxRebuys : cfg.maxReentries
+    return { used, max, noun: cfg.type === 'rebuy' ? 'rebuy' : 're-entry' }
+  }, [tournament, playerEntries])
 
   const results = q.trim() ? searchPlayers(players.players, q, { limit: 8 }) : []
   const selectedTicket = playerTickets.find((t) => t.id === ticketId) ?? null
@@ -298,7 +310,18 @@ export default function TournamentRegister() {
                         <div className="text-xs text-red-300 mt-1.5">{plan.blockedReason}</div>
                       ) : plan && plan.entryType !== 'initial' ? (
                         <div className="text-xs text-amber-300 mt-1.5">
-                          Re-entry — this will be entry #{plan.entryNumber}.
+                          {entryTypeLabel(plan.entryType)} — this will be entry #{plan.entryNumber}
+                          {reentryUsage
+                            ? reentryUsage.max != null
+                              ? ` (${reentryUsage.used + 1} of ${reentryUsage.max} ${reentryUsage.noun}${reentryUsage.max === 1 ? '' : 's'})`
+                              : ` (${reentryUsage.noun} ${reentryUsage.used + 1} — no limit)`
+                            : ''}
+                          .
+                        </div>
+                      ) : reentryUsage && reentryUsage.max != null ? (
+                        <div className="text-xs text-white/55 mt-1.5">
+                          {reentryUsage.max} {reentryUsage.noun}
+                          {reentryUsage.max === 1 ? '' : 's'} allowed in this tournament.
                         </div>
                       ) : null}
                     </div>
