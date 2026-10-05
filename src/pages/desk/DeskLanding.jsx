@@ -40,13 +40,10 @@ const TILES = [
     description: 'Queue withdrawal requests; a manager completes them once the money is paid out.',
     badge: 'Phase 4',
   },
-  {
-    navPath: '/desk/app-requests',
-    icon: '📱',
-    label: 'App requests',
-    description: 'Player App registrations and account links waiting on the desk.',
-    badge: 'Phase 6',
-  },
+  // App requests tile hidden until the Player App launches (Guy, 6 Oct 2026) —
+  // see the matching note in shell/nav.js. Restore both together:
+  // { navPath: '/desk/app-requests', icon: '📱', label: 'App requests',
+  //   description: 'Player App registrations and account links waiting on the desk.', badge: 'Phase 6' },
   // Tickets tile removed — that page is a Phase-4 placeholder.
 ]
 
