@@ -182,8 +182,10 @@ export default function StructureEditor({
   const addLevel = () => {
     // Carry the previous level's blinds/duration forward — less typing when
     // building a progression. renumber() fixes blindNumber.
+    // In auto mode the new level follows the rule even if the last one was
+    // hand-overridden.
     const base = lastLevel() ?? DEFAULT_LEVEL
-    emit([...entries, { ...base, type: 'level' }])
+    emit([...entries, { ...base, type: 'level', ...(autoBlinds ? autoBlindsFor(base.bigBlind) : {}) }])
   }
 
   // D1.4 — the "smart key": the next level is the previous one with its blinds
