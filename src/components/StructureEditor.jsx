@@ -754,6 +754,8 @@ function MarkerMenu({ menu, entry, markers, canEdit, onClose, onSet }) {
 }
 
 function NumField({ label, value, onChange, min = 0, width = 'w-20', disabled = false, onKeyDown, cellKey, warn = null }) {
+  // The in-progress text while the field has focus; null = show `value`.
+  const [draft, setDraft] = useState(null)
   return (
     <label className="flex flex-col gap-0.5" title={warn ?? undefined}>
       <span className="text-[9px] font-mono uppercase tracking-wider text-white/55">{label}</span>
@@ -762,10 +764,16 @@ function NumField({ label, value, onChange, min = 0, width = 'w-20', disabled = 
         type="number"
         inputMode="numeric"
         min={min}
-        value={value}
+        // While focused, show exactly what's typed: clearing the box must leave
+        // it empty, not snap to 0 (which then made "600" read "0600" — React
+        // keeps a number input's text when it already equals the new value).
+        value={draft ?? value}
         disabled={disabled}
         onKeyDown={onKeyDown}
+        onFocus={(e) => setDraft(e.target.value)}
+        onBlur={() => setDraft(null)}
         onChange={(e) => {
+          setDraft(e.target.value)
           const n = parseInt(e.target.value, 10)
           onChange(Number.isNaN(n) ? 0 : n)
         }}
