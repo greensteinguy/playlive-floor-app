@@ -22,6 +22,7 @@ export {
   recountTournamentEntries,
   totalEntryCost,
   registrationOpen,
+  registrationClosedReason,
   registrableSessions,
   planEntry,
   computeEntryCounters,

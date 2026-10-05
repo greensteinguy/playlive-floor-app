@@ -725,7 +725,7 @@ function TopBar({ t, role }) {
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {canRegister && registrationOpen(t) && (
+          {canRegister && (registrationOpen(t) || registrationOpen(t, 'reentry')) && (
             <Link
               to={`/td/tournaments/${t.id}/register`}
               className="text-xs font-medium text-emerald-200 hover:text-emerald-100 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg px-3 py-1.5 whitespace-nowrap"

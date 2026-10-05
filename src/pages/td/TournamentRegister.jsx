@@ -25,6 +25,7 @@ import {
   registerEntry,
   totalEntryCost,
   registrationOpen,
+  registrationClosedReason,
   registrableSessions,
   planEntry,
   lastLongerDeckLabel,
@@ -98,7 +99,11 @@ export default function TournamentRegister() {
   const [busy, setBusy] = useState(false)
 
   const cost = tournament ? totalEntryCost(tournament) : 0
-  const open = tournament ? registrationOpen(tournament) : false
+  // D1.7 — after late reg closes the page stays open while re-entry still is
+  // (already-entered players can come back until reentryCutoffLevel); whether
+  // THIS player may enter is decided per player below, once we know their entry type.
+  const open = tournament ? registrationOpen(tournament) || registrationOpen(tournament, 'reentry') : false
+  const reentryOnly = open && !registrationOpen(tournament)
   const flights = useMemo(() => registrableSessions(sessions), [sessions])
   // The single flight is implicit; the picker only appears (and holds state) when
   // there's more than one — so derive it rather than syncing state in an effect.
@@ -126,10 +131,16 @@ export default function TournamentRegister() {
     () => (selectedPlayer ? entries.filter((e) => e.playerId === selectedPlayer.id) : []),
     [entries, selectedPlayer]
   )
-  const plan = useMemo(
-    () => (selectedPlayer && tournament ? planEntry({ playerEntries, reentryConfig: tournament.reentryConfig }) : null),
-    [selectedPlayer, tournament, playerEntries]
-  )
+  const plan = useMemo(() => {
+    if (!selectedPlayer || !tournament) return null
+    const p = planEntry({ playerEntries, reentryConfig: tournament.reentryConfig })
+    // Surface the gate the commit will enforce, so a new player during the
+    // re-entry-only window is refused here rather than at Confirm.
+    if (!p.blockedReason && !registrationOpen(tournament, p.entryType)) {
+      return { ...p, blockedReason: registrationClosedReason(tournament, p.entryType) }
+    }
+    return p
+  }, [selectedPlayer, tournament, playerEntries])
   // D1.8 (floor feedback, 24 Aug 2026) — "amount of rebuys?". planEntry already
   // ENFORCES maxRebuys / maxReentries, but the desk couldn't see how many a
   // player had used, so a cap only announced itself by refusing the next one.
@@ -296,6 +307,12 @@ export default function TournamentRegister() {
             />
           ) : (
             <>
+              {reentryOnly && (
+                <div className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-3">
+                  Late registration has closed — {tournament.reentryConfig?.type === 'rebuy' ? 'rebuys' : 're-entries'}{' '}
+                  only, through the end of level {tournament.reentryCutoffLevel}. New players can't enter.
+                </div>
+              )}
               {/* ── 1 · Player ─────────────────────────────────────────────── */}
               <Panel title="1 · Player">
                 {selectedPlayer ? (

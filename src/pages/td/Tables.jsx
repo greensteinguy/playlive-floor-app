@@ -641,7 +641,13 @@ export default function Tables() {
                     type="button"
                     onClick={handleOpenTables}
                     disabled={busy || openAtInvalid || openAtTaken}
-                    title="Open new tables (they start deactivated — activate when ready to fill)"
+                    title={
+                      openAtTaken
+                        ? `Table ${requestedTableNumber} is already open in this session.`
+                        : openAtInvalid
+                          ? 'Table number must be a whole number.'
+                          : 'Open new tables (they start deactivated — activate when ready to fill)'
+                    }
                     className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30 active:bg-emerald-500/40 disabled:opacity-40"
                   >
                     {busy
