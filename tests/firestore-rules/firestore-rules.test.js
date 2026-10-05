@@ -89,6 +89,7 @@ const matrix = [
   { name: 'structureTemplates',  pathParts: ['structureTemplates', 'st1'],                           read: ALL, write: ['manager', 'td'] },
   { name: 'tournamentTemplates', pathParts: ['tournamentTemplates', 'tt1'],                          read: ALL, write: ['manager', 'td'] },
   { name: 'auditLog',            pathParts: ['auditLog', 'a1'],                                      read: ['manager'], write: STAFF },
+  { name: 'settings',            pathParts: ['settings', 'venue'],                                   read: ALL, write: ['manager'] },
 
   // Subcollections under tournaments
   { name: 'sessions',    pathParts: ['tournaments', 't1', 'sessions', 's1'],   read: ALL, write: ['manager', 'td'] },

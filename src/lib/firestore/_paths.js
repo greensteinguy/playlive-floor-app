@@ -17,6 +17,7 @@ export const LINK_REQUESTS = 'linkRequests'
 export const STRUCTURE_TEMPLATES = 'structureTemplates'
 export const TOURNAMENT_TEMPLATES = 'tournamentTemplates'
 export const AUDIT_LOG = 'auditLog'
+export const SETTINGS = 'settings'
 
 // ── Subcollection names ────────────────────────────────────────────────────
 export const SESSIONS = 'sessions'
@@ -51,6 +52,8 @@ export const tournamentTemplatePath = (id) => [TOURNAMENT_TEMPLATES, id]
 
 export const auditLogCollectionPath = () => [AUDIT_LOG]
 export const auditLogPath = (id) => [AUDIT_LOG, id]
+
+export const settingsPath = (id) => [SETTINGS, id]
 
 // ── Subcollection paths (under tournaments) ────────────────────────────────
 

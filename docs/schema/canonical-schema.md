@@ -53,6 +53,7 @@ Exception: `walletTransactions` (immutable — once written, never edited; `time
 | `auditLog` | All sensitive actions and sensitive-field reads. |
 | `registrationRequests` | Player-App-initiated registrations awaiting the desk (Phase 6.2 — see §3.7). |
 | `linkRequests` | Failed phone auto-matches awaiting desk-verified account linking (Phase 6.2 — see §3.8). |
+| `settings` | Venue-wide configuration. One doc today, `settings/venue` (see §3.9). |
 
 **Subcollections** (six):
 
@@ -110,6 +111,7 @@ tournaments/{id}
   // Structure
   structureTemplateId:         string | null   (optional ref to structureTemplates)
   startingStack:               number          (chip count, not money)
+  smallestChip:                number | null   (smallest chip in play at level 1 — see §3.9; null = not set)
 
   // Scheduling
   scheduledStartTime:          Timestamp
@@ -364,6 +366,9 @@ structureTemplates/{id}
   // blindNumber runs 1,2,3… across LEVEL entries only (breaks are skipped). Breaks are
   // standalone entries in the array — there is no per-level `breakAfterMinutes`.
 
+  smallestChip:                integer | null  (smallest chip in play at level 1; copied into the
+                                                tournament with the levels — see §3.9. null = not set)
+
   // Standard
   createdAt, updatedAt, createdBy
   archivedAt:                  Timestamp | null
@@ -521,6 +526,24 @@ linkRequests/{id}
   resolvedBy, resolvedAt, resolutionNote
   createdAt, updatedAt
 ```
+
+---
+
+### 3.9 `settings` (6 Oct 2026)
+
+```
+settings/venue
+  chipDenominations:           integer[]       (every chip value at the venue, unique, ≥1 entry.
+                                                Default when the doc is absent:
+                                                10, 50, 100, 500, 1000, 5000, 25000, 100000)
+  updatedAt:                   Timestamp
+  updatedBy:                   string          (staff uid)
+```
+
+**Notes**
+
+- Read: all staff. Write: manager only (Admin → Settings).
+- A structure (`tournaments.smallestChip`, `structureTemplates.smallestChip`) names its smallest chip at level 1; every smaller chip in the set is out of play. Each `isColorUp` break removes the smallest chip still in play. The structure editor tints any blind/ante that isn't a multiple of the smallest chip in play — a warning, never enforced (`src/lib/chips.js`).
 
 ---
 

@@ -14,6 +14,7 @@ export { LinkRequest } from './linkRequest'
 export { StructureTemplate } from './structureTemplate'
 export { TournamentTemplate } from './tournamentTemplate'
 export { AuditLogEntry, WELL_KNOWN_ACTION_TYPES } from './auditLog'
+export { VenueSettings, VENUE_SETTINGS_ID } from './venueSettings'
 
 // Subcollections under tournaments
 export { Session } from './session'

@@ -137,6 +137,14 @@ service cloud.firestore {
       allow write: if isTDorManager();
     }
 
+    // ── Venue settings ─────────────────────────────────────────────────────
+    // Venue-wide config (chip denominations, …). Every staff screen may read it;
+    // only a manager changes it.
+    match /settings/{id} {
+      allow read:  if canRead();
+      allow write: if isManager();
+    }
+
     // ── Collection-group reads ─────────────────────────────────────────────
     // Rules v2: a nested match like /tournaments/{tid}/entries/{eid} does NOT
     // authorize collectionGroup('entries') queries — those need explicit

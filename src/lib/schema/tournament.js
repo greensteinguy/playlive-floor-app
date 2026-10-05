@@ -194,6 +194,12 @@ export const Tournament = z
     // its seats. `.default(9)` keeps reads of docs created before this field valid.
     maxSeatsPerTable: z.number().int().min(2).max(12).default(9),
     structure: Structure,
+    // The smallest chip in play at level 1 (a value from the venue's chip set;
+    // every smaller chip is out). Each colour-up break drops the next-smallest.
+    // Drives the structure editor's "can this blind be posted?" warning only —
+    // nothing enforces it. null = not set (no check); `.default(null)` keeps
+    // pre-existing docs valid on read (Guy, 6 Oct 2026).
+    smallestChip: z.number().int().positive().nullable().default(null),
 
     // Payout structure (embedded — legacy/manual path, used until a stored
     // payoutTable exists; see buildPayoutRows)

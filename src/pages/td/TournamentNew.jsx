@@ -57,6 +57,7 @@ function initialForm() {
     hasUpperDeckMainDeck: false,
     structureTemplateId: '',
     structure: [],
+    smallestChip: null,
     scheduledStartTime: '',
     lateRegCutoffLevel: '',
     reentryCutoffLevel: '',
@@ -158,6 +159,7 @@ export default function TournamentNew() {
   const d = submitting
 
   const levelsOf = (id) => structures.templates.find((s) => s.id === id)?.levels ?? []
+  const smallestChipOf = (id) => structures.templates.find((s) => s.id === id)?.smallestChip ?? null
 
   // Load a structure template's levels into the editor; '' = keep custom build.
   // structureTemplateId is recorded as provenance even if the levels are later
@@ -167,7 +169,7 @@ export default function TournamentNew() {
       set({ structureTemplateId: '' })
       return
     }
-    set({ structureTemplateId: id, structure: levelsOf(id) })
+    set({ structureTemplateId: id, structure: levelsOf(id), smallestChip: smallestChipOf(id) })
   }
 
   // Seed every field from a tournament template (or clear the provenance link).
@@ -199,6 +201,7 @@ export default function TournamentNew() {
       hasUpperDeckMainDeck: c.hasUpperDeckMainDeck,
       structureTemplateId: c.structureTemplateId ?? '',
       structure: c.structureTemplateId ? levelsOf(c.structureTemplateId) : [],
+      smallestChip: c.structureTemplateId ? smallestChipOf(c.structureTemplateId) : null,
       reentryType: c.reentryConfig.type,
       maxReentries: c.reentryConfig.maxReentries != null ? String(c.reentryConfig.maxReentries) : '',
       maxRebuys: c.reentryConfig.maxRebuys != null ? String(c.reentryConfig.maxRebuys) : '',
@@ -273,6 +276,7 @@ export default function TournamentNew() {
       startingStack: intOf(form.startingStack),
       maxSeatsPerTable: intOf(form.maxSeatsPerTable) || 9,
       structure: form.structure,
+      smallestChip: form.smallestChip,
       payoutStructure: null,
       scheduledStartTime: localToDate(form.scheduledStartTime),
       lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : intOf(form.lateRegCutoffLevel),
@@ -408,6 +412,8 @@ export default function TournamentNew() {
                 value={form.structure}
                 onChange={(next) => set({ structure: next })}
                 disabled={d}
+                smallestChip={form.smallestChip}
+                onSmallestChipChange={(v) => set({ smallestChip: v })}
                 markers={{
                   lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : Number(form.lateRegCutoffLevel),
                   reentryCutoffLevel: form.reentryCutoffLevel === '' ? null : Number(form.reentryCutoffLevel),

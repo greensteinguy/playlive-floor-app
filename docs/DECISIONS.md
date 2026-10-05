@@ -6,6 +6,16 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 6 October 2026 — Venue chip set + chip-aware structure editor
+
+**Decided:** The venue's chip denominations live in a new `settings/venue` doc, edited by managers at Admin → Settings (default 10, 50, 100, 500, 1K, 5K, 25K, 100K). Each structure stores its `smallestChip` at level 1; every colour-up break drops the smallest chip still in play. The structure editor tints any blind or ante that can't be made from the chips in play (e.g. a 750 small blind once only 100s remain) — a warning only. An "Auto blinds" box sets small blind = ½ big blind and ante = big blind on every level, and keeps tracking big-blind edits, while every cell stays editable.
+
+**Why:** Guy: the app has to know which chips actually exist before it can call a blind impossible; inferring chips from the blind values was rejected. Colour-up counting avoids the TD typing a chip value at every break.
+
+**Decider:** Guy.
+
+---
+
 ## 12 August 2026 — Player App (Phase 6.2): auth, account linking, player rules branch, self-registration, Casinoware cut-off
 
 Guy's calls, made via a decision wizard:

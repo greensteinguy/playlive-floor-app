@@ -109,6 +109,7 @@ function formFromTournament(t) {
     hasUpperDeckMainDeck: t.hasUpperDeckMainDeck,
     structureTemplateId: t.structureTemplateId ?? '',
     structure: t.structure,
+    smallestChip: t.smallestChip ?? null,
     scheduledStartTime: tsToLocalInput(t.scheduledStartTime),
     lateRegCutoffLevel: t.lateRegCutoffLevel != null ? String(t.lateRegCutoffLevel) : '',
     reentryCutoffLevel: t.reentryCutoffLevel != null ? String(t.reentryCutoffLevel) : '',
@@ -202,6 +203,7 @@ function buildStructurePatch(form) {
     hasUpperDeckMainDeck: form.hasUpperDeckMainDeck,
     structureTemplateId: form.structureTemplateId === '' ? null : form.structureTemplateId,
     structure: form.structure,
+    smallestChip: form.smallestChip,
     // The cutoff markers are drawn on — and set from — the structure ladder
     // (floor feedback D1.3), so this patch has to carry them too. They're also
     // in buildDetailsPatch; both read the same form state, so either save
@@ -332,12 +334,13 @@ export default function TournamentDetail() {
   const setMultiDay = (on) => set(on ? { isMultiDay: true } : { isMultiDay: false, isMultiFlight: false })
 
   const levelsOf = (sid) => structures.templates.find((s) => s.id === sid)?.levels ?? []
+  const smallestChipOf = (sid) => structures.templates.find((s) => s.id === sid)?.smallestChip ?? null
   function loadStructure(sid) {
     if (sid === '') {
       set({ structureTemplateId: '' })
       return
     }
-    set({ structureTemplateId: sid, structure: levelsOf(sid) })
+    set({ structureTemplateId: sid, structure: levelsOf(sid), smallestChip: smallestChipOf(sid) })
   }
 
   async function save(buildPatch, validate, actionType, successMsg) {
@@ -539,6 +542,8 @@ export default function TournamentDetail() {
                     value={form.structure}
                     onChange={(next) => set({ structure: next })}
                     disabled={d}
+                    smallestChip={form.smallestChip}
+                    onSmallestChipChange={(v) => set({ smallestChip: v })}
                     markers={{
                       lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : Number(form.lateRegCutoffLevel),
                       reentryCutoffLevel: form.reentryCutoffLevel === '' ? null : Number(form.reentryCutoffLevel),

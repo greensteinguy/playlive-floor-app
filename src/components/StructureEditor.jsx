@@ -15,8 +15,17 @@
 // long-press on iPad) instead of hunting for a separate dropdown. Markers are
 // optional: hosts with nothing to mark (structure templates) omit the props and
 // get the plain editor.
+//
+// CHIPS + AUTO BLINDS (Guy, 6 Oct 2026) — the host may pass the structure's
+// smallest chip; with the venue chip set (Admin → Settings) that tells us which
+// chips are on the table at every level (each colour-up drops the smallest).
+// Any amount that can't be made from them is tinted amber. The "Auto blinds"
+// box sets small blind = ½ big blind and ante = big blind on every level, and
+// keeps doing so as big blinds are edited — but every cell stays editable.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useVenueSettings } from '../hooks/useVenueSettings'
+import { smallestChipByIndex, isPostable, autoBlindsFor, followsAutoBlinds } from '../lib/chips'
 import { Structure } from '../lib/schema'
 
 const DEFAULT_LEVEL = {
@@ -103,8 +112,16 @@ export default function StructureEditor({
   onMarkersChange = null,
   // Which marker kinds this host lets the TD set: any of 'rego' | 'reentry' | 'dayEnd'.
   editableMarkers = [],
+  // Smallest chip in play at level 1 (null = not set → no chip check). Pass
+  // onSmallestChipChange to show the picker; omit it for a read-only check.
+  smallestChip = null,
+  onSmallestChipChange = null,
 }) {
   const entries = useMemo(() => value ?? [], [value])
+  const { chipDenominations } = useVenueSettings()
+  // Starts ticked when the structure already follows the rule, so reopening a
+  // saved auto-blinds structure keeps the mode on.
+  const [autoBlinds, setAutoBlinds] = useState(() => followsAutoBlinds(value))
   const [menu, setMenu] = useState(null) // { index, x, y }
   const [drag, setDrag] = useState(null) // { from, over }
   const [bulkMinutes, setBulkMinutes] = useState('')
@@ -175,17 +192,43 @@ export default function StructureEditor({
   // zero. Duration and bring-in carry over untouched.
   const addDoubledLevel = () => {
     const base = lastLevel() ?? DEFAULT_LEVEL
+    const bigBlind = base.bigBlind * 2
     emit([
       ...entries,
       {
         ...base,
         type: 'level',
         smallBlind: base.smallBlind * 2,
-        bigBlind: base.bigBlind * 2,
+        bigBlind,
         ante: base.ante * 2,
+        ...(autoBlinds ? autoBlindsFor(bigBlind) : {}),
       },
     ])
   }
+
+  const toggleAutoBlinds = (on) => {
+    setAutoBlinds(on)
+    if (on) emit(entries.map((e) => (e.type === 'level' ? { ...e, ...autoBlindsFor(e.bigBlind) } : e)))
+  }
+
+  // In auto mode a big-blind edit carries the small blind and ante with it;
+  // editing those two directly still overrides them for that level.
+  const patchLevelField = (i, field, v) =>
+    patchAt(i, field === 'bigBlind' && autoBlinds ? { bigBlind: v, ...autoBlindsFor(v) } : { [field]: v })
+
+  const chipByIndex = useMemo(
+    () => smallestChipByIndex(entries, chipDenominations, smallestChip),
+    [entries, chipDenominations, smallestChip]
+  )
+  const unpostableCount = entries.reduce(
+    (n, e, i) =>
+      e.type === 'level' ? n + LEVEL_NUM_FIELDS.filter(({ field }) => !isPostable(e[field], chipByIndex[i])).length : n,
+    0
+  )
+  const chipOptions =
+    smallestChip != null && !chipDenominations.includes(smallestChip)
+      ? [...chipDenominations, smallestChip].sort((a, b) => a - b)
+      : chipDenominations
 
   const addBreak = () => emit([...entries, { ...DEFAULT_BREAK }])
   const removeAt = (i) => emit(entries.filter((_, idx) => idx !== i))
@@ -365,6 +408,45 @@ export default function StructureEditor({
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 bg-felt-900/40 border border-white/5 rounded-lg px-3 py-2">
+        <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoBlinds}
+            disabled={disabled}
+            onChange={(e) => toggleAutoBlinds(e.target.checked)}
+            className="accent-gold-500 w-4 h-4"
+          />
+          Auto blinds
+          <span className="text-white/45">small = ½ big · ante = big</span>
+        </label>
+        {(onSmallestChipChange || smallestChip != null) && (
+          <label className="flex items-center gap-2 text-xs text-white/80">
+            Smallest chip
+            <select
+              value={smallestChip ?? ''}
+              disabled={disabled || !onSmallestChipChange}
+              onChange={(e) => onSmallestChipChange?.(e.target.value === '' ? null : Number(e.target.value))}
+              className="bg-felt-900 border border-white/10 rounded px-2 py-1 text-sm disabled:opacity-50"
+            >
+              <option value="">Not set</option>
+              {chipOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c.toLocaleString('en-AU')}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {smallestChip == null && onSmallestChipChange ? (
+          <span className="text-[11px] text-white/45">Set the smallest chip to check blinds against the chips in play.</span>
+        ) : unpostableCount > 0 ? (
+          <span className="text-[11px] text-amber-300">
+            {unpostableCount} amount{unpostableCount === 1 ? '' : 's'} can&apos;t be made from the chips in play
+          </span>
+        ) : null}
+      </div>
+
       {entries.length > 0 && (
         <div className="flex flex-wrap items-end gap-2 bg-felt-900/40 border border-white/5 rounded-lg px-3 py-2">
           <label className="flex flex-col gap-0.5">
@@ -456,7 +538,12 @@ export default function StructureEditor({
                           label={label}
                           value={entry[field]}
                           disabled={disabled}
-                          onChange={(v) => patchAt(i, { [field]: v })}
+                          warn={
+                            isPostable(entry[field], chipByIndex[i])
+                              ? null
+                              : `${entry[field].toLocaleString('en-AU')} can't be made when the smallest chip in play is ${chipByIndex[i].toLocaleString('en-AU')}`
+                          }
+                          onChange={(v) => patchLevelField(i, field, v)}
                           onKeyDown={(e) => handleFieldKeyDown(e, i, field)}
                           cellKey={`${i}:${field}`}
                         />
@@ -517,6 +604,15 @@ export default function StructureEditor({
                 {rowIssues && (
                   <p className="text-[11px] text-red-300 font-mono mt-0.5 ml-3">{rowIssues.join('; ')}</p>
                 )}
+                {entry.type === 'break' &&
+                  entry.isColorUp &&
+                  chipByIndex[i + 1] != null &&
+                  chipByIndex[i + 1] !== chipByIndex[i] && (
+                    <p className="text-[11px] text-gold-300/70 font-mono mt-0.5 ml-3">
+                      Colour-up · {chipByIndex[i].toLocaleString('en-AU')}s out · smallest chip now{' '}
+                      {chipByIndex[i + 1].toLocaleString('en-AU')}
+                    </p>
+                  )}
                 {rowMarkers?.map((m) => (
                   <MarkerRule key={`${m.kind}-${m.label}`} kind={m.kind} label={m.label} />
                 ))}
@@ -657,9 +753,9 @@ function MarkerMenu({ menu, entry, markers, canEdit, onClose, onSet }) {
   )
 }
 
-function NumField({ label, value, onChange, min = 0, width = 'w-20', disabled = false, onKeyDown, cellKey }) {
+function NumField({ label, value, onChange, min = 0, width = 'w-20', disabled = false, onKeyDown, cellKey, warn = null }) {
   return (
-    <label className="flex flex-col gap-0.5">
+    <label className="flex flex-col gap-0.5" title={warn ?? undefined}>
       <span className="text-[9px] font-mono uppercase tracking-wider text-white/55">{label}</span>
       <input
         data-cell={cellKey}
@@ -673,7 +769,10 @@ function NumField({ label, value, onChange, min = 0, width = 'w-20', disabled = 
           const n = parseInt(e.target.value, 10)
           onChange(Number.isNaN(n) ? 0 : n)
         }}
-        className={`bg-felt-900 border border-white/10 rounded px-2 py-1 text-sm ${width} disabled:opacity-50`}
+        aria-invalid={warn ? true : undefined}
+        className={`border rounded px-2 py-1 text-sm ${width} disabled:opacity-50 ${
+          warn ? 'bg-amber-500/15 border-amber-400/70 text-amber-100' : 'bg-felt-900 border-white/10'
+        }`}
       />
     </label>
   )

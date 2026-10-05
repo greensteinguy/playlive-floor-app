@@ -143,6 +143,13 @@ const NAV_ITEMS = [
     // gate is UX scoping, not a security boundary.)
     allowedRoles: ['cashier'],
   },
+  {
+    section: 'admin',
+    to: '/admin/settings',
+    label: 'Settings',
+    icon: '⚙',
+    allowedRoles: [], // manager-only — venue chip set, etc.
+  },
 ]
 
 export const NAV_SECTIONS = [

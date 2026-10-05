@@ -47,6 +47,7 @@ import TdTournamentResults from './pages/td/TournamentResults'
 import AdminAudit from './pages/admin/AuditLog'
 import AdminDedupe from './pages/admin/Dedupe'
 import AdminReconciliation from './pages/admin/Reconciliation'
+import AdminSettings from './pages/admin/Settings'
 
 export default function App() {
   return (
@@ -256,6 +257,16 @@ export default function App() {
                   <ErrorBoundary>
                     <ProtectedRoute requiredRoles={['cashier', 'manager']}>
                       <AdminReconciliation />
+                    </ProtectedRoute>
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/admin/settings"
+                element={
+                  <ErrorBoundary>
+                    <ProtectedRoute requiredRoles={['manager']}>
+                      <AdminSettings />
                     </ProtectedRoute>
                   </ErrorBoundary>
                 }
