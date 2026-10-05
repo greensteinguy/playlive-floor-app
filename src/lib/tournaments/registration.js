@@ -34,9 +34,67 @@ export function totalEntryCost(tournament) {
   return (tournament?.buyIn ?? 0) + (tournament?.hospitalityCost ?? 0)
 }
 
-/** Registration is open while the tournament is taking entries (pre-reg or late reg). */
-export function registrationOpen(tournament) {
-  return tournament?.status === 'scheduled' || tournament?.status === 'lateRegOpen'
+/**
+ * True once play has moved PAST the end of `cutoffLevel` (a blindNumber).
+ *
+ * Cutoffs are expressed as "closes at the END of level X", so:
+ *  - sitting ON level n  → passed when n > X
+ *  - sitting on a BREAK  → the preceding level is complete, so passed when that
+ *                          level's number >= X
+ *  - clock not started   → nothing has passed
+ */
+export function passedEndOfLevel(tournament, cutoffLevel) {
+  if (cutoffLevel == null) return false
+  const idx = tournament?.currentStructureIndex
+  if (idx == null) return false
+  const structure = tournament?.structure ?? []
+  const entry = structure[idx]
+  if (!entry) return false
+  if (entry.type === 'level') return entry.blindNumber > cutoffLevel
+  for (let i = idx - 1; i >= 0; i--) {
+    if (structure[i].type === 'level') return structure[i].blindNumber >= cutoffLevel
+  }
+  return false
+}
+
+/**
+ * Is the tournament taking THIS KIND of entry right now?
+ *
+ * The venue's rule is asymmetric (Guy, 24 Aug 2026): closing late registration
+ * shuts the door on players who have never entered, but a player who already
+ * entered and busted may keep re-entering until `reentryCutoffLevel`. So a
+ * `lateRegClosed` tournament can still be open to re-entries and closed to
+ * initial buy-ins at the same moment.
+ *
+ * `reentryCutoffLevel === null` means "re-entry closes with late registration"
+ * — the behaviour every tournament had before the field existed.
+ *
+ * @param entryType 'initial' | 'reentry' | 'rebuy' (defaults to the strictest)
+ */
+export function registrationOpen(tournament, entryType = 'initial') {
+  const status = tournament?.status
+  if (status === 'scheduled' || status === 'lateRegOpen') return true
+  if (status !== 'lateRegClosed') return false
+  if (entryType !== 'reentry' && entryType !== 'rebuy') return false
+  const cutoff = tournament?.reentryCutoffLevel ?? null
+  // null = re-entry closes WITH late registration (pre-field behaviour). Note
+  // this is the opposite polarity to passedEndOfLevel's null, which means
+  // "no cutoff to pass" — hence the explicit branch rather than a bare negation.
+  if (cutoff === null) return false
+  return !passedEndOfLevel(tournament, cutoff)
+}
+
+/** Floor-readable explanation for why `registrationOpen` said no. */
+export function registrationClosedReason(tournament, entryType) {
+  if (tournament?.status === 'lateRegClosed') {
+    if (entryType !== 'reentry' && entryType !== 'rebuy') {
+      return 'Late registration has closed — new entries are no longer accepted.'
+    }
+    const cutoff = tournament?.reentryCutoffLevel ?? null
+    if (cutoff === null) return 'Late registration has closed, and re-entry closed with it.'
+    return `Re-entry closed at the end of level ${cutoff}.`
+  }
+  return `Registration is not open for this tournament (status: ${tournament?.status}).`
 }
 
 /**
@@ -199,8 +257,11 @@ export async function registerEntry({
   if (typeof originSessionId !== 'string' || originSessionId.trim() === '') {
     throw new TournamentError('a flight/session must be chosen for the entry')
   }
-  if (!registrationOpen(tournament)) {
-    throw new TournamentError(`Registration is not open for this tournament (status: ${tournament.status}).`)
+  // Statuses where NOTHING is accepted — cheap gate before planning. The
+  // `lateRegClosed` case needs the entry TYPE (re-entry may still be open to an
+  // already-entered player), so it is re-checked after planEntry below.
+  if (!registrationOpen(tournament) && tournament.status !== 'lateRegClosed') {
+    throw new TournamentError(registrationClosedReason(tournament, 'initial'))
   }
   if (lastLongerDeck !== null) {
     if (lastLongerDeck !== 'upper' && lastLongerDeck !== 'main') {
@@ -214,6 +275,9 @@ export async function registerEntry({
   const plan = planEntry({ playerEntries: playerEntries ?? [], reentryConfig: tournament.reentryConfig })
   if (plan.blockedReason) {
     throw new TournamentError(plan.blockedReason)
+  }
+  if (!registrationOpen(tournament, plan.entryType)) {
+    throw new TournamentError(registrationClosedReason(tournament, plan.entryType))
   }
 
   const totalCost = totalEntryCost(tournament)
@@ -244,7 +308,10 @@ export async function registerEntry({
   // already happened under the rules of its moment) and before any write.
   const inTransactionGuard = async (tx) => {
     const freshTournament = await tx.get(paths.tournamentPath(tournament.id), Tournament)
-    if (!registrationOpen(freshTournament)) {
+    // Only the statuses that close the door on EVERY entry type can be judged
+    // before re-planning; `lateRegClosed` is decided below, once we know
+    // whether this is an initial buy-in or a re-entry.
+    if (!registrationOpen(freshTournament) && freshTournament.status !== 'lateRegClosed') {
       throw new RegistrationClosedError({
         tournamentId: tournament.id,
         status: freshTournament.status,
@@ -263,6 +330,12 @@ export async function registerEntry({
       reentryConfig: freshTournament.reentryConfig,
     })
     if (freshPlan.blockedReason) throw new TournamentError(freshPlan.blockedReason)
+    if (!registrationOpen(freshTournament, freshPlan.entryType)) {
+      throw new RegistrationClosedError({
+        tournamentId: tournament.id,
+        status: freshTournament.status,
+      })
+    }
     if (freshPlan.entryType !== plan.entryType || freshPlan.entryNumber !== plan.entryNumber) {
       throw new TournamentError(
         "This player's entries changed while confirming — refresh and try again."

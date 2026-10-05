@@ -119,6 +119,9 @@ export default function Tables() {
   const [breakTableId, setBreakTableId] = useState(null)
   const [showSeatList, setShowSeatList] = useState(false)
   const [openCount, setOpenCount] = useState(1) // batch open-table count (A2)
+  // D1.13 — open a SPECIFIC table number (the venue's tables are painted with
+  // fixed numbers). Blank = auto-number, which is what batch open uses.
+  const [openAtNumber, setOpenAtNumber] = useState('')
   const [confirmEliminate, setConfirmEliminate] = useState(false)
   // Satellite: inline confirm for the "milestone reached" action (task 4.2).
   const [confirmMilestone, setConfirmMilestone] = useState(false)
@@ -171,6 +174,12 @@ export default function Tables() {
     [openTables, breakTableId]
   )
   const selectedEntry = selectedEntryId ? entriesById[selectedEntryId] ?? null : null
+  // '' → auto-number; a positive integer → that exact table.
+  const requestedTableNumber = /^\d+$/.test(openAtNumber.trim()) && Number(openAtNumber) > 0 ? Number(openAtNumber) : null
+  const openAtInvalid = openAtNumber.trim() !== '' && requestedTableNumber == null
+  const openAtTaken =
+    requestedTableNumber != null && sessionTables.some((t) => t.tableNumber === requestedTableNumber && t.status === 'open')
+
   const allExpanded = openTables.length > 0 && openTables.every((t) => expandedTables.has(t.id))
   // Players knocked out of this session (busted, not voided) — surfaced in the summary.
   const eliminatedCount = useMemo(
@@ -316,15 +325,25 @@ export default function Tables() {
       // openTable reads the current max tableNumber then writes; call it
       // sequentially so each sees the previous table and numbers don't collide
       // (A2 batch open — a parallel loop would race on the next table number).
+      // An explicit number opens exactly one table and never probes upward, so
+      // a clash surfaces as TableNumberTakenError rather than a surprise table.
       const opened = []
-      for (let i = 0; i < openCount; i++) {
-        const res = await openTable({ tournament, sessionId: activeSessionId, actorId: user.uid, actorRole: role })
+      const count = requestedTableNumber != null ? 1 : openCount
+      for (let i = 0; i < count; i++) {
+        const res = await openTable({
+          tournament,
+          sessionId: activeSessionId,
+          tableNumber: requestedTableNumber,
+          actorId: user.uid,
+          actorRole: role,
+        })
         opened.push(res.tableNumber)
       }
       const label =
         opened.length === 1
           ? `Opened Table ${opened[0]}`
           : `Opened ${opened.length} tables (T${opened[0]}–T${opened[opened.length - 1]})`
+      setOpenAtNumber('')
       toast.success(`${label} — deactivated; activate when you're ready to fill.`)
       seating.reload()
     })
@@ -586,7 +605,7 @@ export default function Tables() {
                     <button
                       type="button"
                       onClick={() => setOpenCount((c) => Math.max(1, c - 1))}
-                      disabled={busy || openCount <= 1}
+                      disabled={busy || openCount <= 1 || requestedTableNumber != null}
                       aria-label="Fewer tables"
                       className="px-2.5 py-2 text-white/70 hover:text-white hover:bg-white/5 disabled:opacity-30"
                     >
@@ -596,21 +615,48 @@ export default function Tables() {
                     <button
                       type="button"
                       onClick={() => setOpenCount((c) => Math.min(12, c + 1))}
-                      disabled={busy || openCount >= 12}
+                      disabled={busy || openCount >= 12 || requestedTableNumber != null}
                       aria-label="More tables"
                       className="px-2.5 py-2 text-white/70 hover:text-white hover:bg-white/5 disabled:opacity-30"
                     >
                       +
                     </button>
                   </div>
+                  {/* D1.13 — name the table instead of taking the next number. */}
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={openAtNumber}
+                    onChange={(e) => setOpenAtNumber(e.target.value)}
+                    disabled={busy}
+                    placeholder="Table #"
+                    aria-label="Open a specific table number (blank = next available)"
+                    title="Open a specific table number. Leave blank to take the next available."
+                    className={
+                      'w-24 px-3 py-2 rounded-lg text-sm bg-felt-900 border text-white/90 placeholder:text-white/35 disabled:opacity-40 ' +
+                      (openAtInvalid || openAtTaken ? 'border-red-400/60' : 'border-white/10')
+                    }
+                  />
                   <button
                     type="button"
                     onClick={handleOpenTables}
-                    disabled={busy}
-                    title="Open new tables (they start deactivated — activate when ready to fill)"
+                    disabled={busy || openAtInvalid || openAtTaken}
+                    title={
+                      openAtTaken
+                        ? `Table ${requestedTableNumber} is already open in this session.`
+                        : openAtInvalid
+                          ? 'Table number must be a whole number.'
+                          : 'Open new tables (they start deactivated — activate when ready to fill)'
+                    }
                     className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30 active:bg-emerald-500/40 disabled:opacity-40"
                   >
-                    {busy ? 'Opening…' : openCount === 1 ? '+ Open table' : `+ Open ${openCount} tables`}
+                    {busy
+                      ? 'Opening…'
+                      : requestedTableNumber != null
+                        ? `+ Open Table ${requestedTableNumber}`
+                        : openCount === 1
+                          ? '+ Open table'
+                          : `+ Open ${openCount} tables`}
                   </button>
                   {openTables.length > 0 && (
                     <button

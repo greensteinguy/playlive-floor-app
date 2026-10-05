@@ -168,6 +168,7 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
   const [name, setName] = useState(template?.name ?? '')
   const [description, setDescription] = useState(template?.description ?? '')
   const [levels, setLevels] = useState(template?.levels ?? [])
+  const [smallestChip, setSmallestChip] = useState(template?.smallestChip ?? null)
   const [submitting, setSubmitting] = useState(false)
   const [confirmArchive, setConfirmArchive] = useState(false)
 
@@ -187,11 +188,14 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
         name: name.trim(),
         description: description.trim() === '' ? null : description.trim(),
         levels,
+        smallestChip,
         actorId: user.uid,
         actorRole: role,
       }
       if (isEdit) {
-        await updateStructureTemplate({ id: template.id, patch: args, actorId: user.uid, actorRole: role })
+        // The patch is the doc fields only — the strict schema rejects actor keys.
+        const { actorId: _actorId, actorRole: _actorRole, ...patch } = args
+        await updateStructureTemplate({ id: template.id, patch, actorId: user.uid, actorRole: role })
         toast.success(`Updated "${args.name}".`)
       } else {
         await createStructureTemplate(args)
@@ -256,7 +260,13 @@ function StructureTemplateEditor({ template, onDone, onCancel }) {
 
       <div className="mb-6">
         <div className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Levels & breaks</div>
-        <StructureEditor value={levels} onChange={setLevels} disabled={submitting} />
+        <StructureEditor
+          value={levels}
+          onChange={setLevels}
+          disabled={submitting}
+          smallestChip={smallestChip}
+          onSmallestChipChange={setSmallestChip}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-4">

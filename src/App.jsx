@@ -25,6 +25,7 @@ import DeskPlayerNew from './pages/desk/PlayerNew'
 import DeskPlayerDetail from './pages/desk/PlayerDetail'
 import DeskDeposit from './pages/desk/Deposit'
 import DeskWithdrawals from './pages/desk/Withdrawals'
+import DeskAppRequests from './pages/desk/AppRequests'
 import DeskTickets from './pages/desk/Tickets'
 
 // TD persona
@@ -46,6 +47,7 @@ import TdTournamentResults from './pages/td/TournamentResults'
 import AdminAudit from './pages/admin/AuditLog'
 import AdminDedupe from './pages/admin/Dedupe'
 import AdminReconciliation from './pages/admin/Reconciliation'
+import AdminSettings from './pages/admin/Settings'
 
 export default function App() {
   return (
@@ -110,6 +112,16 @@ export default function App() {
                   <ErrorBoundary>
                     <ProtectedRoute requiredRoles={['cashier', 'manager']}>
                       <DeskWithdrawals />
+                    </ProtectedRoute>
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/desk/app-requests"
+                element={
+                  <ErrorBoundary>
+                    <ProtectedRoute requiredRoles={['cashier', 'manager']}>
+                      <DeskAppRequests />
                     </ProtectedRoute>
                   </ErrorBoundary>
                 }
@@ -245,6 +257,16 @@ export default function App() {
                   <ErrorBoundary>
                     <ProtectedRoute requiredRoles={['cashier', 'manager']}>
                       <AdminReconciliation />
+                    </ProtectedRoute>
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/admin/settings"
+                element={
+                  <ErrorBoundary>
+                    <ProtectedRoute requiredRoles={['manager']}>
+                      <AdminSettings />
                     </ProtectedRoute>
                   </ErrorBoundary>
                 }

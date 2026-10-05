@@ -252,6 +252,18 @@ describe('createTournament — time conversion', () => {
     await createTournament(makeArgs({ lateRegCutoffLevel: null }))
     expect(capturedDoc().lateRegCutoffLevel).toBeNull()
   })
+
+  // Regression (6 Oct 2026): the create wizard sent reentryCutoffLevel but
+  // createTournament didn't accept it, so the cutoff was silently dropped.
+  it('passes reentryCutoffLevel and smallestChip through, defaulting both to null', async () => {
+    await createTournament(makeArgs({ reentryCutoffLevel: 1, smallestChip: 100 }))
+    expect(capturedDoc().reentryCutoffLevel).toBe(1)
+    expect(capturedDoc().smallestChip).toBe(100)
+
+    await createTournament(makeArgs())
+    expect(capturedDoc().reentryCutoffLevel).toBeNull()
+    expect(capturedDoc().smallestChip).toBeNull()
+  })
 })
 
 describe('createTournament — lateRegCutoffLevel schema invariant', () => {

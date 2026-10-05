@@ -120,10 +120,10 @@ async function reviseTemplate({ kind, id, patch, actorId, actorRole, actionType,
  * @param {string} args.actorId
  * @param {'manager'} args.actorRole
  */
-export function createStructureTemplate({ name, description = null, levels, actorId, actorRole }) {
+export function createStructureTemplate({ name, description = null, levels, smallestChip = null, actorId, actorRole }) {
   return createTemplate({
     kind: 'structure',
-    body: { name, description, levels },
+    body: { name, description, levels, smallestChip },
     actorId,
     actorRole,
     actionType: 'structureTemplate.created',

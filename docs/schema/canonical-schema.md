@@ -51,6 +51,9 @@ Exception: `walletTransactions` (immutable — once written, never edited; `time
 | `structureTemplates` | Reusable blind structures. |
 | `tournamentTemplates` | Reusable full tournament configurations (may reference a structure template). |
 | `auditLog` | All sensitive actions and sensitive-field reads. |
+| `registrationRequests` | Player-App-initiated registrations awaiting the desk (Phase 6.2 — see §3.7). |
+| `linkRequests` | Failed phone auto-matches awaiting desk-verified account linking (Phase 6.2 — see §3.8). |
+| `settings` | Venue-wide configuration. One doc today, `settings/venue` (see §3.9). |
 
 **Subcollections** (six):
 
@@ -108,6 +111,7 @@ tournaments/{id}
   // Structure
   structureTemplateId:         string | null   (optional ref to structureTemplates)
   startingStack:               number          (chip count, not money)
+  smallestChip:                number | null   (smallest chip in play at level 1 — see §3.9; null = not set)
 
   // Scheduling
   scheduledStartTime:          Timestamp
@@ -271,6 +275,15 @@ players/{id}
   // Country (legacy 'ensign' field; used for flag display)
   countryCode:                 string | null   (ISO 3166-1 alpha-2, e.g. "AU")
 
+  // Player App account link (Phase 6.2). The Firebase Auth uid of the
+  // player's own phone-OTP account. Set together with authLinkedAt by the
+  // linkPlayerAccount Cloud Function (auto phone-match) or desk-verified
+  // linking; the same op stamps a `playerId` custom claim on the auth user,
+  // which the player-self-read rules branch keys on. Both default null —
+  // pre-existing docs stay valid.
+  authUid:                     string | null
+  authLinkedAt:                Timestamp | null
+
   // NOTE: bank details (BSB, account number) deliberately NOT stored in v1.
   // Bank-transfer withdrawals capture destination details out-of-band (handled
   // by venue staff outside the Floor App). Per Guy's call on 27 May 2026:
@@ -353,6 +366,9 @@ structureTemplates/{id}
   // blindNumber runs 1,2,3… across LEVEL entries only (breaks are skipped). Breaks are
   // standalone entries in the array — there is no per-level `breakAfterMinutes`.
 
+  smallestChip:                integer | null  (smallest chip in play at level 1; copied into the
+                                                tournament with the levels — see §3.9. null = not set)
+
   // Standard
   createdAt, updatedAt, createdBy
   archivedAt:                  Timestamp | null
@@ -410,7 +426,7 @@ auditLog/{id}
   id:                          string          (UUID v4)
   timestamp:                   Timestamp
   actorId:                     string          (auth uid; 'system' for migration / scheduled jobs)
-  actorRole:                   'manager' | 'td' | 'cashier' | 'readonly' | 'system'
+  actorRole:                   'manager' | 'td' | 'cashier' | 'readonly' | 'system' | 'player'
 
   actionType:                  string          (dot-separated; see well-known types below)
 
@@ -475,6 +491,62 @@ auditLog/{id}
 
 ---
 
+### 3.7 `registrationRequests` (Phase 6.2)
+
+Player-App-initiated registrations that could not complete as an instant wallet-paid entry. Created **only** by the `registerSelf` Cloud Function (admin SDK); resolved at the registration desk (confirm = the normal `registerEntry` flow with payment taken at the desk; the request then records the created `entryId`). Instant wallet-paid registrations create the entry directly and never appear here.
+
+```
+registrationRequests/{id}
+  id, playerId, tournamentId
+  state:            'pending' | 'confirmed' | 'cancelled'
+  requestedAt:      Timestamp
+  requestedByUid:   string          (the player's own auth uid — not staff)
+  requestedVia:     'playerApp'
+  reason:           'insufficientBalance' | 'multiSession' | 'playerChoice' | null
+  entryId:          string | null   (set on confirm)
+  resolvedBy, resolvedAt, cancelReason:  staff resolution fields
+  createdAt, updatedAt
+```
+
+Rules: player reads own (`playerId` claim match); cashier/manager read + resolve; **no client create** (function-only).
+
+### 3.8 `linkRequests` (Phase 6.2)
+
+Written **only** by the `linkPlayerAccount` Cloud Function when phone auto-match fails (no match / multiple matches / matched player already linked). Desk-only visibility — these carry phone numbers and candidate lists; players never read them. Resolution goes through the `resolveLinkRequest` callable (setting the custom claim needs the admin SDK).
+
+```
+linkRequests/{id}
+  id, authUid
+  phone:            string          (E.164, as verified by phone auth)
+  state:            'pending' | 'linked' | 'rejected'
+  reason:           'noMatch' | 'multipleMatches' | 'matchedPlayerAlreadyLinked'
+  candidatePlayerIds: string[]
+  requestedAt:      Timestamp
+  playerId:         string | null   (set on link)
+  resolvedBy, resolvedAt, resolutionNote
+  createdAt, updatedAt
+```
+
+---
+
+### 3.9 `settings` (6 Oct 2026)
+
+```
+settings/venue
+  chipDenominations:           integer[]       (every chip value at the venue, unique, ≥1 entry.
+                                                Default when the doc is absent:
+                                                10, 50, 100, 500, 1000, 5000, 25000, 100000)
+  updatedAt:                   Timestamp
+  updatedBy:                   string          (staff uid)
+```
+
+**Notes**
+
+- Read: all staff. Write: manager only (Admin → Settings).
+- A structure (`tournaments.smallestChip`, `structureTemplates.smallestChip`) names its smallest chip at level 1; every smaller chip in the set is out of play. Each `isColorUp` break removes the smallest chip still in play. The structure editor tints any blind/ante that isn't a multiple of the smallest chip in play — a warning, never enforced (`src/lib/chips.js`).
+
+---
+
 ## 4. Subcollections under `players/{pid}`
 
 ### 4.1 `players/{pid}/walletTransactions`
@@ -508,8 +580,9 @@ players/{pid}/walletTransactions/{id}
                               // entries/{id} for entryRefund (REQUIRED; notes carries the void reason)
                               // null otherwise
 
-  actorId:                     string          (auth uid; 'system' for openingBalance imports)
-  actorRole:                   'manager' | 'td' | 'cashier' | 'system'
+  actorId:                     string          (auth uid; 'system' for openingBalance imports;
+                                                the player's own uid for Player App self-service rows)
+  actorRole:                   'manager' | 'td' | 'cashier' | 'system' | 'player'
 
   timestamp:                   Timestamp
   notes:                       string | null

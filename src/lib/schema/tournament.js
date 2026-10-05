@@ -194,6 +194,12 @@ export const Tournament = z
     // its seats. `.default(9)` keeps reads of docs created before this field valid.
     maxSeatsPerTable: z.number().int().min(2).max(12).default(9),
     structure: Structure,
+    // The smallest chip in play at level 1 (a value from the venue's chip set;
+    // every smaller chip is out). Each colour-up break drops the next-smallest.
+    // Drives the structure editor's "can this blind be posted?" warning only —
+    // nothing enforces it. null = not set (no check); `.default(null)` keeps
+    // pre-existing docs valid on read (Guy, 6 Oct 2026).
+    smallestChip: z.number().int().positive().nullable().default(null),
 
     // Payout structure (embedded — legacy/manual path, used until a stored
     // payoutTable exists; see buildPayoutRows)
@@ -211,6 +217,16 @@ export const Tournament = z
     // so a fixed time would be wrong. null = no preset cutoff (a manager closes
     // late reg manually via the status flow). superRefine bounds it to a real level.
     lateRegCutoffLevel: z.number().int().positive().nullable(),
+    // Re-entry closes at the END of this blind level. SEPARATE from
+    // lateRegCutoffLevel because the venue's rule is asymmetric (Guy, 24 Aug 2026):
+    // when late reg closes, a player who has NEVER entered can no longer buy in,
+    // but a player who already entered and busted may keep re-entering until
+    // THIS level. null = re-entry closes with late registration (the old
+    // behaviour, and what every pre-existing doc reads back as).
+    // It is normally >= lateRegCutoffLevel, but that is a UI-level warning, not
+    // a hard invariant (DECISIONS.md: invariants live in the app, with manager
+    // override; only the "names a real level" bound below is structural).
+    reentryCutoffLevel: z.number().int().positive().nullable().default(null),
 
     // Status (status + isOnBreak + pausedAt are independent)
     status: Status,
@@ -300,13 +316,20 @@ export const Tournament = z
 
     // Invariant: lateRegCutoffLevel (when set) must name a real blind level.
     // blindNumbers run 1..N across the level entries in the structure.
-    if (t.lateRegCutoffLevel !== null) {
+    if (t.lateRegCutoffLevel !== null || t.reentryCutoffLevel !== null) {
       const levelCount = t.structure.filter((e) => e.type === 'level').length
-      if (t.lateRegCutoffLevel > levelCount) {
+      if (t.lateRegCutoffLevel !== null && t.lateRegCutoffLevel > levelCount) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['lateRegCutoffLevel'],
           message: `lateRegCutoffLevel (${t.lateRegCutoffLevel}) exceeds the number of levels in the structure (${levelCount})`,
+        })
+      }
+      if (t.reentryCutoffLevel !== null && t.reentryCutoffLevel > levelCount) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['reentryCutoffLevel'],
+          message: `reentryCutoffLevel (${t.reentryCutoffLevel}) exceeds the number of levels in the structure (${levelCount})`,
         })
       }
     }

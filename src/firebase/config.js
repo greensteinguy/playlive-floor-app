@@ -21,6 +21,10 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import { getFirestore, initializeFirestore, connectFirestoreEmulator } from 'firebase/firestore'
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions'
+
+// All callables live in this region (functions/index.js setGlobalOptions).
+const FUNCTIONS_REGION = 'australia-southeast1'
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -39,12 +43,14 @@ export const USE_EMULATOR = import.meta.env.VITE_FIRESTORE_EMULATOR === 'true'
 // to playlive-25a17. The matching seed scripts hardcode the same id.
 const EMULATOR_PROJECT_ID = 'demo-playlive'
 
-let app, auth, db
+let app, auth, db, fns
 
 if (USE_EMULATOR) {
   // Mode 2 — emulator-backed. Init with just the demo project id; auth stays
   // mocked so we don't need real API keys.
   app = initializeApp({ projectId: EMULATOR_PROJECT_ID })
+  fns = getFunctions(app, FUNCTIONS_REGION)
+  connectFunctionsEmulator(fns, '127.0.0.1', 5001)
   // Force HTTP long-polling instead of the default WebChannel transport. On some
   // Windows/localhost setups WebChannel writes are applied server-side by the
   // emulator but the ack never returns to the client, so setDoc()'s promise
@@ -58,6 +64,7 @@ if (USE_EMULATOR) {
   app = initializeApp(firebaseConfig)
   auth = getAuth(app)
   db = getFirestore(app)
+  fns = getFunctions(app, FUNCTIONS_REGION)
   // NOTE: per ADR-001, we do NOT enable offline persistence. The Floor App is
   // online-only in v1. If offline support is added in a future version, that
   // decision should be re-recorded as a new ADR superseding ADR-001.
@@ -65,4 +72,4 @@ if (USE_EMULATOR) {
 // Mode 1 (pure mock) — `app`, `auth`, `db` all undefined; AuthProvider runs
 // against its mock branch and the data layer throws MockModeError.
 
-export { app, auth, db }
+export { app, auth, db, fns }

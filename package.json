@@ -15,7 +15,8 @@
     "seed:audit": "node scripts/seed/audit-log.js",
     "seed:dedupe": "node scripts/seed/dedupe.js",
     "seed:templates": "node scripts/seed/templates.js",
-    "seed:tournaments": "node scripts/seed/tournaments.js"
+    "seed:tournaments": "node scripts/seed/tournaments.js",
+    "emulator:functions": "firebase --config ./firebase.dev.json --project demo-playlive emulators:start --only firestore,functions,auth"
   },
   "dependencies": {
     "date-fns": "^4.1.0",

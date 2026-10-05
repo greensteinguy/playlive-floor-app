@@ -254,3 +254,42 @@ export function buildBountyDraw(overrides = {}) {
     ...overrides,
   }
 }
+
+export function buildRegistrationRequest(overrides = {}) {
+  return {
+    id: 'regreq-1',
+    playerId: 'player-1',
+    tournamentId: 'tour-1',
+    state: 'pending',
+    requestedAt: ts(),
+    requestedByUid: 'auth-uid-1',
+    requestedVia: 'playerApp',
+    reason: 'insufficientBalance',
+    entryId: null,
+    resolvedBy: null,
+    resolvedAt: null,
+    cancelReason: null,
+    createdAt: ts(),
+    updatedAt: ts(),
+    ...overrides,
+  }
+}
+
+export function buildLinkRequest(overrides = {}) {
+  return {
+    id: 'linkreq-1',
+    authUid: 'auth-uid-1',
+    phone: '+61400000000',
+    state: 'pending',
+    reason: 'noMatch',
+    candidatePlayerIds: [],
+    requestedAt: ts(),
+    playerId: null,
+    resolvedBy: null,
+    resolvedAt: null,
+    resolutionNote: null,
+    createdAt: ts(),
+    updatedAt: ts(),
+    ...overrides,
+  }
+}

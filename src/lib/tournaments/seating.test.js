@@ -65,6 +65,7 @@ import {
   fillableTables,
   DEFAULT_SEAT_COUNT,
   SeatingError,
+  TableNumberTakenError,
   TablesExistError,
   NoSeatableEntriesError,
   SeatOccupiedError,
@@ -1250,6 +1251,55 @@ describe('table lifecycle + random seating', () => {
       })
       expect(res.tableNumber).toBe(2)
       expect(res.tableId).toBe('session-1_t2')
+    })
+
+    // D1.13 (floor feedback, 24 Aug 2026) — the venue's tables carry painted
+    // numbers, so the TD must be able to name one.
+    it('opens the EXACT number asked for, skipping the auto-numbering listing', async () => {
+      tablesApi.listTables.mockResolvedValue([tableWith({ id: 'x', tableNumber: 2 })])
+      tablesApi.listTables.mockClear() // call history is shared across this describe
+      const res = await openTable({
+        tournament: { id: 't1', maxSeatsPerTable: 9 },
+        sessionId: 'session-1',
+        tableNumber: 7,
+        actorId: 'td-1',
+        actorRole: 'td',
+      })
+      expect(res.tableNumber).toBe(7)
+      expect(res.tableId).toBe('session-1_t7')
+      // The explicit path doesn't need to know what else is open.
+      expect(tablesApi.listTables).not.toHaveBeenCalled()
+      expect(auditLog.writeAuditLogSafe).toHaveBeenCalledWith(
+        expect.objectContaining({ metadata: expect.objectContaining({ tableNumber: 7 }) })
+      )
+    })
+
+    it('refuses a taken number rather than probing to a different table', async () => {
+      mockState.seed(tablePath('t1', 'session-1_t7'), tableWith({ id: 'session-1_t7', tableNumber: 7 }))
+      await expect(
+        openTable({
+          tournament: { id: 't1', maxSeatsPerTable: 9 },
+          sessionId: 'session-1',
+          tableNumber: 7,
+          actorId: 'td-1',
+          actorRole: 'td',
+        })
+      ).rejects.toThrow(TableNumberTakenError)
+      expect(tableSetCall()).toBeUndefined()
+    })
+
+    it('rejects a nonsense table number', async () => {
+      for (const tableNumber of [0, -3, 2.5]) {
+        await expect(
+          openTable({
+            tournament: { id: 't1', maxSeatsPerTable: 9 },
+            sessionId: 'session-1',
+            tableNumber,
+            actorId: 'td-1',
+            actorRole: 'td',
+          })
+        ).rejects.toThrow(SeatingError)
+      }
     })
   })
 

@@ -40,9 +40,12 @@ export * as paths from './_paths'
 export * as tournaments from './tournaments'
 export * as players from './players'
 export * as withdrawalRequests from './withdrawalRequests'
+export * as registrationRequests from './registrationRequests'
+export * as linkRequests from './linkRequests'
 export * as structureTemplates from './structureTemplates'
 export * as tournamentTemplates from './tournamentTemplates'
 export * as auditLog from './auditLog'
+export * as venueSettings from './venueSettings'
 
 // Subcollections under tournaments
 export * as sessions from './sessions'

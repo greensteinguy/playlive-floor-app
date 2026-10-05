@@ -17,6 +17,9 @@ export const StructureTemplate = z
     description: z.string().nullable(),
 
     levels: Structure, // reuses the same discriminated-union validator (level | break)
+    // Smallest chip in play at level 1 — see Tournament.smallestChip. Copied into
+    // the tournament along with the levels. null = not set.
+    smallestChip: z.number().int().positive().nullable().default(null),
 
     ...AuditFields,
     ...ArchiveField,

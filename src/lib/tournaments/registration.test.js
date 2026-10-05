@@ -65,6 +65,58 @@ describe('registrationOpen', () => {
       expect(registrationOpen({ status })).toBe(false)
     }
   })
+
+  // ── Asymmetric re-entry window (Guy, 24 Aug 2026) ────────────────────────
+  // Late reg closing shuts out players who never entered; already-entered
+  // players keep re-entering until reentryCutoffLevel.
+  const lvl = (blindNumber) => ({ type: 'level', blindNumber, durationMinutes: 20 })
+  const brk = () => ({ type: 'break', durationMinutes: 10, label: 'Break', isColorUp: false })
+  // structure: L1 L2 BREAK L3 L4  → indices 0 1 2 3 4
+  const structure = [lvl(1), lvl(2), brk(), lvl(3), lvl(4)]
+  const closed = (currentStructureIndex, reentryCutoffLevel) => ({
+    status: 'lateRegClosed',
+    structure,
+    currentStructureIndex,
+    reentryCutoffLevel,
+  })
+
+  it('keeps re-entry open at lateRegClosed while inside the re-entry window', () => {
+    const t = closed(1, 4) // on level 2, re-entry through level 4
+    expect(registrationOpen(t, 'reentry')).toBe(true)
+    expect(registrationOpen(t, 'rebuy')).toBe(true)
+  })
+
+  it('still refuses NEW entries once late reg has closed', () => {
+    const t = closed(1, 4)
+    expect(registrationOpen(t, 'initial')).toBe(false)
+    expect(registrationOpen(t)).toBe(false) // default arg is the strict one
+  })
+
+  it('closes re-entry once play passes the end of the cutoff level', () => {
+    expect(registrationOpen(closed(3, 3), 'reentry')).toBe(true) // ON level 3
+    expect(registrationOpen(closed(4, 3), 'reentry')).toBe(false) // level 4 > 3
+  })
+
+  it('treats a break as "the preceding level is finished"', () => {
+    // index 2 is the break after level 2.
+    expect(registrationOpen(closed(2, 2), 'reentry')).toBe(false) // end of L2 passed
+    expect(registrationOpen(closed(2, 3), 'reentry')).toBe(true) // L3 not played yet
+  })
+
+  it('null reentryCutoffLevel means re-entry closed with late registration', () => {
+    expect(registrationOpen(closed(1, null), 'reentry')).toBe(false)
+    expect(registrationOpen({ status: 'lateRegClosed', structure }, 'reentry')).toBe(false)
+  })
+
+  it('an unstarted clock has passed nothing', () => {
+    expect(registrationOpen(closed(null, 1), 'reentry')).toBe(true)
+  })
+
+  it('the re-entry window never resurrects a finished or cancelled tournament', () => {
+    for (const status of ['draft', 'finished', 'cancelled']) {
+      expect(registrationOpen({ ...closed(1, 4), status }, 'reentry')).toBe(false)
+    }
+  })
 })
 
 describe('registrableSessions', () => {

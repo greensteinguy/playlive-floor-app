@@ -33,11 +33,27 @@ service cloud.firestore {
     function isTDorManager()     { return hasRole(['td', 'manager']); }
     function isCashierOrManager(){ return hasRole(['cashier', 'manager']); }
 
+    // ── Player App accounts (Phase 6.2) ────────────────────────────────────
+    // Players sign in with phone OTP. The linkPlayerAccount Cloud Function
+    // stamps a `playerId` custom claim once the account is matched to a
+    // players/{pid} doc (auto phone-match or desk-verified). These helpers
+    // gate the player-self-read branch — players get their OWN data and the
+    // public tournament list, nothing else.
+    function isAppPlayer() {
+      return authed() && 'playerId' in request.auth.token;
+    }
+    function isLinkedPlayer(pid) {
+      return isAppPlayer() && request.auth.token.playerId == pid;
+    }
+
     // ── Tournaments and subcollections ─────────────────────────────────────
     // TDs and Managers configure and run tournaments. Cashiers register
     // players (entries). Bounty draws and entries are written by floor staff.
     match /tournaments/{tid} {
-      allow read:  if canRead();
+      // Staff read everything; linked app players read non-draft tournaments
+      // (the Player App visibility rule from canonical-schema.md §3.1 — its
+      // queries must constrain status accordingly, e.g. where(status in [...])).
+      allow read:  if canRead() || (isAppPlayer() && resource.data.status != 'draft');
       allow write: if isTDorManager();
 
       match /sessions/{sid} {
@@ -65,15 +81,17 @@ service cloud.firestore {
     // module (rules don't enforce that — app's job). Tickets follow the same
     // pattern: any staff member can write through the wallet module.
     match /players/{pid} {
-      allow read:  if canRead();
+      // Staff read all; a linked app player reads their OWN doc (and nothing
+      // else — the playerId custom claim can only ever match one document).
+      allow read:  if canRead() || isLinkedPlayer(pid);
       allow write: if isCashierOrManager();
 
       match /walletTransactions/{txId} {
-        allow read:  if canRead();
+        allow read:  if canRead() || isLinkedPlayer(pid);
         allow write: if isStaff();
       }
       match /tickets/{ticketId} {
-        allow read:  if canRead();
+        allow read:  if canRead() || isLinkedPlayer(pid);
         allow write: if isStaff();
       }
     }
@@ -87,6 +105,28 @@ service cloud.firestore {
       allow write: if isCashierOrManager();
     }
 
+    // ── Registration requests (Phase 6.2) ──────────────────────────────────
+    // Created ONLY by the registerSelf Cloud Function (admin SDK — rules are
+    // bypassed) when an instant wallet-paid registration can't proceed. The
+    // player reads their own requests to see status; the desk reads the queue
+    // and resolves (confirm creates the entry via the normal registerEntry
+    // flow; the resolving update goes through staff clients).
+    match /registrationRequests/{id} {
+      allow read:  if canRead() || (isAppPlayer() && resource.data.playerId == request.auth.token.playerId);
+      allow write: if isCashierOrManager();
+    }
+
+    // ── Account-link requests (Phase 6.2) ──────────────────────────────────
+    // Created ONLY by the linkPlayerAccount Cloud Function when phone
+    // auto-match fails. Desk-only: players never see these (they contain
+    // phone numbers and candidate lists). Resolution goes through the
+    // resolveLinkRequest callable (custom claims need the admin SDK), but
+    // staff may patch notes/reject directly.
+    match /linkRequests/{id} {
+      allow read:  if isCashierOrManager();
+      allow write: if isCashierOrManager();
+    }
+
     // ── Templates ──────────────────────────────────────────────────────────
     match /structureTemplates/{id} {
       allow read:  if canRead();
@@ -95,6 +135,14 @@ service cloud.firestore {
     match /tournamentTemplates/{id} {
       allow read:  if canRead();
       allow write: if isTDorManager();
+    }
+
+    // ── Venue settings ─────────────────────────────────────────────────────
+    // Venue-wide config (chip denominations, …). Every staff screen may read it;
+    // only a manager changes it.
+    match /settings/{id} {
+      allow read:  if canRead();
+      allow write: if isManager();
     }
 
     // ── Collection-group reads ─────────────────────────────────────────────

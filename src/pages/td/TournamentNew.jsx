@@ -57,8 +57,10 @@ function initialForm() {
     hasUpperDeckMainDeck: false,
     structureTemplateId: '',
     structure: [],
+    smallestChip: null,
     scheduledStartTime: '',
     lateRegCutoffLevel: '',
+    reentryCutoffLevel: '',
     status: 'scheduled',
     reentryType: 'freezeout',
     maxReentries: '',
@@ -72,6 +74,36 @@ function initialForm() {
 }
 
 // 'YYYY-MM-DDTHH:mm' (datetime-local) → Date in venue-local time, or null.
+// A freezeout has nothing to mark a re-entry line for.
+function markerKinds(reentryType) {
+  return reentryType === 'freezeout' ? ['rego', 'dayEnd'] : ['rego', 'reentry', 'dayEnd']
+}
+
+// The FINAL stage plays to a winner and has no end index (SessionPlanBuilder
+// hides its selector), so only the earlier stages get an end-of-day line.
+function dayEndMarkers(stages) {
+  return (stages ?? []).slice(0, -1).map((st, i) => ({
+    index: st.endIndex === '' ? null : Number(st.endIndex),
+    label: `Day ${i + 1}`,
+  }))
+}
+
+/** Marker patch from the structure editor -> the wizard's form shape. */
+function markerPatchToForm(patch, stages) {
+  const next = {}
+  for (const key of ['lateRegCutoffLevel', 'reentryCutoffLevel']) {
+    if (key in patch) next[key] = patch[key] == null ? '' : String(patch[key])
+  }
+  if ('dayEnds' in patch) {
+    next.sessionStages = (stages ?? []).map((st, i) => {
+      const d = patch.dayEnds[i]
+      if (!d) return st // the final stage has no marker
+      return { ...st, endIndex: d.index == null ? '' : String(d.index) }
+    })
+  }
+  return next
+}
+
 function localToDate(s) {
   if (!s) return null
   const d = new Date(s)
@@ -89,6 +121,18 @@ const STEP_ORDER = ['general', 'structure', 'sessions', 'rest']
 
 // Late-reg cutoff options: "no cutoff" + one per blind level in the structure
 // (value = blindNumber). Late reg closes at the END of the chosen level.
+// Re-entry can outlast late registration: closing late reg shuts out players who
+// never entered, while an already-entered player keeps re-entering to this level
+// (Guy, 24 Aug 2026). Blank keeps both closing together.
+function reentryLevelOptions(structure) {
+  return [
+    { value: '', label: 'Closes with late registration' },
+    ...(structure ?? [])
+      .filter((e) => e.type === 'level')
+      .map((e) => ({ value: String(e.blindNumber), label: `Through Level ${e.blindNumber} (${e.smallBlind}/${e.bigBlind})` })),
+  ]
+}
+
 function lateRegLevelOptions(structure) {
   return [
     { value: '', label: 'No cutoff (close manually)' },
@@ -115,6 +159,7 @@ export default function TournamentNew() {
   const d = submitting
 
   const levelsOf = (id) => structures.templates.find((s) => s.id === id)?.levels ?? []
+  const smallestChipOf = (id) => structures.templates.find((s) => s.id === id)?.smallestChip ?? null
 
   // Load a structure template's levels into the editor; '' = keep custom build.
   // structureTemplateId is recorded as provenance even if the levels are later
@@ -124,7 +169,7 @@ export default function TournamentNew() {
       set({ structureTemplateId: '' })
       return
     }
-    set({ structureTemplateId: id, structure: levelsOf(id) })
+    set({ structureTemplateId: id, structure: levelsOf(id), smallestChip: smallestChipOf(id) })
   }
 
   // Seed every field from a tournament template (or clear the provenance link).
@@ -156,6 +201,7 @@ export default function TournamentNew() {
       hasUpperDeckMainDeck: c.hasUpperDeckMainDeck,
       structureTemplateId: c.structureTemplateId ?? '',
       structure: c.structureTemplateId ? levelsOf(c.structureTemplateId) : [],
+      smallestChip: c.structureTemplateId ? smallestChipOf(c.structureTemplateId) : null,
       reentryType: c.reentryConfig.type,
       maxReentries: c.reentryConfig.maxReentries != null ? String(c.reentryConfig.maxReentries) : '',
       maxRebuys: c.reentryConfig.maxRebuys != null ? String(c.reentryConfig.maxRebuys) : '',
@@ -190,6 +236,8 @@ export default function TournamentNew() {
     const errors = {}
     if (form.name.trim() === '') errors.general = 'Tournament name is required.'
     else if (!localToDate(form.scheduledStartTime)) errors.general = 'A valid scheduled start time is required.'
+    else if (form.reentryCutoffLevel !== '' && Number(form.reentryCutoffLevel) > form.structure.filter((e) => e.type === 'level').length)
+      return 'The re-entry cutoff level is beyond the blind structure.'
     else if (form.lateRegCutoffLevel !== '' && Number(form.lateRegCutoffLevel) > form.structure.filter((e) => e.type === 'level').length)
       errors.general = 'The late-reg cutoff level is beyond the blind structure.'
     if (form.structure.length === 0 || !Structure.safeParse(form.structure).success) {
@@ -228,9 +276,16 @@ export default function TournamentNew() {
       startingStack: intOf(form.startingStack),
       maxSeatsPerTable: intOf(form.maxSeatsPerTable) || 9,
       structure: form.structure,
+      smallestChip: form.smallestChip,
       payoutStructure: null,
       scheduledStartTime: localToDate(form.scheduledStartTime),
       lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : intOf(form.lateRegCutoffLevel),
+      // A freezeout has no re-entry to close, so its cutoff is always null —
+      // same shape as maxReentries / maxRebuys below.
+      reentryCutoffLevel:
+        form.reentryType === 'freezeout' || form.reentryCutoffLevel === ''
+          ? null
+          : intOf(form.reentryCutoffLevel),
       reentryConfig: {
         type: t,
         maxReentries: t === 'reentry' ? intOrNull(form.maxReentries) : null,
@@ -311,6 +366,15 @@ export default function TournamentNew() {
           <Section title="Schedule">
             <DateTime label="Scheduled start" value={form.scheduledStartTime} onChange={(v) => set({ scheduledStartTime: v })} disabled={d} />
             <Select label="Late-reg cutoff (optional)" value={form.lateRegCutoffLevel} onChange={(v) => set({ lateRegCutoffLevel: v })} options={lateRegLevelOptions(form.structure)} disabled={d} />
+            {form.reentryType !== 'freezeout' && (
+              <Select
+                label="Re-entry cutoff (blank = closes with late reg)"
+                value={form.reentryCutoffLevel}
+                onChange={(v) => set({ reentryCutoffLevel: v })}
+                options={reentryLevelOptions(form.structure)}
+                disabled={d}
+              />
+            )}
             <Select label="Status" value={form.status} onChange={(v) => set({ status: v })} options={STATUS_OPTIONS} disabled={d} />
           </Section>
         </>
@@ -344,7 +408,20 @@ export default function TournamentNew() {
                   disabled={d}
                 />
               </div>
-              <StructureEditor value={form.structure} onChange={(next) => set({ structure: next })} disabled={d} />
+              <StructureEditor
+                value={form.structure}
+                onChange={(next) => set({ structure: next })}
+                disabled={d}
+                smallestChip={form.smallestChip}
+                onSmallestChipChange={(v) => set({ smallestChip: v })}
+                markers={{
+                  lateRegCutoffLevel: form.lateRegCutoffLevel === '' ? null : Number(form.lateRegCutoffLevel),
+                  reentryCutoffLevel: form.reentryCutoffLevel === '' ? null : Number(form.reentryCutoffLevel),
+                  dayEnds: dayEndMarkers(form.sessionStages),
+                }}
+                onMarkersChange={(patch) => set(markerPatchToForm(patch, form.sessionStages))}
+                editableMarkers={markerKinds(form.reentryType)}
+              />
             </div>
           </section>
         </>

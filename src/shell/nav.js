@@ -55,6 +55,11 @@ const NAV_ITEMS = [
     // deposit. Not readonly/td — the route is cashier+manager gated in App.jsx.
     allowedRoles: ['cashier'],
   },
+  // App requests (/desk/app-requests, Phase 6.2) is HIDDEN until the Player App
+  // launches and the Cloud Functions are deployed (blocked on the Blaze
+  // upgrade) — Guy, 6 Oct 2026. The route still exists in App.jsx. Restore:
+  // { section: 'desk', to: '/desk/app-requests', label: 'App requests', icon: '📱', allowedRoles: ['cashier'] },
+  // (and the matching tile in pages/desk/DeskLanding.jsx).
   // NOTE: Tickets (/desk/tickets) is a Phase-4 placeholder — removed from the
   // sidebar so floor staff don't hit dead-ends. Re-add a row here when the real
   // page lands. The route still exists in App.jsx.
@@ -134,6 +139,13 @@ const NAV_ITEMS = [
     // (walletTransactions read is all-staff at the rules layer, so this page
     // gate is UX scoping, not a security boundary.)
     allowedRoles: ['cashier'],
+  },
+  {
+    section: 'admin',
+    to: '/admin/settings',
+    label: 'Settings',
+    icon: '⚙',
+    allowedRoles: [], // manager-only — venue chip set, etc.
   },
 ]
 

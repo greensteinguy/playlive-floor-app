@@ -111,9 +111,11 @@ export async function createTournament({
   startingStack,
   maxSeatsPerTable = 9,
   structure,
+  smallestChip = null,
   payoutStructure = null,
   scheduledStartTime,
   lateRegCutoffLevel = null,
+  reentryCutoffLevel = null,
   reentryConfig,
   hasUpperDeckMainDeck = false,
   satelliteConfig = null,
@@ -176,11 +178,13 @@ export async function createTournament({
     startingStack,
     maxSeatsPerTable,
     structure,
+    smallestChip,
 
     payoutStructure: payoutStructure ?? DEFAULT_PAYOUT,
 
     scheduledStartTime: scheduledStartTs,
     lateRegCutoffLevel,
+    reentryCutoffLevel,
 
     status,
     isOnBreak: false,

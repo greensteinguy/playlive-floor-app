@@ -6,6 +6,34 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 6 October 2026 — Venue chip set + chip-aware structure editor
+
+**Decided:** The venue's chip denominations live in a new `settings/venue` doc, edited by managers at Admin → Settings (default 10, 50, 100, 500, 1K, 5K, 25K, 100K). Each structure stores its `smallestChip` at level 1; every colour-up break drops the smallest chip still in play. The structure editor tints any blind or ante that can't be made from the chips in play (e.g. a 750 small blind once only 100s remain) — a warning only. An "Auto blinds" box sets small blind = ½ big blind and ante = big blind on every level, and keeps tracking big-blind edits, while every cell stays editable.
+
+**Why:** Guy: the app has to know which chips actually exist before it can call a blind impossible; inferring chips from the blind values was rejected. Colour-up counting avoids the TD typing a chip value at every break.
+
+**Decider:** Guy.
+
+---
+
+## 12 August 2026 — Player App (Phase 6.2): auth, account linking, player rules branch, self-registration, Casinoware cut-off
+
+Guy's calls, made via a decision wizard:
+
+**1. Players sign in with phone OTP.** Phone is already the mandatory field on every player record, so the verified number doubles as the wallet-linking key. Guy must enable Phone sign-in (+ SMS billing) in the Firebase console before rollout. Rejected: email/password (email optional on player docs — weak join), Google (extra linking step for no matching benefit), staying anonymous (blocks the wallet feature).
+
+**2. Account→player linking = auto-match with desk fallback.** On first sign-in the `linkPlayerAccount` Cloud Function matches the verified phone against player records; exactly-one unmerged, unlinked match links automatically (stamps `players.authUid` + `authLinkedAt` + a `playerId` custom claim). Anything else writes a `linkRequests` doc for desk-verified resolution. Rationale: self-service for the common case, a human in the loop for the risky ones (recycled numbers, duplicates).
+
+**3. Player rules branch = own profile + own wallet/tickets + non-draft tournaments.** Keyed on the `playerId` custom claim, never on client-supplied data. No entries reads, no collection-group access, no writes anywhere. Registration requests: player reads own; creation is function-only.
+
+**4. Self-registration = instant wallet-paid via Cloud Function, desk-request fallback.** `registerSelf` registers the entry immediately when the wallet balance covers buy-in + hospitality (server-side port of the registerEntry transaction: deterministic entry ids, wallet ≥ 0 hard invariant, counters, audit). Insufficient balance → a `registrationRequests` doc the desk resolves with payment in person. Note this is the venue's first *player-initiated* money-touching flow; the function reuses the same invariants as the desk path.
+
+**5. Casinoware feeds are killed NOW, and the Player App goes canonical-only.** The app's legacy Cloud Functions (Casinoware→Firestore ingest + the nightly job deleting 90-day-old finished tournaments — which had been eating analytics history) both go. Consequence Guy accepted: the app shows only Floor App tournaments, which are sparse until rollout — the app is a rollout artifact, not a transition one.
+
+**6. Both satellite repos get private GitHub remotes under `greensteinguy`** (push-after-approval workflow, same as the Floor App).
+
+---
+
 ## 10 August 2026 — Venue TV display (Phase 5.1–5.3): auth via the readonly account, selection rules, rotation model
 
 The `/display` venue TV view landed. The calls:
