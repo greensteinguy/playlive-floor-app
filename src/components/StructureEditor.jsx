@@ -122,6 +122,13 @@ export default function StructureEditor({
   // Starts ticked when the structure already follows the rule, so reopening a
   // saved auto-blinds structure keeps the mode on.
   const [autoBlinds, setAutoBlinds] = useState(() => followsAutoBlinds(value))
+  // Mixed games (Guy, 6 Oct 2026): bring-in only matters for stud-family games,
+  // so its column hides unless this is on. Future mixed-game controls hang off
+  // the same toggle. Not stored — it starts on when any level has a bring-in.
+  const [mixedGames, setMixedGames] = useState(() =>
+    (value ?? []).some((e) => e.type === 'level' && e.bringIn > 0)
+  )
+  const levelFields = mixedGames ? LEVEL_NUM_FIELDS : LEVEL_NUM_FIELDS.filter(({ field }) => field !== 'bringIn')
   const [menu, setMenu] = useState(null) // { index, x, y }
   const [drag, setDrag] = useState(null) // { from, over }
   const [bulkMinutes, setBulkMinutes] = useState('')
@@ -182,8 +189,10 @@ export default function StructureEditor({
   const addLevel = () => {
     // Carry the previous level's blinds/duration forward — less typing when
     // building a progression. renumber() fixes blindNumber.
+    // In auto mode the new level follows the rule even if the last one was
+    // hand-overridden.
     const base = lastLevel() ?? DEFAULT_LEVEL
-    emit([...entries, { ...base, type: 'level' }])
+    emit([...entries, { ...base, type: 'level', ...(autoBlinds ? autoBlindsFor(base.bigBlind) : {}) }])
   }
 
   // D1.4 — the "smart key": the next level is the previous one with its blinds
@@ -206,6 +215,15 @@ export default function StructureEditor({
     ])
   }
 
+  // Turning mixed games off clears the (now hidden) bring-ins, so no value is
+  // saved that the editor no longer shows.
+  const toggleMixedGames = (on) => {
+    setMixedGames(on)
+    if (!on && entries.some((e) => e.type === 'level' && e.bringIn > 0)) {
+      emit(entries.map((e) => (e.type === 'level' ? { ...e, bringIn: 0 } : e)))
+    }
+  }
+
   const toggleAutoBlinds = (on) => {
     setAutoBlinds(on)
     if (on) emit(entries.map((e) => (e.type === 'level' ? { ...e, ...autoBlindsFor(e.bigBlind) } : e)))
@@ -222,7 +240,7 @@ export default function StructureEditor({
   )
   const unpostableCount = entries.reduce(
     (n, e, i) =>
-      e.type === 'level' ? n + LEVEL_NUM_FIELDS.filter(({ field }) => !isPostable(e[field], chipByIndex[i])).length : n,
+      e.type === 'level' ? n + levelFields.filter(({ field }) => !isPostable(e[field], chipByIndex[i])).length : n,
     0
   )
   const chipOptions =
@@ -420,6 +438,17 @@ export default function StructureEditor({
           Auto blinds
           <span className="text-white/45">small = ½ big · ante = big</span>
         </label>
+        <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={mixedGames}
+            disabled={disabled}
+            onChange={(e) => toggleMixedGames(e.target.checked)}
+            className="accent-gold-500 w-4 h-4"
+          />
+          Mixed games
+          <span className="text-white/45">shows bring-in</span>
+        </label>
         {(onSmallestChipChange || smallestChip != null) && (
           <label className="flex items-center gap-2 text-xs text-white/80">
             Smallest chip
@@ -532,7 +561,7 @@ export default function StructureEditor({
                         <span className="text-[9px] font-mono uppercase tracking-wider text-white/55">Lvl</span>
                         <span className="font-display text-gold-300 text-lg leading-none">{entry.blindNumber}</span>
                       </div>
-                      {LEVEL_NUM_FIELDS.map(({ field, label }) => (
+                      {levelFields.map(({ field, label }) => (
                         <NumField
                           key={field}
                           label={label}
@@ -754,6 +783,8 @@ function MarkerMenu({ menu, entry, markers, canEdit, onClose, onSet }) {
 }
 
 function NumField({ label, value, onChange, min = 0, width = 'w-20', disabled = false, onKeyDown, cellKey, warn = null }) {
+  // The in-progress text while the field has focus; null = show `value`.
+  const [draft, setDraft] = useState(null)
   return (
     <label className="flex flex-col gap-0.5" title={warn ?? undefined}>
       <span className="text-[9px] font-mono uppercase tracking-wider text-white/55">{label}</span>
@@ -762,10 +793,16 @@ function NumField({ label, value, onChange, min = 0, width = 'w-20', disabled = 
         type="number"
         inputMode="numeric"
         min={min}
-        value={value}
+        // While focused, show exactly what's typed: clearing the box must leave
+        // it empty, not snap to 0 (which then made "600" read "0600" — React
+        // keeps a number input's text when it already equals the new value).
+        value={draft ?? value}
         disabled={disabled}
         onKeyDown={onKeyDown}
+        onFocus={(e) => setDraft(e.target.value)}
+        onBlur={() => setDraft(null)}
         onChange={(e) => {
+          setDraft(e.target.value)
           const n = parseInt(e.target.value, 10)
           onChange(Number.isNaN(n) ? 0 : n)
         }}
