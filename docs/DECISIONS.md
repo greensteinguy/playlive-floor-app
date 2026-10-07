@@ -12,7 +12,9 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 **Why:** Pinning with `?tournamentId=&screen=` meant re-typing a URL on the TV itself to change it. TDs, not just managers, can write because switching a TV to their tournament is a floor task, the same as running the clock. Bare `/display` and its query params still work. A screen pinned to a tournament that has left the floor idles instead of falling back to every tournament, matching the query-param behaviour, and the page warns about it.
 
-**Decider:** Guy picked "named screens" over a plain link builder, 7 Oct 2026. Claude chose the TD write grant; Guy to ratify.
+**Sets (same day, Guy's follow-up):** TVs are grouped into **sets** (`displayGroups`); a TV is in at most one. A set has its own pick; its TVs follow it unless one is given its own pick (shown as "Own pick" with a **Follow set** button). The page is two panes with drag and drop (`@dnd-kit/core`, added for reliable mouse + iPad touch; native HTML5 drag is unreliable on iPad): tournaments on the left, filterable by state and searchable, plus a "Rotate all live" tile; sets on the right. Drop a tournament on a set's header to set the whole set, or on one TV to set just that TV. Drag a TV by its handle to move it between sets or to "Not in a set". Sets can be collapsed (remembered per browser), renamed and removed. The venue-map idea (drag onto TV positions on a floor plan) was deferred: days of work for little gain once sets exist, and it can sit on the same data later.
+
+**Decider:** Guy picked "named screens" over a plain link builder, then specified sets + the drag-and-drop layout, 7 Oct 2026. Claude chose the TD write grant; Guy to ratify.
 
 ---
 

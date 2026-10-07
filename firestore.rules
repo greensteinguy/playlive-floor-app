@@ -145,10 +145,15 @@ service cloud.firestore {
       allow write: if isManager();
     }
 
-    // ── Named TV screens (7 Oct 2026) ──────────────────────────────────────
+    // ── Named TV screens + sets (7 Oct 2026) ──────────────────────────────────────
     // Each venue TV reads its own doc (signed in as readonly); the floor
     // (TD/manager) sets what it shows.
     match /displayScreens/{id} {
+      allow read:  if canRead();
+      allow write: if isTDorManager();
+    }
+    // Sets of TVs that share one pick — same gate as the screens themselves.
+    match /displayGroups/{id} {
       allow read:  if canRead();
       allow write: if isTDorManager();
     }

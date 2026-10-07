@@ -55,6 +55,7 @@ Exception: `walletTransactions` (immutable — once written, never edited; `time
 | `linkRequests` | Failed phone auto-matches awaiting desk-verified account linking (Phase 6.2 — see §3.8). |
 | `settings` | Venue-wide configuration. One doc today, `settings/venue` (see §3.9). |
 | `displayScreens` | The venue's named TVs — what each `/display/<id>` shows (see §3.10). |
+| `displayGroups` | Sets of TVs that share one pick (see §3.10). |
 
 **Subcollections** (six):
 
@@ -553,13 +554,24 @@ displayScreens/{id}            id = URL slug, e.g. bar-tv (lowercase letters, di
   name:                        string          (label shown on TV screens page, e.g. "Bar TV")
   tournamentId:                string | null   (null = rotate every live tournament)
   screen:                      'clock' | 'prizes' | null   (null = both)
+  groupId:                     string | null   (the set it's in; at most one. Default null)
+  followGroup:                 boolean         (true = show the set's pick; false = own pick. Default true)
   createdAt, updatedAt:        Timestamp
   createdBy, updatedBy:        string          (staff uid)
+
+displayGroups/{id}             id = UUID (not in any URL)
+  name:                        string          (e.g. "Main room")
+  tournamentId:                string | null   (null = rotate every live tournament)
+  screen:                      'clock' | 'prizes' | null
+  createdAt, updatedAt:        Timestamp
+  createdBy, updatedBy:        string
 ```
 
 **Notes**
 
-- Read: all staff (TVs sign in as readonly). Write: TD + manager (Tournament floor → TV screens).
+- Read: all staff (TVs sign in as readonly). Write: TD + manager (Tournament floor → TV screens). Same for both collections.
+- What a TV shows = `resolveScreenConfig` (`src/lib/display.js`): its set's pick when it's in a set and following it, else its own fields. A TV whose set is gone falls back to its own fields.
+- Leaving a set (drag out, or the set being removed) copies what the TV was showing into its own fields, so it doesn't jump. Removing a set updates its TVs in the same batch.
 - Each TV opens `/display/<id>` once and subscribes to its doc, so a change lands live. A missing doc shows "Screen not set up". A tournament that isn't on the floor makes the TV idle; it doesn't widen to every tournament.
 - Hard-deleted on Remove (config, not a record).
 

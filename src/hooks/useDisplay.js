@@ -18,6 +18,7 @@ import {
   tournaments as tournamentsApi,
   sessions as sessionsApi,
   displayScreens as displayScreensApi,
+  displayGroups as displayGroupsApi,
   MockModeError,
   NotFoundError,
 } from '../lib/firestore'
@@ -117,62 +118,75 @@ export function useSessionsByTournament(tournamentIds) {
   return state.byTournament
 }
 
-// ── Named screens (/display/<id>, 7 Oct 2026) ──────────────────────────────
+// ── Named screens + sets (/display/<id>, 7 Oct 2026) ───────────────────────
 
 /**
- * Live config for one named TV. status: 'loading' | 'ready' | 'missing' |
- * 'error'. On a transient error after a good read, the last config is kept
- * (stale beats blank on a TV); 'missing' is a deleted or mistyped screen.
+ * Live single doc by id. status: 'idle' (no id) | 'loading' | 'ready' |
+ * 'missing' | 'error'. On a transient error after a good read the last data
+ * is kept (stale beats blank on a TV).
  */
-export function useDisplayScreen(screenId) {
-  const [state, setState] = useState({ forId: screenId, screen: null, status: 'loading', error: null })
+function useLiveDoc(subscribe, id) {
+  const fresh = (forId) => ({ forId, data: null, status: forId ? 'loading' : 'idle', error: null })
+  const [state, setState] = useState(() => fresh(id))
   // Reset during render when the id changes (no effect round-trip).
-  if (state.forId !== screenId) {
-    setState({ forId: screenId, screen: null, status: 'loading', error: null })
-  }
+  if (state.forId !== id) setState(fresh(id))
 
   useEffect(() => {
-    if (!screenId) return undefined
+    if (!id) return undefined
     const onError = (e) => {
-      if (e instanceof NotFoundError) setState({ forId: screenId, screen: null, status: 'missing', error: null })
-      else if (e instanceof MockModeError) setState({ forId: screenId, screen: null, status: 'error', error: e })
-      else setState((s) => (s.screen ? { ...s, error: e } : { ...s, status: 'error', error: e }))
+      if (e instanceof NotFoundError) setState({ forId: id, data: null, status: 'missing', error: null })
+      else if (e instanceof MockModeError) setState({ forId: id, data: null, status: 'error', error: e })
+      else setState((s) => (s.data ? { ...s, error: e } : { ...s, status: 'error', error: e }))
     }
     try {
-      return displayScreensApi.subscribeToDisplayScreen(
-        screenId,
-        (screen) => setState({ forId: screenId, screen, status: 'ready', error: null }),
-        onError,
-      )
+      return subscribe(id, (data) => setState({ forId: id, data, status: 'ready', error: null }), onError)
     } catch (e) {
       onError(e)
       return undefined
     }
-  }, [screenId])
+  }, [subscribe, id])
 
   return state
 }
 
-/** Live list of every named screen, sorted by name. screens is null until loaded. */
-export function useDisplayScreens() {
-  const [state, setState] = useState({ screens: null, mockMode: false, error: null })
+/** Live config for one named TV ({ data: screen, status, error }). */
+export function useDisplayScreen(screenId) {
+  return useLiveDoc(displayScreensApi.subscribeToDisplayScreen, screenId)
+}
+
+/** Live config for one TV set ({ data: group, status, error }). */
+export function useDisplayGroup(groupId) {
+  return useLiveDoc(displayGroupsApi.subscribeToDisplayGroup, groupId)
+}
+
+function useLiveList(subscribe) {
+  const [state, setState] = useState({ rows: null, mockMode: false, error: null })
 
   useEffect(() => {
     const onError = (e) => {
-      if (e instanceof MockModeError) setState({ screens: [], mockMode: true, error: null })
+      if (e instanceof MockModeError) setState({ rows: [], mockMode: true, error: null })
       else setState((s) => ({ ...s, error: e }))
     }
     try {
-      return displayScreensApi.subscribeToDisplayScreens(
-        (rows) =>
-          setState({ screens: [...rows].sort((a, b) => a.name.localeCompare(b.name)), mockMode: false, error: null }),
+      return subscribe(
+        (rows) => setState({ rows: [...rows].sort((a, b) => a.name.localeCompare(b.name)), mockMode: false, error: null }),
         onError,
       )
     } catch (e) {
       onError(e)
       return undefined
     }
-  }, [])
+  }, [subscribe])
 
   return state
+}
+
+/** Live list of every named screen, sorted by name. rows is null until loaded. */
+export function useDisplayScreens() {
+  return useLiveList(displayScreensApi.subscribeToDisplayScreens)
+}
+
+/** Live list of every TV set, sorted by name. rows is null until loaded. */
+export function useDisplayGroups() {
+  return useLiveList(displayGroupsApi.subscribeToDisplayGroups)
 }

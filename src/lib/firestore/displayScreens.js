@@ -16,13 +16,15 @@ export function subscribeToDisplayScreens(onUpdate, onError = () => {}) {
   return subscribeToCollection(displayScreensCollectionPath(), DisplayScreen, onUpdate, undefined, onError)
 }
 
-export function createDisplayScreen({ id, name }, actorId) {
+export function createDisplayScreen({ id, name, groupId = null }, actorId) {
   const now = Timestamp.now()
   return validatedSet(displayScreenPath(id), DisplayScreen, {
     id,
     name,
     tournamentId: null,
     screen: null,
+    groupId,
+    followGroup: true,
     createdAt: now,
     createdBy: actorId,
     updatedAt: now,
@@ -30,13 +32,17 @@ export function createDisplayScreen({ id, name }, actorId) {
   })
 }
 
-/** Change what a screen shows (and/or its label). */
-export function updateDisplayScreen(id, { name, tournamentId, screen }, actorId) {
-  const patch = { updatedAt: Timestamp.now(), updatedBy: actorId }
-  if (name !== undefined) patch.name = name
-  if (tournamentId !== undefined) patch.tournamentId = tournamentId
-  if (screen !== undefined) patch.screen = screen
-  return validatedUpdate(displayScreenPath(id), patch)
+const SCREEN_FIELDS = ['name', 'tournamentId', 'screen', 'groupId', 'followGroup']
+
+/**
+ * Change a screen's label, pick or set membership. Build set moves and
+ * overrides with planMoveScreen / planScreenOverride (lib/display.js) so the
+ * TV never jumps unexpectedly.
+ */
+export function updateDisplayScreen(id, patch, actorId) {
+  const update = { updatedAt: Timestamp.now(), updatedBy: actorId }
+  for (const k of SCREEN_FIELDS) if (patch[k] !== undefined) update[k] = patch[k]
+  return validatedUpdate(displayScreenPath(id), update)
 }
 
 export function deleteDisplayScreen(id) {

@@ -35,7 +35,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { useLiveTournaments, useSessionsByTournament, useDisplayScreen } from '../hooks/useDisplay'
+import { useLiveTournaments, useSessionsByTournament, useDisplayScreen, useDisplayGroup } from '../hooks/useDisplay'
 import {
   deriveClock,
   formatRemaining,
@@ -63,6 +63,7 @@ import {
   tickerItems,
   ordinalPlace,
   screenPinning,
+  resolveScreenConfig,
 } from '../lib/display'
 import { materializePayouts } from '../lib/payouts'
 import { estimateServerOffsetMs, shouldAdoptOffset } from '../lib/serverTime'
@@ -117,6 +118,11 @@ export default function Display() {
   const [params] = useSearchParams()
   const { screenId } = useParams()
   const named = useDisplayScreen(screenId ?? null)
+  // A TV in a set follows the set's pick (unless it has its own) — see
+  // resolveScreenConfig. A deleted set falls back to the TV's own fields.
+  const groupId = named.data?.groupId ?? null
+  const group = useDisplayGroup(groupId)
+  const groupPending = groupId != null && group.status === 'loading'
   const { tournaments, mockMode } = useLiveTournaments()
 
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -180,7 +186,9 @@ export default function Display() {
   const sessionsBy = useSessionsByTournament(sessionIds)
 
   // A named screen takes its pinning from its doc; bare /display from the URL.
-  const namedPin = screenId ? screenPinning(named.screen) : null
+  const namedPin = screenId
+    ? screenPinning(named.data ? resolveScreenConfig(named.data, group.data ? { [group.data.id]: group.data } : {}) : null)
+    : null
   const pinnedTournamentId = screenId ? namedPin.tournamentId : params.get('tournamentId')
   const pinnedScreen = screenId ? namedPin.screen : params.get('screen')
   const slides = useMemo(
@@ -265,7 +273,7 @@ export default function Display() {
     )
   }
 
-  if (tournaments === null || (screenId && named.status === 'loading')) {
+  if (tournaments === null || (screenId && (named.status === 'loading' || groupPending))) {
     return (
       <FullScreen timeOfDay={timeOfDay}>
         <p className="text-white/55 font-mono uppercase tracking-[0.3em]">Connecting…</p>

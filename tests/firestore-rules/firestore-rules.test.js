@@ -91,6 +91,7 @@ const matrix = [
   { name: 'auditLog',            pathParts: ['auditLog', 'a1'],                                      read: ['manager'], write: STAFF },
   { name: 'settings',            pathParts: ['settings', 'venue'],                                   read: ALL, write: ['manager'] },
   { name: 'displayScreens',      pathParts: ['displayScreens', 'bar-tv'],                            read: ALL, write: ['manager', 'td'] },
+  { name: 'displayGroups',       pathParts: ['displayGroups', 'g1'],                                 read: ALL, write: ['manager', 'td'] },
 
   // Subcollections under tournaments
   { name: 'sessions',    pathParts: ['tournaments', 't1', 'sessions', 's1'],   read: ALL, write: ['manager', 'td'] },

@@ -15,7 +15,7 @@ export { StructureTemplate } from './structureTemplate'
 export { TournamentTemplate } from './tournamentTemplate'
 export { AuditLogEntry, WELL_KNOWN_ACTION_TYPES } from './auditLog'
 export { VenueSettings, VENUE_SETTINGS_ID } from './venueSettings'
-export { DisplayScreen, SCREEN_ID_PATTERN } from './displayScreen'
+export { DisplayScreen, DisplayGroup, SCREEN_ID_PATTERN } from './displayScreen'
 
 // Subcollections under tournaments
 export { Session } from './session'

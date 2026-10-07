@@ -47,6 +47,7 @@ export * as tournamentTemplates from './tournamentTemplates'
 export * as auditLog from './auditLog'
 export * as venueSettings from './venueSettings'
 export * as displayScreens from './displayScreens'
+export * as displayGroups from './displayGroups'
 
 // Subcollections under tournaments
 export * as sessions from './sessions'
