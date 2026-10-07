@@ -22,7 +22,11 @@
 //
 // Auth: the route requires a signed-in user (any role — TVs use the shared
 // readonly account) but renders OUTSIDE the AppShell, so no sidebar chrome.
-// Pinning for dedicated TVs via query params:
+// Named screens (7 Oct 2026, the preferred setup): each TV opens
+//   /display/<screenId>          once, and what it shows (one tournament or
+//                                all; clock, prizes or both) is set from the
+//                                TV screens admin page and lands live.
+// Ad-hoc pinning via query params still works on bare /display:
 //   /display?tournamentId=<id>   only that tournament
 //   /display?screen=clock        only that screen kind
 //
@@ -30,8 +34,8 @@
 // notice (same rule as the TD clock).
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { useLiveTournaments, useSessionsByTournament } from '../hooks/useDisplay'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { useLiveTournaments, useSessionsByTournament, useDisplayScreen } from '../hooks/useDisplay'
 import {
   deriveClock,
   formatRemaining,
@@ -58,6 +62,7 @@ import {
   formatCloseIn,
   tickerItems,
   ordinalPlace,
+  screenPinning,
 } from '../lib/display'
 import { materializePayouts } from '../lib/payouts'
 import { estimateServerOffsetMs, shouldAdoptOffset } from '../lib/serverTime'
@@ -110,6 +115,8 @@ function safePayouts(tournament) {
 
 export default function Display() {
   const [params] = useSearchParams()
+  const { screenId } = useParams()
+  const named = useDisplayScreen(screenId ?? null)
   const { tournaments, mockMode } = useLiveTournaments()
 
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -172,8 +179,10 @@ export default function Display() {
   const sessionIds = useMemo(() => displayable.map((t) => t.id), [displayable])
   const sessionsBy = useSessionsByTournament(sessionIds)
 
-  const pinnedTournamentId = params.get('tournamentId')
-  const pinnedScreen = params.get('screen')
+  // A named screen takes its pinning from its doc; bare /display from the URL.
+  const namedPin = screenId ? screenPinning(named.screen) : null
+  const pinnedTournamentId = screenId ? namedPin.tournamentId : params.get('tournamentId')
+  const pinnedScreen = screenId ? namedPin.screen : params.get('screen')
   const slides = useMemo(
     () => buildSlides(displayable, { tournamentId: pinnedTournamentId, screen: pinnedScreen }),
     [displayable, pinnedTournamentId, pinnedScreen],
@@ -231,7 +240,32 @@ export default function Display() {
     )
   }
 
-  if (tournaments === null) {
+  if (screenId && named.status === 'missing') {
+    return (
+      <FullScreen timeOfDay={timeOfDay}>
+        <div className="text-center max-w-xl mx-auto">
+          <h1 className="font-display text-3xl text-gold-300 mb-3">Screen not set up</h1>
+          <p className="text-white/65">
+            There&apos;s no TV screen called <span className="font-mono text-white/85">{screenId}</span>. Add it under
+            Tournament floor → TV screens, or check this TV&apos;s link.
+          </p>
+        </div>
+      </FullScreen>
+    )
+  }
+
+  if (screenId && named.status === 'error') {
+    return (
+      <FullScreen timeOfDay={timeOfDay}>
+        <div className="text-center max-w-xl mx-auto">
+          <h1 className="font-display text-3xl text-gold-300 mb-3">Can&apos;t load this screen</h1>
+          <p className="text-white/65">{named.error?.message}</p>
+        </div>
+      </FullScreen>
+    )
+  }
+
+  if (tournaments === null || (screenId && named.status === 'loading')) {
     return (
       <FullScreen timeOfDay={timeOfDay}>
         <p className="text-white/55 font-mono uppercase tracking-[0.3em]">Connecting…</p>

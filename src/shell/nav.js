@@ -109,6 +109,15 @@ const NAV_ITEMS = [
     // payouts screen this picker links to is gated the same way in App.jsx.
     allowedRoles: ['td', 'cashier'],
   },
+  {
+    section: 'td',
+    to: '/td/screens',
+    label: 'TV screens',
+    icon: '▭',
+    // The venue's named TVs (/display/<id>) — the floor switches what each
+    // shows. Gated td+manager here, in App.jsx, and at the rules layer.
+    allowedRoles: ['td'],
+  },
   // NOTE: the standalone Live clock (/td/clock) is gone — the clock is run
   // per-tournament (Tournaments → open → Open clock), so a separate sidebar
   // entry was a redundant dead-end. Mystery bounty (/td/bounty) is a Phase-4

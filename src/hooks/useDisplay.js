@@ -12,9 +12,15 @@
 // Mock-mode (pure mock, no emulator) surfaces as a `mockMode` flag, matching
 // useTournaments / useClock.
 
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import { query, orderBy } from 'firebase/firestore'
-import { tournaments as tournamentsApi, sessions as sessionsApi, MockModeError } from '../lib/firestore'
+import {
+  tournaments as tournamentsApi,
+  sessions as sessionsApi,
+  displayScreens as displayScreensApi,
+  MockModeError,
+  NotFoundError,
+} from '../lib/firestore'
 
 const byScheduledDesc = (c) => query(c, orderBy('scheduledStartTime', 'desc'))
 
@@ -109,4 +115,64 @@ export function useSessionsByTournament(tournamentIds) {
   }, [key])
 
   return state.byTournament
+}
+
+// ── Named screens (/display/<id>, 7 Oct 2026) ──────────────────────────────
+
+/**
+ * Live config for one named TV. status: 'loading' | 'ready' | 'missing' |
+ * 'error'. On a transient error after a good read, the last config is kept
+ * (stale beats blank on a TV); 'missing' is a deleted or mistyped screen.
+ */
+export function useDisplayScreen(screenId) {
+  const [state, setState] = useState({ forId: screenId, screen: null, status: 'loading', error: null })
+  // Reset during render when the id changes (no effect round-trip).
+  if (state.forId !== screenId) {
+    setState({ forId: screenId, screen: null, status: 'loading', error: null })
+  }
+
+  useEffect(() => {
+    if (!screenId) return undefined
+    const onError = (e) => {
+      if (e instanceof NotFoundError) setState({ forId: screenId, screen: null, status: 'missing', error: null })
+      else if (e instanceof MockModeError) setState({ forId: screenId, screen: null, status: 'error', error: e })
+      else setState((s) => (s.screen ? { ...s, error: e } : { ...s, status: 'error', error: e }))
+    }
+    try {
+      return displayScreensApi.subscribeToDisplayScreen(
+        screenId,
+        (screen) => setState({ forId: screenId, screen, status: 'ready', error: null }),
+        onError,
+      )
+    } catch (e) {
+      onError(e)
+      return undefined
+    }
+  }, [screenId])
+
+  return state
+}
+
+/** Live list of every named screen, sorted by name. screens is null until loaded. */
+export function useDisplayScreens() {
+  const [state, setState] = useState({ screens: null, mockMode: false, error: null })
+
+  useEffect(() => {
+    const onError = (e) => {
+      if (e instanceof MockModeError) setState({ screens: [], mockMode: true, error: null })
+      else setState((s) => ({ ...s, error: e }))
+    }
+    try {
+      return displayScreensApi.subscribeToDisplayScreens(
+        (rows) =>
+          setState({ screens: [...rows].sort((a, b) => a.name.localeCompare(b.name)), mockMode: false, error: null }),
+        onError,
+      )
+    } catch (e) {
+      onError(e)
+      return undefined
+    }
+  }, [])
+
+  return state
 }

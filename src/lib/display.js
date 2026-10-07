@@ -316,3 +316,32 @@ export function ordinalPlace(place) {
   const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[place % 10] ?? 'th'
   return `${place}${suffix}`
 }
+
+// ── Named screens (/display/<id>, 7 Oct 2026) ──────────────────────────────
+
+/**
+ * URL slug for a new named screen: "Bar TV #2" → "bar-tv-2". Empty string when
+ * the name has nothing usable — the caller must refuse to create it.
+ */
+export function slugifyScreenId(name) {
+  return String(name ?? '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/, '')
+}
+
+/**
+ * The buildSlides pinning for a named screen's doc. A screen whose tournament
+ * isn't on the floor (finished, archived, deleted) idles — the same as a
+ * ?tournamentId= TV — rather than silently widening to every tournament.
+ */
+export function screenPinning(screenDoc) {
+  return {
+    tournamentId: screenDoc?.tournamentId ?? null,
+    screen: DISPLAY_SCREENS.includes(screenDoc?.screen) ? screenDoc.screen : null,
+  }
+}

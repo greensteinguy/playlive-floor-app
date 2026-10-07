@@ -42,6 +42,7 @@ import TdBounty from './pages/td/Bounty'
 import TdPayouts from './pages/td/Payouts'
 import TdTournamentPayouts from './pages/td/TournamentPayouts'
 import TdTournamentResults from './pages/td/TournamentResults'
+import TdScreens from './pages/td/Screens'
 
 // Admin
 import AdminAudit from './pages/admin/AuditLog'
@@ -63,6 +64,17 @@ export default function App() {
                 readonly account) but renders full-screen OUTSIDE the AppShell. */}
             <Route
               path="/display"
+              element={
+                <ProtectedRoute>
+                  <ErrorBoundary>
+                    <Display />
+                  </ErrorBoundary>
+                </ProtectedRoute>
+              }
+            />
+            {/* Named TV screens — what each shows is set on /td/screens. */}
+            <Route
+              path="/display/:screenId"
               element={
                 <ProtectedRoute>
                   <ErrorBoundary>
@@ -197,6 +209,16 @@ export default function App() {
                 element={<ErrorBoundary><TdTournamentResults /></ErrorBoundary>}
               />
               <Route path="/td/clock" element={<ErrorBoundary><TdClock /></ErrorBoundary>} />
+              <Route
+                path="/td/screens"
+                element={
+                  <ErrorBoundary>
+                    <ProtectedRoute requiredRoles={['td', 'manager']}>
+                      <TdScreens />
+                    </ProtectedRoute>
+                  </ErrorBoundary>
+                }
+              />
               <Route
                 path="/td/tables"
                 element={

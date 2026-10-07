@@ -19,6 +19,8 @@ import {
   structureSummary,
   tickerItems,
   ordinalPlace,
+  slugifyScreenId,
+  screenPinning,
 } from './display'
 
 // Fixed "now": 2026-08-10 14:00 local.
@@ -381,5 +383,38 @@ describe('pre-start countdown', () => {
     expect(formatUntilStart(120 * 60_000)).toBe('starts in 2h')
     expect(formatUntilStart(9 * 60_000)).toBe('starts in 9m')
     expect(formatUntilStart(0)).toBeNull()
+  })
+})
+
+describe('slugifyScreenId', () => {
+  it.each([
+    ['Bar TV', 'bar-tv'],
+    ['  Bar TV #2 ', 'bar-tv-2'],
+    ['Café — Main Room', 'cafe-main-room'],
+    ['TOURNAMENT-1', 'tournament-1'],
+    ['---', ''],
+    ['', ''],
+    [null, ''],
+  ])('%j → %j', (name, slug) => {
+    expect(slugifyScreenId(name)).toBe(slug)
+  })
+
+  it('caps the length without leaving a trailing hyphen', () => {
+    const slug = slugifyScreenId('a'.repeat(39) + ' bcd')
+    expect(slug.length).toBeLessThanOrEqual(40)
+    expect(slug.endsWith('-')).toBe(false)
+  })
+})
+
+describe('screenPinning', () => {
+  it('passes tournament + screen through', () => {
+    expect(screenPinning({ tournamentId: 't1', screen: 'prizes' })).toEqual({ tournamentId: 't1', screen: 'prizes' })
+  })
+  it('null fields mean rotate everything', () => {
+    expect(screenPinning({ tournamentId: null, screen: null })).toEqual({ tournamentId: null, screen: null })
+  })
+  it('drops an unknown screen kind and tolerates a missing doc', () => {
+    expect(screenPinning({ tournamentId: 't1', screen: 'stats' })).toEqual({ tournamentId: 't1', screen: null })
+    expect(screenPinning(null)).toEqual({ tournamentId: null, screen: null })
   })
 })

@@ -54,6 +54,7 @@ Exception: `walletTransactions` (immutable — once written, never edited; `time
 | `registrationRequests` | Player-App-initiated registrations awaiting the desk (Phase 6.2 — see §3.7). |
 | `linkRequests` | Failed phone auto-matches awaiting desk-verified account linking (Phase 6.2 — see §3.8). |
 | `settings` | Venue-wide configuration. One doc today, `settings/venue` (see §3.9). |
+| `displayScreens` | The venue's named TVs — what each `/display/<id>` shows (see §3.10). |
 
 **Subcollections** (six):
 
@@ -544,6 +545,23 @@ settings/venue
 
 - Read: all staff. Write: manager only (Admin → Settings).
 - A structure (`tournaments.smallestChip`, `structureTemplates.smallestChip`) names its smallest chip at level 1; every smaller chip in the set is out of play. Each `isColorUp` break removes the smallest chip still in play. The structure editor tints any blind/ante that isn't a multiple of the smallest chip in play — a warning, never enforced (`src/lib/chips.js`).
+
+### 3.10 `displayScreens` (7 Oct 2026)
+
+```
+displayScreens/{id}            id = URL slug, e.g. bar-tv (lowercase letters, digits, hyphens)
+  name:                        string          (label shown on TV screens page, e.g. "Bar TV")
+  tournamentId:                string | null   (null = rotate every live tournament)
+  screen:                      'clock' | 'prizes' | null   (null = both)
+  createdAt, updatedAt:        Timestamp
+  createdBy, updatedBy:        string          (staff uid)
+```
+
+**Notes**
+
+- Read: all staff (TVs sign in as readonly). Write: TD + manager (Tournament floor → TV screens).
+- Each TV opens `/display/<id>` once and subscribes to its doc, so a change lands live. A missing doc shows "Screen not set up". A tournament that isn't on the floor makes the TV idle; it doesn't widen to every tournament.
+- Hard-deleted on Remove (config, not a record).
 
 ---
 
