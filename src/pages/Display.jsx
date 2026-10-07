@@ -11,7 +11,7 @@
 //   - break mode: cool-toned full-screen shift with a "back at H:MM" line
 //   - late-reg slot (closes-in countdown → "registration closed · paying N")
 //   - bottom ticker strip (payouts, guarantee, late-reg/buy-in info)
-//   - total chips in the counter strip; prizes slide sits out while pool is $0
+//   - prizes slide sits out while pool is $0
 //
 // The clock face DERIVES level + countdown from the session's anchor fields
 // (lib/clock.js) with a local 250ms tick, exactly like the TD control screen —
@@ -403,13 +403,12 @@ function IdleScreen() {
 }
 
 function CounterStrip({ tournament, withPool = false }) {
-  const { entries, remaining, reentries, avgStack, totalChips } = displayCounters(tournament)
+  const { entries, remaining, reentries, avgStack } = displayCounters(tournament)
   const cells = [
     ['Entries', entries.toLocaleString()],
     ['Remaining', remaining.toLocaleString()],
     ['Re-entries', reentries.toLocaleString()],
     ['Avg stack', avgStack != null ? avgStack.toLocaleString() : '—'],
-    ['Total chips', totalChips != null ? totalChips.toLocaleString() : '—'],
     // The clock slide carries the pool in its money rail; the prizes slide
     // (no rails) keeps it in the strip.
     ...(withPool ? [['Prize pool', formatDisplayMoney(tournament.totalPrizePool)]] : []),
