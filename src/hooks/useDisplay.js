@@ -12,9 +12,16 @@
 // Mock-mode (pure mock, no emulator) surfaces as a `mockMode` flag, matching
 // useTournaments / useClock.
 
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import { query, orderBy } from 'firebase/firestore'
-import { tournaments as tournamentsApi, sessions as sessionsApi, MockModeError } from '../lib/firestore'
+import {
+  tournaments as tournamentsApi,
+  sessions as sessionsApi,
+  displayScreens as displayScreensApi,
+  displayGroups as displayGroupsApi,
+  MockModeError,
+  NotFoundError,
+} from '../lib/firestore'
 
 const byScheduledDesc = (c) => query(c, orderBy('scheduledStartTime', 'desc'))
 
@@ -109,4 +116,77 @@ export function useSessionsByTournament(tournamentIds) {
   }, [key])
 
   return state.byTournament
+}
+
+// ── Named screens + sets (/display/<id>, 7 Oct 2026) ───────────────────────
+
+/**
+ * Live single doc by id. status: 'idle' (no id) | 'loading' | 'ready' |
+ * 'missing' | 'error'. On a transient error after a good read the last data
+ * is kept (stale beats blank on a TV).
+ */
+function useLiveDoc(subscribe, id) {
+  const fresh = (forId) => ({ forId, data: null, status: forId ? 'loading' : 'idle', error: null })
+  const [state, setState] = useState(() => fresh(id))
+  // Reset during render when the id changes (no effect round-trip).
+  if (state.forId !== id) setState(fresh(id))
+
+  useEffect(() => {
+    if (!id) return undefined
+    const onError = (e) => {
+      if (e instanceof NotFoundError) setState({ forId: id, data: null, status: 'missing', error: null })
+      else if (e instanceof MockModeError) setState({ forId: id, data: null, status: 'error', error: e })
+      else setState((s) => (s.data ? { ...s, error: e } : { ...s, status: 'error', error: e }))
+    }
+    try {
+      return subscribe(id, (data) => setState({ forId: id, data, status: 'ready', error: null }), onError)
+    } catch (e) {
+      onError(e)
+      return undefined
+    }
+  }, [subscribe, id])
+
+  return state
+}
+
+/** Live config for one named TV ({ data: screen, status, error }). */
+export function useDisplayScreen(screenId) {
+  return useLiveDoc(displayScreensApi.subscribeToDisplayScreen, screenId)
+}
+
+/** Live config for one TV set ({ data: group, status, error }). */
+export function useDisplayGroup(groupId) {
+  return useLiveDoc(displayGroupsApi.subscribeToDisplayGroup, groupId)
+}
+
+function useLiveList(subscribe) {
+  const [state, setState] = useState({ rows: null, mockMode: false, error: null })
+
+  useEffect(() => {
+    const onError = (e) => {
+      if (e instanceof MockModeError) setState({ rows: [], mockMode: true, error: null })
+      else setState((s) => ({ ...s, error: e }))
+    }
+    try {
+      return subscribe(
+        (rows) => setState({ rows: [...rows].sort((a, b) => a.name.localeCompare(b.name)), mockMode: false, error: null }),
+        onError,
+      )
+    } catch (e) {
+      onError(e)
+      return undefined
+    }
+  }, [subscribe])
+
+  return state
+}
+
+/** Live list of every named screen, sorted by name. rows is null until loaded. */
+export function useDisplayScreens() {
+  return useLiveList(displayScreensApi.subscribeToDisplayScreens)
+}
+
+/** Live list of every TV set, sorted by name. rows is null until loaded. */
+export function useDisplayGroups() {
+  return useLiveList(displayGroupsApi.subscribeToDisplayGroups)
 }

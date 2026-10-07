@@ -18,6 +18,8 @@ export const STRUCTURE_TEMPLATES = 'structureTemplates'
 export const TOURNAMENT_TEMPLATES = 'tournamentTemplates'
 export const AUDIT_LOG = 'auditLog'
 export const SETTINGS = 'settings'
+export const DISPLAY_SCREENS = 'displayScreens'
+export const DISPLAY_GROUPS = 'displayGroups'
 
 // ── Subcollection names ────────────────────────────────────────────────────
 export const SESSIONS = 'sessions'
@@ -54,6 +56,12 @@ export const auditLogCollectionPath = () => [AUDIT_LOG]
 export const auditLogPath = (id) => [AUDIT_LOG, id]
 
 export const settingsPath = (id) => [SETTINGS, id]
+
+export const displayScreensCollectionPath = () => [DISPLAY_SCREENS]
+export const displayScreenPath = (id) => [DISPLAY_SCREENS, id]
+
+export const displayGroupsCollectionPath = () => [DISPLAY_GROUPS]
+export const displayGroupPath = (id) => [DISPLAY_GROUPS, id]
 
 // ── Subcollection paths (under tournaments) ────────────────────────────────
 

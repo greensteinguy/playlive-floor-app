@@ -19,6 +19,12 @@ import {
   structureSummary,
   tickerItems,
   ordinalPlace,
+  slugifyScreenId,
+  screenPinning,
+  resolveScreenConfig,
+  planMoveScreen,
+  planScreenOverride,
+  pickerTournaments,
 } from './display'
 
 // Fixed "now": 2026-08-10 14:00 local.
@@ -381,5 +387,112 @@ describe('pre-start countdown', () => {
     expect(formatUntilStart(120 * 60_000)).toBe('starts in 2h')
     expect(formatUntilStart(9 * 60_000)).toBe('starts in 9m')
     expect(formatUntilStart(0)).toBeNull()
+  })
+})
+
+describe('slugifyScreenId', () => {
+  it.each([
+    ['Bar TV', 'bar-tv'],
+    ['  Bar TV #2 ', 'bar-tv-2'],
+    ['Café — Main Room', 'cafe-main-room'],
+    ['TOURNAMENT-1', 'tournament-1'],
+    ['---', ''],
+    ['', ''],
+    [null, ''],
+  ])('%j → %j', (name, slug) => {
+    expect(slugifyScreenId(name)).toBe(slug)
+  })
+
+  it('caps the length without leaving a trailing hyphen', () => {
+    const slug = slugifyScreenId('a'.repeat(39) + ' bcd')
+    expect(slug.length).toBeLessThanOrEqual(40)
+    expect(slug.endsWith('-')).toBe(false)
+  })
+})
+
+describe('screenPinning', () => {
+  it('passes tournament + screen through', () => {
+    expect(screenPinning({ tournamentId: 't1', screen: 'prizes' })).toEqual({ tournamentId: 't1', screen: 'prizes' })
+  })
+  it('null fields mean rotate everything', () => {
+    expect(screenPinning({ tournamentId: null, screen: null })).toEqual({ tournamentId: null, screen: null })
+  })
+  it('drops an unknown screen kind and tolerates a missing doc', () => {
+    expect(screenPinning({ tournamentId: 't1', screen: 'stats' })).toEqual({ tournamentId: 't1', screen: null })
+    expect(screenPinning(null)).toEqual({ tournamentId: null, screen: null })
+  })
+})
+
+describe('TV sets', () => {
+  const groups = { g1: { id: 'g1', tournamentId: 'tA', screen: 'clock' } }
+  const tv = (over) => ({ id: 'bar', groupId: null, followGroup: true, tournamentId: 'tB', screen: null, ...over })
+
+  describe('resolveScreenConfig', () => {
+    it('ungrouped TV shows its own pick', () => {
+      expect(resolveScreenConfig(tv(), groups)).toEqual({ tournamentId: 'tB', screen: null, source: 'own' })
+    })
+    it('following TV shows the set pick', () => {
+      expect(resolveScreenConfig(tv({ groupId: 'g1' }), groups)).toEqual({ tournamentId: 'tA', screen: 'clock', source: 'set' })
+    })
+    it('a TV with its own pick inside a set keeps it', () => {
+      expect(resolveScreenConfig(tv({ groupId: 'g1', followGroup: false }), groups).source).toBe('own')
+    })
+    it('a deleted set falls back to the TV own pick', () => {
+      expect(resolveScreenConfig(tv({ groupId: 'gone' }), groups)).toEqual({ tournamentId: 'tB', screen: null, source: 'own' })
+    })
+  })
+
+  describe('planMoveScreen', () => {
+    it('no-op when already in the target', () => {
+      expect(planMoveScreen(tv({ groupId: 'g1' }), 'g1', groups)).toBeNull()
+      expect(planMoveScreen(tv(), null, groups)).toBeNull()
+    })
+    it('joining a set follows it', () => {
+      expect(planMoveScreen(tv(), 'g1', groups)).toEqual({ groupId: 'g1', followGroup: true })
+    })
+    it('leaving a set freezes what it was showing', () => {
+      expect(planMoveScreen(tv({ groupId: 'g1' }), null, groups)).toEqual({
+        groupId: null, followGroup: true, tournamentId: 'tA', screen: 'clock',
+      })
+    })
+  })
+
+  describe('planScreenOverride', () => {
+    it('a tournament drop on a following TV keeps the set screen kind', () => {
+      expect(planScreenOverride(tv({ groupId: 'g1' }), groups, { tournamentId: 'tC' })).toEqual({
+        tournamentId: 'tC', screen: 'clock', followGroup: false,
+      })
+    })
+    it('a show change keeps the current tournament; ungrouped stays followGroup true', () => {
+      expect(planScreenOverride(tv(), groups, { screen: 'prizes' })).toEqual({
+        tournamentId: 'tB', screen: 'prizes', followGroup: true,
+      })
+    })
+    it('null tournament means rotate all live', () => {
+      expect(planScreenOverride(tv({ groupId: 'g1' }), groups, { tournamentId: null }).tournamentId).toBeNull()
+    })
+  })
+
+  describe('pickerTournaments', () => {
+    const ts = (ms) => ({ toMillis: () => ms })
+    const list = [
+      { id: 'a', name: 'Friday NLH', status: 'scheduled', scheduledStartTime: ts(300) },
+      { id: 'b', name: 'Turbo', status: 'lateRegOpen', scheduledStartTime: ts(100) },
+      { id: 'c', name: 'Old one', status: 'finished', scheduledStartTime: ts(10) },
+      { id: 'd', name: 'Older', status: 'finished', scheduledStartTime: ts(5) },
+      { id: 'e', name: 'Draft', status: 'draft', scheduledStartTime: ts(1) },
+    ]
+    it('active = scheduled + late reg, soonest first, no drafts', () => {
+      expect(pickerTournaments(list, 'active').map((t) => t.id)).toEqual(['b', 'a'])
+    })
+    it('finished = most recent first', () => {
+      expect(pickerTournaments(list, 'finished').map((t) => t.id)).toEqual(['c', 'd'])
+    })
+    it('searches by name, case-insensitively', () => {
+      expect(pickerTournaments(list, 'active', 'fri').map((t) => t.id)).toEqual(['a'])
+    })
+    it('unknown filter falls back to active', () => {
+      expect(pickerTournaments(list, 'nope').map((t) => t.id)).toEqual(['b', 'a'])
+    })
   })
 })

@@ -316,3 +316,98 @@ export function ordinalPlace(place) {
   const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[place % 10] ?? 'th'
   return `${place}${suffix}`
 }
+
+// ── Named screens (/display/<id>, 7 Oct 2026) ──────────────────────────────
+
+/**
+ * URL slug for a new named screen: "Bar TV #2" → "bar-tv-2". Empty string when
+ * the name has nothing usable — the caller must refuse to create it.
+ */
+export function slugifyScreenId(name) {
+  return String(name ?? '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/, '')
+}
+
+/**
+ * The buildSlides pinning for a named screen's doc. A screen whose tournament
+ * isn't on the floor (finished, archived, deleted) idles — the same as a
+ * ?tournamentId= TV — rather than silently widening to every tournament.
+ */
+export function screenPinning(screenDoc) {
+  return {
+    tournamentId: screenDoc?.tournamentId ?? null,
+    screen: DISPLAY_SCREENS.includes(screenDoc?.screen) ? screenDoc.screen : null,
+  }
+}
+
+// ── TV sets (displayGroups, 7 Oct 2026) ────────────────────────────────────
+
+/**
+ * What a named TV actually shows. A TV in a set that is following it shows
+ * the set's pick; otherwise (no set, its own pick, or a set that has since
+ * been deleted) its own fields. source: 'set' | 'own'.
+ */
+export function resolveScreenConfig(screen, groupsById) {
+  const group = screen?.groupId ? groupsById?.[screen.groupId] ?? null : null
+  if (group && screen.followGroup !== false) {
+    return { tournamentId: group.tournamentId ?? null, screen: group.screen ?? null, source: 'set' }
+  }
+  return { tournamentId: screen?.tournamentId ?? null, screen: screen?.screen ?? null, source: 'own' }
+}
+
+/**
+ * Patch to move a TV into a set (it starts following it) or out of all sets
+ * (groupId null). Leaving a set freezes what it was showing into its own
+ * fields so the TV doesn't jump. null = no change.
+ */
+export function planMoveScreen(screen, targetGroupId, groupsById) {
+  const target = targetGroupId ?? null
+  if ((screen.groupId ?? null) === target) return null
+  if (target === null) {
+    const now = resolveScreenConfig(screen, groupsById)
+    return { groupId: null, followGroup: true, tournamentId: now.tournamentId, screen: now.screen }
+  }
+  return { groupId: target, followGroup: true }
+}
+
+/**
+ * Patch to give one TV its own pick — a tournament (null = rotate all live)
+ * and/or a screen kind. Whatever isn't given carries over from what it shows
+ * now. A TV in a set stops following it.
+ */
+export function planScreenOverride(screen, groupsById, { tournamentId, screen: kind } = {}) {
+  const now = resolveScreenConfig(screen, groupsById)
+  return {
+    tournamentId: tournamentId !== undefined ? tournamentId : now.tournamentId,
+    screen: kind !== undefined ? kind : now.screen,
+    followGroup: screen.groupId ? false : true,
+  }
+}
+
+export const TOURNAMENT_FILTERS = [
+  { id: 'active', label: 'Active', statuses: ['scheduled', 'lateRegOpen', 'lateRegClosed'] },
+  { id: 'lateRegOpen', label: 'Late reg open', statuses: ['lateRegOpen'] },
+  { id: 'lateRegClosed', label: 'Late reg closed', statuses: ['lateRegClosed'] },
+  { id: 'scheduled', label: 'Scheduled', statuses: ['scheduled'] },
+  { id: 'finished', label: 'Finished', statuses: ['finished'] },
+]
+
+/**
+ * Tournaments for the TV screens picker: by status filter and a name search.
+ * Upcoming/live sort soonest first; finished sorts most recent first.
+ */
+export function pickerTournaments(tournaments, filterId, search = '') {
+  const filter = TOURNAMENT_FILTERS.find((f) => f.id === filterId) ?? TOURNAMENT_FILTERS[0]
+  const needle = search.trim().toLowerCase()
+  const dir = filter.id === 'finished' ? -1 : 1
+  return (tournaments ?? [])
+    .filter((t) => filter.statuses.includes(t.status))
+    .filter((t) => !needle || (t.name ?? '').toLowerCase().includes(needle))
+    .sort((a, b) => dir * ((tsToMillis(a.scheduledStartTime) ?? 0) - (tsToMillis(b.scheduledStartTime) ?? 0)))
+}
