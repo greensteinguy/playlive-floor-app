@@ -27,6 +27,7 @@ vi.mock('../wallet', () => {
 })
 
 import { entries as entriesApi, runValidatedTransaction } from '../firestore'
+import { displayCounters } from '../display'
 import {
   payViaExternalMethod,
   payViaWallet,
@@ -553,5 +554,52 @@ describe('registerEntry — deterministic entry id + in-transaction guard', () =
       lastLongerDeck: 'upper',
     })
     expect(res.lastLongerDeckApplied).toBeNull()
+  })
+})
+
+// ── Registration → TV display (end to end through the pure layers) ─────────
+// The TVs read only the tournament's denormalized counters, so this chains
+// computeEntryCounters (what registration writes) into displayCounters (what
+// the clock/prizes slides render) over a realistic floor sequence.
+
+describe('entries and re-entries reach the TV counters', () => {
+  const BUY_IN = 80_00
+  const STACK = 20_000
+  const entry = (playerId, { busted = false, voided = false } = {}) => ({
+    playerId,
+    bustedAt: busted ? {} : null,
+    voidedAt: voided ? {} : null,
+  })
+  const tvView = (entries) => {
+    const counters = computeEntryCounters(entries, BUY_IN)
+    return { ...displayCounters({ ...counters, startingStack: STACK }), pool: counters.totalPrizePool }
+  }
+
+  it('first registration', () => {
+    expect(tvView([entry('a')])).toEqual({
+      entries: 1, remaining: 1, reentries: 0, totalChips: 20_000, avgStack: 20_000, pool: 80_00,
+    })
+  })
+
+  it('a second player registers', () => {
+    expect(tvView([entry('a'), entry('b')])).toMatchObject({ entries: 2, remaining: 2, reentries: 0, pool: 160_00 })
+  })
+
+  it('a bust drops remaining but not entries or the pool', () => {
+    expect(tvView([entry('a', { busted: true }), entry('b')])).toEqual({
+      entries: 2, remaining: 1, reentries: 0, totalChips: 40_000, avgStack: 40_000, pool: 160_00,
+    })
+  })
+
+  it('a re-entry adds an entry, a re-entry, a player back and buy-in to the pool', () => {
+    expect(tvView([entry('a', { busted: true }), entry('b'), entry('a')])).toEqual({
+      entries: 3, remaining: 2, reentries: 1, totalChips: 60_000, avgStack: 30_000, pool: 240_00,
+    })
+  })
+
+  it('a voided re-entry comes back off every TV number', () => {
+    expect(tvView([entry('a', { busted: true }), entry('b'), entry('a', { voided: true })])).toEqual(
+      tvView([entry('a', { busted: true }), entry('b')]),
+    )
   })
 })

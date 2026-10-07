@@ -23,6 +23,7 @@ export function createDisplayGroup({ name }, actorId) {
   return validatedSet(displayGroupPath(id), DisplayGroup, {
     id,
     name,
+    kind: 'tournament',
     tournamentId: null,
     screen: null,
     createdAt: now,
@@ -32,7 +33,7 @@ export function createDisplayGroup({ name }, actorId) {
   })
 }
 
-const GROUP_FIELDS = ['name', 'tournamentId', 'screen']
+const GROUP_FIELDS = ['name', 'kind', 'tournamentId', 'screen']
 
 export function updateDisplayGroup(id, patch, actorId) {
   const update = { updatedAt: Timestamp.now(), updatedBy: actorId }

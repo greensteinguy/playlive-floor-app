@@ -23,6 +23,7 @@ export function createDisplayScreen({ id, name, groupId = null }, actorId) {
     name,
     tournamentId: null,
     screen: null,
+    kind: 'tournament',
     groupId,
     followGroup: true,
     createdAt: now,
@@ -32,7 +33,7 @@ export function createDisplayScreen({ id, name, groupId = null }, actorId) {
   })
 }
 
-const SCREEN_FIELDS = ['name', 'tournamentId', 'screen', 'groupId', 'followGroup']
+const SCREEN_FIELDS = ['name', 'kind', 'tournamentId', 'screen', 'groupId', 'followGroup']
 
 /**
  * Change a screen's label, pick or set membership. Build set moves and
