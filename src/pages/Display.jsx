@@ -64,6 +64,11 @@ import {
   ordinalPlace,
   screenPinning,
   resolveScreenConfig,
+  todaysTournaments,
+  todayStatus,
+  todayStartLabel,
+  pageRows,
+  structureSummary,
 } from '../lib/display'
 import { materializePayouts } from '../lib/payouts'
 import { estimateServerOffsetMs, shouldAdoptOffset } from '../lib/serverTime'
@@ -185,15 +190,20 @@ export default function Display() {
   const sessionIds = useMemo(() => displayable.map((t) => t.id), [displayable])
   const sessionsBy = useSessionsByTournament(sessionIds)
 
-  // A named screen takes its pinning from its doc; bare /display from the URL.
-  const namedPin = screenId
-    ? screenPinning(named.data ? resolveScreenConfig(named.data, group.data ? { [group.data.id]: group.data } : {}) : null)
-    : null
+  // A named screen takes its pick from its doc (or its set's); bare /display
+  // from the URL. A named screen never rotates every tournament: with no
+  // tournament assigned (or a venue-wide kind like 'today') it has no slides.
+  const namedConfig =
+    screenId && named.data
+      ? resolveScreenConfig(named.data, group.data ? { [group.data.id]: group.data } : {})
+      : null
+  const namedPin = screenId ? screenPinning(namedConfig) : null
   const pinnedTournamentId = screenId ? namedPin.tournamentId : params.get('tournamentId')
   const pinnedScreen = screenId ? namedPin.screen : params.get('screen')
+  const noSlides = screenId != null && (namedConfig?.kind !== 'tournament' || pinnedTournamentId == null)
   const slides = useMemo(
-    () => buildSlides(displayable, { tournamentId: pinnedTournamentId, screen: pinnedScreen }),
-    [displayable, pinnedTournamentId, pinnedScreen],
+    () => (noSlides ? [] : buildSlides(displayable, { tournamentId: pinnedTournamentId, screen: pinnedScreen })),
+    [noSlides, displayable, pinnedTournamentId, pinnedScreen],
   )
 
   // Rotation. A deck-shape change resets the index during render (React's
@@ -277,6 +287,25 @@ export default function Display() {
     return (
       <FullScreen timeOfDay={timeOfDay}>
         <p className="text-white/55 font-mono uppercase tracking-[0.3em]">Connecting…</p>
+      </FullScreen>
+    )
+  }
+
+  if (namedConfig?.kind === 'today') {
+    return <TodayScreen tournaments={tournaments} nowMs={nowMinute * 60_000} timeOfDay={timeOfDay} />
+  }
+
+  if (screenId && pinnedTournamentId == null) {
+    return (
+      <FullScreen timeOfDay={timeOfDay}>
+        <div className="text-center">
+          <div className="font-brand text-[6vh] tracking-[0.3em] text-brand-400 [text-shadow:0_0_40px_rgba(239,43,43,0.5)] mb-[2vh]">
+            PLAYLIVE
+          </div>
+          <p className="font-mono uppercase tracking-[0.4em] text-[1.8vh] text-white/50">
+            {named.data?.name} · nothing assigned yet
+          </p>
+        </div>
       </FullScreen>
     )
   }
@@ -792,5 +821,98 @@ function PrizesSlide({ tournament }) {
       </div>
       <Ticker tournament={tournament} payouts={payouts} />
     </>
+  )
+}
+
+/* ── Today's tournaments (named-screen kind 'today', 7 Oct 2026) ──────────── */
+
+const TODAY_PER_PAGE = 8
+const TODAY_PAGE_MS = 12_000
+
+const TONE_CLASS = {
+  open: 'bg-emerald-500/15 text-emerald-300',
+  running: 'bg-brand-500/15 text-brand-300',
+  upcoming: 'bg-gold-500/15 text-gold-200',
+  done: 'bg-white/5 text-white/45',
+}
+
+function TodayScreen({ tournaments, nowMs, timeOfDay }) {
+  const rows = useMemo(() => todaysTournaments(tournaments, nowMs), [tournaments, nowMs])
+  const pages = pageRows(rows, TODAY_PER_PAGE)
+  const [pageIndex, setPageIndex] = useState(0)
+  const safePage = pageIndex % pages.length
+  useEffect(() => {
+    if (pages.length <= 1) return undefined
+    const t = setTimeout(() => setPageIndex((i) => (i + 1) % pages.length), TODAY_PAGE_MS)
+    return () => clearTimeout(t)
+  }, [safePage, pages.length])
+
+  const dateLabel = new Date(nowMs).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })
+
+  return (
+    <FullScreen timeOfDay={timeOfDay} rotation={pages.length > 1 ? { index: safePage, count: pages.length } : null}>
+      <div className="absolute inset-0 flex flex-col px-[4vw] pt-[10vh] pb-[9vh]">
+        <div className="flex items-baseline justify-between mb-[3vh]">
+          <h1 className="font-display text-[5.2vmin] text-gold-300 leading-none">Today&apos;s tournaments</h1>
+          <span className="font-mono uppercase tracking-[0.3em] text-[1.8vmin] text-white/50">{dateLabel}</span>
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="font-mono uppercase tracking-[0.4em] text-[2vmin] text-white/50">No tournaments today</p>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col">
+            <div className="grid grid-cols-[14vmin_1fr_15vmin_17vmin_12vmin_26vmin] gap-x-[2vw] pb-[1.2vh] border-b border-white/10 font-mono uppercase tracking-[0.25em] text-[1.5vmin] text-white/40">
+              <span>Start</span>
+              <span>Tournament</span>
+              <span className="text-right">Buy-in</span>
+              <span className="text-right">Guarantee</span>
+              <span className="text-right">Entries</span>
+              <span className="text-right">Status</span>
+            </div>
+            {pages[safePage].map((t) => {
+              const status = todayStatus(t, nowMs)
+              const done = status.tone === 'done'
+              const summary = structureSummary(t)
+              return (
+                <div
+                  key={t.id}
+                  className={
+                    'grid grid-cols-[14vmin_1fr_15vmin_17vmin_12vmin_26vmin] gap-x-[2vw] items-center py-[1.6vh] border-b border-white/5 ' +
+                    (done ? 'opacity-50' : '')
+                  }
+                >
+                  <span className="font-display text-[3.6vmin] leading-tight text-white tabular-nums">{todayStartLabel(t, nowMs)}</span>
+                  <span className="min-w-0">
+                    <span className="block font-display text-[3.2vmin] leading-tight text-white/90 line-clamp-2">{t.name}</span>
+                    {summary && <span className="block text-[1.7vmin] text-white/50 truncate">{summary}</span>}
+                  </span>
+                  <span className="text-right font-display text-[3vmin] text-white/85 tabular-nums">
+                    {t.buyIn > 0 ? formatDisplayMoney(t.buyIn) : '—'}
+                  </span>
+                  <span
+                    className={
+                      'text-right font-display text-[3vmin] tabular-nums ' +
+                      (t.guarantee > 0 ? 'text-brand-300' : 'text-white/85')
+                    }
+                  >
+                    {t.guarantee > 0 ? formatDisplayMoney(t.guarantee) : '—'}
+                  </span>
+                  <span className="text-right font-display text-[3vmin] text-white/85 tabular-nums">
+                    {t.entryCount > 0 ? t.entryCount.toLocaleString() : '—'}
+                  </span>
+                  <span className="text-right">
+                    <span className={'inline-block px-[1.2vmin] py-[0.5vmin] rounded font-mono uppercase tracking-[0.15em] text-[1.6vmin] ' + TONE_CLASS[status.tone]}>
+                      {status.label}
+                    </span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </FullScreen>
   )
 }

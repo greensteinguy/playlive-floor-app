@@ -5,7 +5,7 @@
 // doc (and its set's displayGroups doc) and changes land live.
 //
 // Two panes, drag and drop (@dnd-kit — mouse on the venue PC, touch on iPad):
-//   left  — tournaments, filterable by state, plus a "Rotate all live" tile
+//   left  — venue-wide screens (Today's tournaments) + tournaments, filterable by state
 //   right — the sets, each a list of its TVs, plus "Not in a set"
 // Drop a tournament on a set's header → the whole set shows it. Drop it on
 // one TV → that TV gets its own pick ("Follow set" undoes it). Drag a TV by
@@ -31,6 +31,9 @@ import { useDisplayGroups, useDisplayScreens, useLiveTournaments } from '../../h
 import { displayGroups as displayGroupsApi, displayScreens as displayScreensApi } from '../../lib/firestore'
 import {
   TOURNAMENT_FILTERS,
+  VENUE_SCREEN_KINDS,
+  pickFromTile,
+  samePick,
   displayableTournaments,
   pickerTournaments,
   planMoveScreen,
@@ -41,7 +44,12 @@ import {
 import StatusBadge from '../../components/StatusBadge'
 import { EmptyState } from '../../components/FormFields'
 
-const ROTATE_ALL = '__all__'
+// Picker tile drag ids: "tour:<tournamentId>" or "tour:@<kind>" for a
+// venue-wide screen (VENUE_SCREEN_KINDS). Both drop the same way.
+const VIEW_PREFIX = '@'
+const tileFromDragId = (rest) =>
+  rest.startsWith(VIEW_PREFIX) ? { kind: rest.slice(1) } : { kind: 'tournament', tournamentId: rest }
+const tileKey = (config) => (config.kind === 'tournament' ? config.tournamentId : VIEW_PREFIX + config.kind)
 const NO_SET = '__none__'
 const COLLAPSED_KEY = 'tvScreens.collapsed'
 
@@ -132,18 +140,23 @@ export default function Screens() {
   const groupsById = useMemo(() => Object.fromEntries((groups ?? []).map((g) => [g.id, g])), [groups])
   const screensById = useMemo(() => Object.fromEntries((screens ?? []).map((s) => [s.id, s])), [screens])
 
-  // How many TVs show each pick (ROTATE_ALL for "rotate all live").
+  // How many TVs show each picker tile (keyed like tileKey).
   const tvCounts = useMemo(() => {
     const counts = {}
     for (const s of screens ?? []) {
-      const key = resolveScreenConfig(s, groupsById).tournamentId ?? ROTATE_ALL
-      counts[key] = (counts[key] ?? 0) + 1
+      const key = tileKey(resolveScreenConfig(s, groupsById))
+      if (key != null) counts[key] = (counts[key] ?? 0) + 1
     }
     return counts
   }, [screens, groupsById])
 
-  const pickName = (tournamentId) =>
-    tournamentId == null ? 'Rotating all live' : (tournamentsById[tournamentId]?.name ?? 'Unknown tournament')
+  /** Label for a pick ({kind, tournamentId}). */
+  const pickName = (config) => {
+    const view = VENUE_SCREEN_KINDS.find((v) => v.kind === config.kind)
+    if (view) return view.label
+    if (config.tournamentId == null) return 'Nothing assigned'
+    return tournamentsById[config.tournamentId]?.name ?? 'Unknown tournament'
+  }
 
   const membersOf = (groupId) => (screens ?? []).filter((s) => s.groupId === groupId)
   // A TV whose set was deleted under it shows in "Not in a set".
@@ -176,20 +189,17 @@ export default function Screens() {
     const overId = idOf(over.id)
 
     if (dragKind === 'tour') {
-      const tournamentId = dragId === ROTATE_ALL ? null : dragId
+      const pick = pickFromTile(tileFromDragId(dragId))
       if (overKind === 'set' && overId !== NO_SET) {
         const g = groupsById[overId]
-        if (!g || (g.tournamentId ?? null) === tournamentId) return
-        run(
-          displayGroupsApi.updateDisplayGroup(overId, { tournamentId }, user.uid),
-          `${g.name} → ${pickName(tournamentId)}.`,
-        )
+        if (!g || samePick(g, pick)) return
+        run(displayGroupsApi.updateDisplayGroup(overId, pick, user.uid), `${g.name} → ${pickName(pick)}.`)
       } else if (overKind === 'screen') {
         const s = screensById[overId]
         if (!s) return
         run(
-          displayScreensApi.updateDisplayScreen(overId, planScreenOverride(s, groupsById, { tournamentId }), user.uid),
-          `${s.name} → ${pickName(tournamentId)}.`,
+          displayScreensApi.updateDisplayScreen(overId, planScreenOverride(s, groupsById, pick), user.uid),
+          `${s.name} → ${pickName(pick)}.`,
         )
       }
       return
@@ -252,7 +262,7 @@ export default function Screens() {
     <div className="px-6 py-8 md:px-10 md:py-10">
       <h1 className="font-display text-3xl md:text-4xl text-gold-400 mb-2">TV screens</h1>
       <p className="text-white/65 text-sm mb-6 max-w-3xl">
-        Drag a tournament onto a set to put it on every TV in that set, or onto one TV to change just that one. Drag TVs
+        Drag a tournament, or a venue screen like Today&apos;s tournaments, onto a set to put it on every TV in that set, or onto one TV to change just that one. Drag TVs
         by their handle (⋮⋮) to move them between sets. Open each TV&apos;s link on that TV once, signed in as the
         readonly account. It updates by itself from then on.
       </p>
@@ -313,9 +323,7 @@ export default function Screens() {
             {activeId ? (
               <div className="px-3 py-2 rounded-lg bg-felt-700 border border-gold-500/40 text-sm text-white/90 shadow-xl max-w-xs truncate">
                 {kindOf(activeId) === 'tour'
-                  ? idOf(activeId) === ROTATE_ALL
-                    ? 'Rotate all live'
-                    : tournamentsById[idOf(activeId)]?.name
+                  ? pickName(pickFromTile(tileFromDragId(idOf(activeId))))
                   : screensById[idOf(activeId)]?.name}
               </div>
             ) : null}
@@ -331,6 +339,19 @@ export default function Screens() {
 function TournamentPanel({ tournaments, filter, setFilter, search, setSearch, tvCounts, onFloorIds }) {
   return (
     <aside className="bg-felt-800 border border-white/5 rounded-lg p-4 lg:sticky lg:top-6 flex flex-col max-h-[60vh] lg:max-h-[calc(100vh-3rem)]">
+      <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Venue screens</h3>
+      <div className="space-y-2 mb-4">
+        {VENUE_SCREEN_KINDS.map((v) => (
+          <TournamentTile
+            key={v.kind}
+            id={VIEW_PREFIX + v.kind}
+            title={v.label}
+            subtitle={v.hint}
+            tvCount={tvCounts[VIEW_PREFIX + v.kind]}
+            venue
+          />
+        ))}
+      </div>
       <h3 className="text-[10px] font-mono uppercase tracking-widest text-white/55 mb-2">Tournaments</h3>
       <div className="flex flex-wrap gap-1 mb-2">
         {TOURNAMENT_FILTERS.map((f) => (
@@ -356,12 +377,6 @@ function TournamentPanel({ tournaments, filter, setFilter, search, setSearch, tv
         className="w-full px-3 py-2 mb-3 rounded-lg text-sm bg-felt-900 border border-white/10 text-white/90"
       />
       <div className="space-y-2 overflow-y-auto -mr-2 pr-2">
-        <TournamentTile
-          id={ROTATE_ALL}
-          title="Rotate all live"
-          subtitle="Every tournament on the floor, in turn"
-          tvCount={tvCounts[ROTATE_ALL]}
-        />
         {tournaments.length === 0 ? (
           <p className="text-xs text-white/45 py-4 text-center">No tournaments match.</p>
         ) : (
@@ -382,7 +397,7 @@ function TournamentPanel({ tournaments, filter, setFilter, search, setSearch, tv
   )
 }
 
-function TournamentTile({ id, title, subtitle, status, tvCount, offFloor }) {
+function TournamentTile({ id, title, subtitle, status, tvCount, offFloor, venue = false }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `tour:${id}`,
   })
@@ -394,7 +409,7 @@ function TournamentTile({ id, title, subtitle, status, tvCount, offFloor }) {
       className={
         'px-3 py-2 rounded-lg border cursor-grab active:cursor-grabbing select-none [touch-action:manipulation] ' +
         (isDragging ? 'opacity-40 ' : '') +
-        (id === ROTATE_ALL
+        (venue
           ? 'bg-brand-500/10 border-brand-500/30'
           : 'bg-felt-900 border-white/10 hover:border-white/25')
       }
@@ -513,7 +528,7 @@ function SetCard({
           </div>
           {group ? (
             <p className="text-sm text-gold-200/90">
-              {pickName(group.tournamentId)}
+              {pickName(group)}
               {idle ? (
                 <span className="text-amber-200/80 text-xs"> · not on today, these TVs show the idle screen</span>
               ) : null}
@@ -524,11 +539,13 @@ function SetCard({
         </div>
         {group && (
           <div className="flex items-center gap-2">
-            <ShowSelect
-              value={group.screen}
-              onChange={(v) => actions.setSetShow(group, v)}
-              label={`${group.name} shows`}
-            />
+            {(group.kind ?? 'tournament') === 'tournament' && (
+              <ShowSelect
+                value={group.screen}
+                onChange={(v) => actions.setSetShow(group, v)}
+                label={`${group.name} shows`}
+              />
+            )}
             {confirmRemove ? (
               <>
                 <button
@@ -645,7 +662,7 @@ function ScreenRow({ screen, inSet, groupsById, onFloorIds, pickName, actions })
           </div>
           <div className="text-xs flex items-center gap-2 flex-wrap">
             <span className={ownPick || !inSet ? 'text-white/75' : 'text-white/50'}>
-              {pickName(shows.tournamentId)}
+              {pickName(shows)}
             </span>
             {ownPick && (
               <>
@@ -665,12 +682,14 @@ function ScreenRow({ screen, inSet, groupsById, onFloorIds, pickName, actions })
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <ShowSelect
-            value={shows.screen}
-            onChange={(v) => actions.setScreenShow(screen, v)}
-            label={`${screen.name} shows`}
-            muted={inSet && !ownPick}
-          />
+          {shows.kind === 'tournament' && (
+            <ShowSelect
+              value={shows.screen}
+              onChange={(v) => actions.setScreenShow(screen, v)}
+              label={`${screen.name} shows`}
+              muted={inSet && !ownPick}
+            />
+          )}
           <button
             type="button"
             onClick={copy}

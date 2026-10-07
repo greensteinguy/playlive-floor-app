@@ -25,6 +25,12 @@ import {
   planMoveScreen,
   planScreenOverride,
   pickerTournaments,
+  pickFromTile,
+  samePick,
+  todaysTournaments,
+  todayStatus,
+  todayStartLabel,
+  pageRows,
 } from './display'
 
 // Fixed "now": 2026-08-10 14:00 local.
@@ -429,16 +435,16 @@ describe('TV sets', () => {
 
   describe('resolveScreenConfig', () => {
     it('ungrouped TV shows its own pick', () => {
-      expect(resolveScreenConfig(tv(), groups)).toEqual({ tournamentId: 'tB', screen: null, source: 'own' })
+      expect(resolveScreenConfig(tv(), groups)).toEqual({ kind: 'tournament', tournamentId: 'tB', screen: null, source: 'own' })
     })
     it('following TV shows the set pick', () => {
-      expect(resolveScreenConfig(tv({ groupId: 'g1' }), groups)).toEqual({ tournamentId: 'tA', screen: 'clock', source: 'set' })
+      expect(resolveScreenConfig(tv({ groupId: 'g1' }), groups)).toEqual({ kind: 'tournament', tournamentId: 'tA', screen: 'clock', source: 'set' })
     })
     it('a TV with its own pick inside a set keeps it', () => {
       expect(resolveScreenConfig(tv({ groupId: 'g1', followGroup: false }), groups).source).toBe('own')
     })
     it('a deleted set falls back to the TV own pick', () => {
-      expect(resolveScreenConfig(tv({ groupId: 'gone' }), groups)).toEqual({ tournamentId: 'tB', screen: null, source: 'own' })
+      expect(resolveScreenConfig(tv({ groupId: 'gone' }), groups)).toEqual({ kind: 'tournament', tournamentId: 'tB', screen: null, source: 'own' })
     })
   })
 
@@ -452,7 +458,7 @@ describe('TV sets', () => {
     })
     it('leaving a set freezes what it was showing', () => {
       expect(planMoveScreen(tv({ groupId: 'g1' }), null, groups)).toEqual({
-        groupId: null, followGroup: true, tournamentId: 'tA', screen: 'clock',
+        groupId: null, followGroup: true, kind: 'tournament', tournamentId: 'tA', screen: 'clock',
       })
     })
   })
@@ -460,16 +466,18 @@ describe('TV sets', () => {
   describe('planScreenOverride', () => {
     it('a tournament drop on a following TV keeps the set screen kind', () => {
       expect(planScreenOverride(tv({ groupId: 'g1' }), groups, { tournamentId: 'tC' })).toEqual({
-        tournamentId: 'tC', screen: 'clock', followGroup: false,
+        kind: 'tournament', tournamentId: 'tC', screen: 'clock', followGroup: false,
       })
     })
     it('a show change keeps the current tournament; ungrouped stays followGroup true', () => {
       expect(planScreenOverride(tv(), groups, { screen: 'prizes' })).toEqual({
-        tournamentId: 'tB', screen: 'prizes', followGroup: true,
+        kind: 'tournament', tournamentId: 'tB', screen: 'prizes', followGroup: true,
       })
     })
-    it('null tournament means rotate all live', () => {
-      expect(planScreenOverride(tv({ groupId: 'g1' }), groups, { tournamentId: null }).tournamentId).toBeNull()
+    it('a venue screen kind keeps the clock/prizes choice', () => {
+      expect(planScreenOverride(tv({ groupId: 'g1' }), groups, pickFromTile({ kind: 'today' }))).toEqual({
+        kind: 'today', tournamentId: null, screen: 'clock', followGroup: false,
+      })
     })
   })
 
@@ -494,5 +502,60 @@ describe('TV sets', () => {
     it('unknown filter falls back to active', () => {
       expect(pickerTournaments(list, 'nope').map((t) => t.id)).toEqual(['b', 'a'])
     })
+  })
+})
+
+describe('screen kinds', () => {
+  it('a set or TV with a today pick resolves to it; unknown kinds fall back to tournament', () => {
+    const groups = { g1: { id: 'g1', kind: 'today', tournamentId: null, screen: null } }
+    expect(resolveScreenConfig({ groupId: 'g1', followGroup: true }, groups).kind).toBe('today')
+    expect(resolveScreenConfig({ groupId: null, kind: 'stats' }, groups).kind).toBe('tournament')
+    expect(resolveScreenConfig({ groupId: null }, groups).kind).toBe('tournament')
+  })
+
+  it('pickFromTile / samePick', () => {
+    expect(pickFromTile({ kind: 'tournament', tournamentId: 't1' })).toEqual({ kind: 'tournament', tournamentId: 't1' })
+    expect(pickFromTile({ kind: 'today' })).toEqual({ kind: 'today', tournamentId: null })
+    expect(samePick({ kind: 'tournament', tournamentId: 't1' }, { kind: 'tournament', tournamentId: 't1' })).toBe(true)
+    expect(samePick({ tournamentId: 't1' }, { kind: 'tournament', tournamentId: 't1' })).toBe(true)
+    expect(samePick({ kind: 'today', tournamentId: null }, { kind: 'tournament', tournamentId: null })).toBe(false)
+  })
+})
+
+describe('todays tournaments', () => {
+  const ts = (ms) => ({ toMillis: () => ms })
+  const t = (id, status, startMs) => ({ id, status, scheduledStartTime: ts(startMs) })
+
+  it('today + still-running, no drafts/cancelled, earliest first', () => {
+    const list = [
+      t('tonight', 'scheduled', at(2026, 7, 10, 19, 0)),
+      t('lunch', 'finished', at(2026, 7, 10, 12, 0)),
+      t('lastNight', 'lateRegClosed', at(2026, 7, 9, 22, 0)),
+      t('tomorrow', 'scheduled', at(2026, 7, 11, 19, 0)),
+      t('draft', 'draft', at(2026, 7, 10, 18, 0)),
+      t('cancelled', 'cancelled', at(2026, 7, 10, 18, 0)),
+      t('yesterdayDone', 'finished', at(2026, 7, 9, 19, 0)),
+    ]
+    expect(todaysTournaments(list, NOW).map((x) => x.id)).toEqual(['lastNight', 'lunch', 'tonight'])
+  })
+
+  it('status labels', () => {
+    expect(todayStatus({ status: 'lateRegOpen' }, NOW)).toEqual({ label: 'Late reg open', tone: 'open' })
+    expect(todayStatus({ status: 'lateRegClosed' }, NOW).label).toBe('Running')
+    expect(todayStatus({ status: 'finished' }, NOW).tone).toBe('done')
+    expect(todayStatus(t('x', 'scheduled', NOW + 80 * 60_000), NOW)).toEqual({ label: 'Starts in 1h 20m', tone: 'upcoming' })
+    expect(todayStatus(t('x', 'scheduled', NOW - 60_000), NOW).label).toBe('Starting soon')
+  })
+
+  it('start label carries the weekday only for another day', () => {
+    expect(todayStartLabel(t('x', 'scheduled', at(2026, 7, 10, 19, 0)), NOW)).not.toMatch(/^[A-Z][a-z]{2} /)
+    expect(todayStartLabel(t('x', 'lateRegClosed', at(2026, 7, 9, 22, 0)), NOW)).toMatch(/^\S+ \d/)
+    expect(todayStartLabel({}, NOW)).toBe('')
+  })
+
+  it('pageRows', () => {
+    expect(pageRows([1, 2, 3], 8)).toEqual([[1, 2, 3]])
+    expect(pageRows([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]])
+    expect(pageRows([], 8)).toEqual([[]])
   })
 })

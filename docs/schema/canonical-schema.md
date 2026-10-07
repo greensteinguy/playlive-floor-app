@@ -552,8 +552,9 @@ settings/venue
 ```
 displayScreens/{id}            id = URL slug, e.g. bar-tv (lowercase letters, digits, hyphens)
   name:                        string          (label shown on TV screens page, e.g. "Bar TV")
-  tournamentId:                string | null   (null = rotate every live tournament)
-  screen:                      'clock' | 'prizes' | null   (null = both)
+  kind:                        'tournament' | 'today'   (default 'tournament')
+  tournamentId:                string | null   (kind 'tournament'; null = nothing assigned yet)
+  screen:                      'clock' | 'prizes' | null   (null = both; kind 'tournament' only)
   groupId:                     string | null   (the set it's in; at most one. Default null)
   followGroup:                 boolean         (true = show the set's pick; false = own pick. Default true)
   createdAt, updatedAt:        Timestamp
@@ -561,7 +562,8 @@ displayScreens/{id}            id = URL slug, e.g. bar-tv (lowercase letters, di
 
 displayGroups/{id}             id = UUID (not in any URL)
   name:                        string          (e.g. "Main room")
-  tournamentId:                string | null   (null = rotate every live tournament)
+  kind:                        'tournament' | 'today'
+  tournamentId:                string | null
   screen:                      'clock' | 'prizes' | null
   createdAt, updatedAt:        Timestamp
   createdBy, updatedBy:        string
@@ -574,6 +576,7 @@ displayGroups/{id}             id = UUID (not in any URL)
 - Leaving a set (drag out, or the set being removed) copies what the TV was showing into its own fields, so it doesn't jump. Removing a set updates its TVs in the same batch.
 - Each TV opens `/display/<id>` once and subscribes to its doc, so a change lands live. A missing doc shows "Screen not set up". A tournament that isn't on the floor makes the TV idle; it doesn't widen to every tournament.
 - Hard-deleted on Remove (config, not a record).
+- `kind: 'today'` = the "Today's tournaments" list (desk TV): everything starting today plus anything still running from an earlier day, earliest first, paged 8 at a time. A named screen never rotates every tournament; bare `/display` still does.
 
 ---
 

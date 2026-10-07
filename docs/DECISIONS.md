@@ -6,6 +6,16 @@ Format: newest first. Date, decision, reasoning, who decided.
 
 ---
 
+## 7 October 2026 — TV screen kinds: "Today's tournaments"; no "rotate all live"
+
+**Decided:** A named TV or set now has a `kind`: `tournament` (one tournament's clock/prizes) or `today` (a list of today's tournaments for the TV behind the desk: start, name + structure, buy-in, guarantee, entries, status; pages 8 rows every 12 s). "Rotate all live" is gone from named screens. A screen with no tournament shows "<name> · nothing assigned yet". The TV screens page has a "Venue screens" section above the tournament list; its tiles drag like tournaments. Bare `/display` (no screen id) still rotates every live tournament.
+
+**Why:** Guy: rotating through every live tournament isn't how the venue uses its TVs; it needs other screen types instead, starting with the desk list. More venue-wide kinds slot in via `SCREEN_KINDS` / `VENUE_SCREEN_KINDS` (lib/display.js) plus a renderer on the Display page.
+
+**Decider:** Guy, 7 Oct 2026.
+
+---
+
 ## 7 October 2026 — Named TV screens (`/display/<id>`)
 
 **Decided:** Each venue TV gets a permanent link, `/display/<screenId>`, backed by a `displayScreens/{screenId}` doc holding `tournamentId` (null = rotate all live) and `screen` (`clock` | `prizes` | null = both). A new **Tournament floor → TV screens** page (`/td/screens`, TD + manager) adds and removes screens, copies their links, and sets what each shows. The TV subscribes to its doc, so changes land live and nobody has to touch the TV. Rules: read `canRead()`, write `isTDorManager()`.

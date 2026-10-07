@@ -4,8 +4,9 @@
 // TV live, so nobody has to touch the TV to change it.
 //
 // id is the URL slug (lowercase letters, digits, hyphens — see
-// lib/display.js slugifyScreenId). tournamentId null = rotate every live
-// tournament; screen null = clock and prizes both.
+// lib/display.js slugifyScreenId). kind 'tournament' shows one tournament
+// (tournamentId; null = nothing assigned yet) as clock, prizes or both
+// (screen null); kind 'today' is the list of today's tournaments (desk TV).
 //
 // Sets (displayGroups): a TV belongs to at most one set (groupId). While
 // followGroup is true it shows the set's pick; dropping a tournament on the
@@ -15,12 +16,16 @@
 import { z } from 'zod'
 import { DocumentId, NonEmptyString, FirestoreTimestamp } from './_shared'
 
+// What a TV shows — see SCREEN_KINDS in lib/display.js.
+const ScreenKind = z.enum(['tournament', 'today']).default('tournament')
+
 export const SCREEN_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 export const DisplayScreen = z
   .object({
     id: DocumentId.regex(SCREEN_ID_PATTERN, 'Screen id must be lowercase letters, digits and hyphens.'),
     name: NonEmptyString,
+    kind: ScreenKind,
     tournamentId: NonEmptyString.nullable(),
     screen: z.enum(['clock', 'prizes']).nullable(),
     groupId: NonEmptyString.nullable().default(null),
@@ -38,6 +43,7 @@ export const DisplayGroup = z
   .object({
     id: DocumentId,
     name: NonEmptyString,
+    kind: ScreenKind,
     tournamentId: NonEmptyString.nullable(),
     screen: z.enum(['clock', 'prizes']).nullable(),
     createdAt: FirestoreTimestamp,

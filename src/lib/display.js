@@ -335,9 +335,11 @@ export function slugifyScreenId(name) {
 }
 
 /**
- * The buildSlides pinning for a named screen's doc. A screen whose tournament
- * isn't on the floor (finished, archived, deleted) idles — the same as a
- * ?tournamentId= TV — rather than silently widening to every tournament.
+ * The buildSlides pinning for a named screen's (resolved) config. A screen
+ * whose tournament isn't on the floor (finished, archived, deleted) idles —
+ * the same as a ?tournamentId= TV. A named screen never rotates every
+ * tournament: tournamentId null there means "nothing assigned" (the Display
+ * page checks that before building slides).
  */
 export function screenPinning(screenDoc) {
   return {
@@ -349,16 +351,33 @@ export function screenPinning(screenDoc) {
 // ── TV sets (displayGroups, 7 Oct 2026) ────────────────────────────────────
 
 /**
+ * What a named TV can show. 'tournament' = one tournament's clock/prizes
+ * (nothing assigned → a "nothing assigned" screen); 'today' = a list of
+ * today's tournaments (e.g. the TV behind the desk). A new venue-wide screen
+ * goes here, in VENUE_SCREEN_KINDS, and in the Display page.
+ */
+export const SCREEN_KINDS = ['tournament', 'today']
+
+/** Venue-wide screens offered as tiles on the TV screens page. */
+export const VENUE_SCREEN_KINDS = [
+  { kind: 'today', label: "Today's tournaments", hint: 'Every tournament today, with times and status' },
+]
+
+/**
  * What a named TV actually shows. A TV in a set that is following it shows
  * the set's pick; otherwise (no set, its own pick, or a set that has since
  * been deleted) its own fields. source: 'set' | 'own'.
  */
 export function resolveScreenConfig(screen, groupsById) {
   const group = screen?.groupId ? groupsById?.[screen.groupId] ?? null : null
-  if (group && screen.followGroup !== false) {
-    return { tournamentId: group.tournamentId ?? null, screen: group.screen ?? null, source: 'set' }
+  const fromSet = !!group && screen.followGroup !== false
+  const from = fromSet ? group : screen
+  return {
+    kind: SCREEN_KINDS.includes(from?.kind) ? from.kind : 'tournament',
+    tournamentId: from?.tournamentId ?? null,
+    screen: from?.screen ?? null,
+    source: fromSet ? 'set' : 'own',
   }
-  return { tournamentId: screen?.tournamentId ?? null, screen: screen?.screen ?? null, source: 'own' }
 }
 
 /**
@@ -371,23 +390,39 @@ export function planMoveScreen(screen, targetGroupId, groupsById) {
   if ((screen.groupId ?? null) === target) return null
   if (target === null) {
     const now = resolveScreenConfig(screen, groupsById)
-    return { groupId: null, followGroup: true, tournamentId: now.tournamentId, screen: now.screen }
+    return { groupId: null, followGroup: true, kind: now.kind, tournamentId: now.tournamentId, screen: now.screen }
   }
   return { groupId: target, followGroup: true }
 }
 
 /**
- * Patch to give one TV its own pick — a tournament (null = rotate all live)
- * and/or a screen kind. Whatever isn't given carries over from what it shows
- * now. A TV in a set stops following it.
+ * Patch to give one TV its own pick — its kind, tournament and/or clock/prizes
+ * choice. Whatever isn't given carries over from what it shows now. A TV in a
+ * set stops following it.
  */
-export function planScreenOverride(screen, groupsById, { tournamentId, screen: kind } = {}) {
+export function planScreenOverride(screen, groupsById, { kind, tournamentId, screen: show } = {}) {
   const now = resolveScreenConfig(screen, groupsById)
   return {
+    kind: kind !== undefined ? kind : now.kind,
     tournamentId: tournamentId !== undefined ? tournamentId : now.tournamentId,
-    screen: kind !== undefined ? kind : now.screen,
+    screen: show !== undefined ? show : now.screen,
     followGroup: screen.groupId ? false : true,
   }
+}
+
+/**
+ * The pick a picker tile carries when dropped on a TV or set: a tournament
+ * (its clock/prizes choice is kept) or a venue-wide screen kind.
+ */
+export function pickFromTile(tile) {
+  return tile.kind === 'tournament'
+    ? { kind: 'tournament', tournamentId: tile.tournamentId }
+    : { kind: tile.kind, tournamentId: null }
+}
+
+/** Is this already the pick? (no-op drops are skipped) */
+export function samePick(config, pick) {
+  return (config.kind ?? 'tournament') === pick.kind && (config.tournamentId ?? null) === pick.tournamentId
 }
 
 export const TOURNAMENT_FILTERS = [
@@ -410,4 +445,58 @@ export function pickerTournaments(tournaments, filterId, search = '') {
     .filter((t) => filter.statuses.includes(t.status))
     .filter((t) => !needle || (t.name ?? '').toLowerCase().includes(needle))
     .sort((a, b) => dir * ((tsToMillis(a.scheduledStartTime) ?? 0) - (tsToMillis(b.scheduledStartTime) ?? 0)))
+}
+
+// ── "Today's tournaments" screen (7 Oct 2026) ─────────────────────────────
+
+/**
+ * Tournaments for the desk TV's list: everything starting today (local day)
+ * that isn't a draft or cancelled, plus anything still running from earlier
+ * (a late-night event past midnight, a day 2). Earliest start first.
+ */
+export function todaysTournaments(tournaments, nowMs) {
+  return (tournaments ?? [])
+    .filter((t) => {
+      if (t.status === 'draft' || t.status === 'cancelled') return false
+      if (t.status === 'lateRegOpen' || t.status === 'lateRegClosed') return true
+      const startMs = tsToMillis(t.scheduledStartTime)
+      return startMs != null && sameLocalDay(startMs, nowMs)
+    })
+    .sort((a, b) => (tsToMillis(a.scheduledStartTime) ?? 0) - (tsToMillis(b.scheduledStartTime) ?? 0))
+}
+
+/**
+ * Start cell for the list: "7:00 PM" for today; "Tue 10:00 PM" for an event
+ * still running from another day, so it never reads as a later start today.
+ */
+export function todayStartLabel(tournament, nowMs) {
+  const startMs = tsToMillis(tournament?.scheduledStartTime)
+  if (startMs == null) return ''
+  const time = new Date(startMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (sameLocalDay(startMs, nowMs)) return time
+  return `${new Date(startMs).toLocaleDateString([], { weekday: 'short' })} ${time}`
+}
+
+/** Status cell for the list. tone: 'open' | 'running' | 'upcoming' | 'done'. */
+export function todayStatus(tournament, nowMs) {
+  switch (tournament?.status) {
+    case 'lateRegOpen':
+      return { label: 'Late reg open', tone: 'open' }
+    case 'lateRegClosed':
+      return { label: 'Running', tone: 'running' }
+    case 'finished':
+      return { label: 'Finished', tone: 'done' }
+    default: {
+      const until = formatUntilStart(msUntilStart(tournament, nowMs))
+      return { label: until ? until.replace(/^starts/, 'Starts') : 'Starting soon', tone: 'upcoming' }
+    }
+  }
+}
+
+/** Split rows into TV pages (a list longer than one screen pages on a timer). */
+export function pageRows(rows, perPage) {
+  if (!(perPage > 0) || rows.length <= perPage) return [rows]
+  const pages = []
+  for (let i = 0; i < rows.length; i += perPage) pages.push(rows.slice(i, i + perPage))
+  return pages
 }
