@@ -68,6 +68,8 @@ import {
   todayStatus,
   todayStartLabel,
   pageRows,
+  lateRegInfo,
+  lateRegText,
   structureSummary,
 } from '../lib/display'
 import { materializePayouts } from '../lib/payouts'
@@ -187,9 +189,6 @@ export default function Display() {
     () => displayableTournaments(tournaments, nowMinute * 60_000),
     [tournaments, nowMinute],
   )
-  const sessionIds = useMemo(() => displayable.map((t) => t.id), [displayable])
-  const sessionsBy = useSessionsByTournament(sessionIds)
-
   // A named screen takes its pick from its doc (or its set's); bare /display
   // from the URL. A named screen never rotates every tournament: with no
   // tournament assigned (or a venue-wide kind like 'today') it has no slides.
@@ -197,6 +196,19 @@ export default function Display() {
     screenId && named.data
       ? resolveScreenConfig(named.data, group.data ? { [group.data.id]: group.data } : {})
       : null
+
+  // Sessions: the rotation set, or — on the desk list — today's tournaments
+  // (their clocks time the late-reg close).
+  const isToday = namedConfig?.kind === 'today'
+  const todayRows = useMemo(
+    () => (isToday ? todaysTournaments(tournaments, nowMinute * 60_000) : []),
+    [isToday, tournaments, nowMinute],
+  )
+  const sessionIds = useMemo(
+    () => (isToday ? todayRows : displayable).map((t) => t.id),
+    [isToday, todayRows, displayable],
+  )
+  const sessionsBy = useSessionsByTournament(sessionIds)
   const namedPin = screenId ? screenPinning(namedConfig) : null
   const pinnedTournamentId = screenId ? namedPin.tournamentId : params.get('tournamentId')
   const pinnedScreen = screenId ? namedPin.screen : params.get('screen')
@@ -292,7 +304,7 @@ export default function Display() {
   }
 
   if (namedConfig?.kind === 'today') {
-    return <TodayScreen tournaments={tournaments} nowMs={nowMinute * 60_000} timeOfDay={timeOfDay} />
+    return <TodayScreen rows={todayRows} sessionsBy={sessionsBy} nowMs={clockNowMs} timeOfDay={timeOfDay} />
   }
 
   if (screenId && pinnedTournamentId == null) {
@@ -836,8 +848,7 @@ const TONE_CLASS = {
   done: 'bg-white/5 text-white/45',
 }
 
-function TodayScreen({ tournaments, nowMs, timeOfDay }) {
-  const rows = useMemo(() => todaysTournaments(tournaments, nowMs), [tournaments, nowMs])
+function TodayScreen({ rows, sessionsBy, nowMs, timeOfDay }) {
   const pages = pageRows(rows, TODAY_PER_PAGE)
   const [pageIndex, setPageIndex] = useState(0)
   const safePage = pageIndex % pages.length
@@ -863,7 +874,7 @@ function TodayScreen({ tournaments, nowMs, timeOfDay }) {
           </div>
         ) : (
           <div className="flex-1 flex flex-col">
-            <div className="grid grid-cols-[14vmin_1fr_15vmin_17vmin_12vmin_26vmin] gap-x-[2vw] pb-[1.2vh] border-b border-white/10 font-mono uppercase tracking-[0.25em] text-[1.5vmin] text-white/40">
+            <div className="grid grid-cols-[14vmin_1fr_13vmin_15vmin_11vmin_40vmin] gap-x-[2vw] pb-[1.2vh] border-b border-white/10 font-mono uppercase tracking-[0.25em] text-[1.5vmin] text-white/40">
               <span>Start</span>
               <span>Tournament</span>
               <span className="text-right">Buy-in</span>
@@ -873,13 +884,17 @@ function TodayScreen({ tournaments, nowMs, timeOfDay }) {
             </div>
             {pages[safePage].map((t) => {
               const status = todayStatus(t, nowMs)
+              const session = pickDisplaySession(sessionsBy[t.id])
+              const lateReg = lateRegText(
+                lateRegInfo(t, session ? deriveClock(session, t.structure, nowMs) : null, nowMs),
+              )
               const done = status.tone === 'done'
               const summary = structureSummary(t)
               return (
                 <div
                   key={t.id}
                   className={
-                    'grid grid-cols-[14vmin_1fr_15vmin_17vmin_12vmin_26vmin] gap-x-[2vw] items-center py-[1.6vh] border-b border-white/5 ' +
+                    'grid grid-cols-[14vmin_1fr_13vmin_15vmin_11vmin_40vmin] gap-x-[2vw] items-center py-[1.6vh] border-b border-white/5 ' +
                     (done ? 'opacity-50' : '')
                   }
                 >
@@ -906,6 +921,9 @@ function TodayScreen({ tournaments, nowMs, timeOfDay }) {
                     <span className={'inline-block px-[1.2vmin] py-[0.5vmin] rounded font-mono uppercase tracking-[0.15em] text-[1.6vmin] ' + TONE_CLASS[status.tone]}>
                       {status.label}
                     </span>
+                    {lateReg && (
+                      <span className="block mt-[0.8vh] font-display text-[2.4vmin] leading-tight text-emerald-300 tabular-nums">{lateReg}</span>
+                    )}
                   </span>
                 </div>
               )

@@ -500,3 +500,67 @@ export function pageRows(rows, perPage) {
   for (let i = 0; i < rows.length; i += perPage) pages.push(rows.slice(i, i + perPage))
   return pages
 }
+
+/**
+ * Late registration for the desk list. `derived` is deriveClock() output for
+ * the tournament's display session (or null). Returns null when there's
+ * nothing to say, else one of:
+ *   { kind: 'countdown', leftMs, closesAtMs, paused }  — clock live
+ *   { kind: 'closing' }                                — cutoff level reached
+ *   { kind: 'estimate', closesAtMs }                   — not started: start + levels to the cutoff
+ *   { kind: 'level', level }                           — open, no clock to time it by
+ *   { kind: 'open' }                                   — open, no cutoff set
+ */
+export function lateRegInfo(tournament, derived, nowMs) {
+  const cutoff = tournament?.lateRegCutoffLevel ?? null
+  const structure = tournament?.structure
+  const live = derived && (derived.state === 'running' || derived.state === 'paused')
+  if (tournament?.status === 'lateRegOpen') {
+    if (live && cutoff != null) {
+      const leftMs = msUntilLateRegClose(structure, derived.currentIndex, derived.remainingMs, cutoff)
+      if (leftMs > 0) {
+        const paused = derived.state === 'paused'
+        return { kind: 'countdown', leftMs, closesAtMs: paused ? null : nowMs + leftMs, paused }
+      }
+      if (leftMs === 0) return { kind: 'closing' }
+    }
+    return cutoff != null ? { kind: 'level', level: cutoff } : { kind: 'open' }
+  }
+  if (tournament?.status === 'scheduled' && cutoff != null && !live) {
+    const startMs = tsToMillis(tournament.scheduledStartTime)
+    const firstMs = (structure?.[0]?.durationMinutes ?? 0) * MS_PER_MINUTE
+    const toCutoff = msUntilLateRegClose(structure, 0, firstMs, cutoff)
+    if (startMs != null && toCutoff != null) return { kind: 'estimate', closesAtMs: startMs + toCutoff }
+  }
+  return null
+}
+
+/** "1h 12m" / "42m" / "<1m" — whole minutes, for a list a room reads at a glance. */
+export function formatMinutesLeft(ms) {
+  if (!(ms > 0)) return null
+  if (ms < MS_PER_MINUTE) return '<1m'
+  const totalMin = Math.floor(ms / MS_PER_MINUTE)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`
+}
+
+/** The late-reg line under a list row's status (null = no line). */
+export function lateRegText(info) {
+  switch (info?.kind) {
+    case 'countdown':
+      return info.paused
+        ? `Late reg: ${formatMinutesLeft(info.leftMs)} left · clock paused`
+        : `Late reg until ${formatWallTime(info.closesAtMs)} · ${formatMinutesLeft(info.leftMs)} left`
+    case 'closing':
+      return 'Late reg closing'
+    case 'estimate':
+      return `Late reg until ~${formatWallTime(info.closesAtMs)}`
+    case 'level':
+      return `Late reg thru level ${info.level}`
+    case 'open':
+      return 'Late reg open'
+    default:
+      return null
+  }
+}

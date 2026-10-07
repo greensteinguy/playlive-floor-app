@@ -576,7 +576,7 @@ displayGroups/{id}             id = UUID (not in any URL)
 - Leaving a set (drag out, or the set being removed) copies what the TV was showing into its own fields, so it doesn't jump. Removing a set updates its TVs in the same batch.
 - Each TV opens `/display/<id>` once and subscribes to its doc, so a change lands live. A missing doc shows "Screen not set up". A tournament that isn't on the floor makes the TV idle; it doesn't widen to every tournament.
 - Hard-deleted on Remove (config, not a record).
-- `kind: 'today'` = the "Today's tournaments" list (desk TV): everything starting today plus anything still running from an earlier day, earliest first, paged 8 at a time. A named screen never rotates every tournament; bare `/display` still does.
+- `kind: 'today'` = the "Today's tournaments" list (desk TV): everything starting today plus anything still running from an earlier day, earliest first, paged 8 at a time. Each open tournament shows how long late reg has left (`lateRegInfo` / `lateRegText`), timed off its session clock, or estimated from the start time before it starts. A named screen never rotates every tournament; bare `/display` still does.
 
 ---
 

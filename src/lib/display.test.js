@@ -31,6 +31,9 @@ import {
   todayStatus,
   todayStartLabel,
   pageRows,
+  lateRegInfo,
+  lateRegText,
+  formatMinutesLeft,
 } from './display'
 
 // Fixed "now": 2026-08-10 14:00 local.
@@ -557,5 +560,65 @@ describe('todays tournaments', () => {
     expect(pageRows([1, 2, 3], 8)).toEqual([[1, 2, 3]])
     expect(pageRows([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]])
     expect(pageRows([], 8)).toEqual([[]])
+  })
+})
+
+describe('late registration on the desk list', () => {
+  // 3 × 20-min levels, a 10-min break, then level 4. Cutoff = level 4.
+  const structure = [
+    { type: 'level', blindNumber: 1, durationMinutes: 20 },
+    { type: 'level', blindNumber: 2, durationMinutes: 20 },
+    { type: 'level', blindNumber: 3, durationMinutes: 20 },
+    { type: 'break', durationMinutes: 10 },
+    { type: 'level', blindNumber: 4, durationMinutes: 20 },
+  ]
+  const tour = (over) => ({
+    status: 'lateRegOpen',
+    lateRegCutoffLevel: 4,
+    structure,
+    scheduledStartTime: { toMillis: () => NOW },
+    ...over,
+  })
+  const MIN = 60_000
+
+  it('live clock: counts down to the end of the cutoff level', () => {
+    // In level 2 with 5 min left: 5 + 20 + 10 + 20 = 55 min.
+    const info = lateRegInfo(tour(), { state: 'running', currentIndex: 1, remainingMs: 5 * MIN }, NOW)
+    expect(info).toEqual({ kind: 'countdown', leftMs: 55 * MIN, closesAtMs: NOW + 55 * MIN, paused: false })
+    expect(lateRegText(info)).toMatch(/^Late reg until .+ · 55m left$/)
+  })
+
+  it('paused clock: minutes left, no wall time', () => {
+    const info = lateRegInfo(tour(), { state: 'paused', currentIndex: 4, remainingMs: 72 * MIN }, NOW)
+    expect(info.closesAtMs).toBeNull()
+    expect(lateRegText(info)).toBe('Late reg: 1h 12m left · clock paused')
+  })
+
+  it('past the cutoff level but not yet flipped closed → closing', () => {
+    const info = lateRegInfo(tour({ lateRegCutoffLevel: 1 }), { state: 'running', currentIndex: 2, remainingMs: MIN }, NOW)
+    expect(lateRegText(info)).toBe('Late reg closing')
+  })
+
+  it('open with no clock → thru level; no cutoff → open', () => {
+    expect(lateRegText(lateRegInfo(tour(), null, NOW))).toBe('Late reg thru level 4')
+    expect(lateRegText(lateRegInfo(tour({ lateRegCutoffLevel: null }), null, NOW))).toBe('Late reg open')
+  })
+
+  it('not started: estimate from the scheduled start + levels to the cutoff', () => {
+    const info = lateRegInfo(tour({ status: 'scheduled' }), null, NOW)
+    expect(info).toEqual({ kind: 'estimate', closesAtMs: NOW + 90 * MIN })
+    expect(lateRegText(info)).toMatch(/^Late reg until ~/)
+  })
+
+  it('nothing for closed or finished tournaments', () => {
+    expect(lateRegInfo(tour({ status: 'lateRegClosed' }), null, NOW)).toBeNull()
+    expect(lateRegInfo(tour({ status: 'finished' }), null, NOW)).toBeNull()
+  })
+
+  it('formatMinutesLeft', () => {
+    expect(formatMinutesLeft(30_000)).toBe('<1m')
+    expect(formatMinutesLeft(42 * MIN + 59_000)).toBe('42m')
+    expect(formatMinutesLeft(120 * MIN)).toBe('2h')
+    expect(formatMinutesLeft(0)).toBeNull()
   })
 })
