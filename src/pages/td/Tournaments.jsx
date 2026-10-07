@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useRowLink } from '../../hooks/useRowLink'
 import { useAuth } from '../../auth/useAuth'
 import { useToast } from '../../shell/useToast'
 import { useTournaments } from '../../hooks/useTournaments'
@@ -92,6 +93,7 @@ function sortTournaments(rows, sortKey, sortDir) {
 }
 
 export default function Tournaments() {
+  const rowLink = useRowLink()
   const { role } = useAuth()
   const toast = useToast()
   const { tournaments, loading, error, mockMode } = useTournaments()
@@ -262,14 +264,13 @@ export default function Tournaments() {
                   {sortedVisible.map((t) => (
                     <tr
                       key={t.id}
-                      className="relative border-t border-white/5 hover:bg-white/[0.04] cursor-pointer transition-colors"
+                      onClick={rowLink(`/td/tournaments/${t.id}`)}
+                      className="border-t border-white/5 hover:bg-white/[0.04] cursor-pointer transition-colors"
                     >
                       <td className="px-4 py-3 text-white/90">
-                        {/* Stretched link — makes the whole row clickable while staying a real
-                            anchor (keyboard, middle-click / open-in-new-tab). */}
                         <Link
                           to={`/td/tournaments/${t.id}`}
-                          className="font-medium text-white/90 hover:text-white after:absolute after:inset-0 after:content-['']"
+                          className="font-medium text-white/90 hover:text-white"
                         >
                           {t.name}
                         </Link>
