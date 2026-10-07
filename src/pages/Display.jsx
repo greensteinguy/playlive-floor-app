@@ -817,7 +817,7 @@ function PrizesSlide({ tournament }) {
         </div>
         {overlay > 0 ? (
           <div className="text-[3vmin] text-brand-400 mt-[1vh] tabular-nums">
-            Overlay {formatDisplayMoney(overlay)}
+            Current overlay: {formatDisplayMoney(overlay)}
           </div>
         ) : (
           guaranteed && (
