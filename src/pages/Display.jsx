@@ -87,9 +87,19 @@ function entryLabel(entry) {
   return `Level ${entry.blindNumber}`
 }
 
+// Blinds with the ante in parentheses ("1,000 / 2,000 (2,000)") — the same
+// form for this level and the next, per Guy (7 Oct 2026).
 function entryBlinds(entry) {
   if (!entry || entry.type !== 'level') return null
-  return `${entry.smallBlind.toLocaleString()} / ${entry.bigBlind.toLocaleString()}`
+  const blinds = `${entry.smallBlind.toLocaleString()} / ${entry.bigBlind.toLocaleString()}`
+  return entry.ante > 0 ? `${blinds} (${entry.ante.toLocaleString()})` : blinds
+}
+
+// The hero blinds line stays on one line; with an ante it is longer, so the
+// font shrinks past ~15 characters (what "10,000 / 20,000" fits at full size).
+function heroBlindsSize(text) {
+  const scale = Math.min(1, 15 / Math.max(1, text?.length ?? 0))
+  return `min(${(9.5 * scale).toFixed(2)}vmin, ${(5.5 * scale).toFixed(2)}vw)`
 }
 
 // Payouts for the TV. The STORED venue payout table is the SSOT when present
@@ -479,7 +489,7 @@ function GameRail({ tournament, derived, badge, onBreak, heroNext, sliceEnd }) {
       value:
         heroNext.type === 'break'
           ? entryLabel(heroNext)
-          : entryBlinds(heroNext) + (heroNext.ante > 0 ? ` (${heroNext.ante.toLocaleString()})` : ''),
+          : entryBlinds(heroNext),
     })
   }
 
@@ -716,12 +726,12 @@ function ClockSlide({ tournament, sessions, nowMs }) {
                   {onBreak ? (
                     <div className="font-display text-[min(9.5vmin,5.5vw)] leading-tight text-sky-200">Break</div>
                   ) : (
-                    <div className="font-display text-[min(9.5vmin,5.5vw)] leading-tight text-white tabular-nums whitespace-nowrap">
+                    <div
+                      className="font-display leading-tight text-white tabular-nums whitespace-nowrap"
+                      style={{ fontSize: heroBlindsSize(entryBlinds(heroEntry)) }}
+                    >
                       {entryBlinds(heroEntry)}
                     </div>
-                  )}
-                  {!onBreak && heroEntry.ante > 0 && (
-                    <div className="text-white/65 text-[2.8vmin]">ante {heroEntry.ante.toLocaleString()}</div>
                   )}
                 </div>
 
@@ -790,20 +800,31 @@ function PrizesSlide({ tournament }) {
   const payouts = useMemo(() => safePayouts(tournament), [tournament])
   const shown = payouts.slice(0, 9)
   const guaranteed = tournament.guarantee > 0
+  // Guarantee not yet met: headline the guarantee, and show the house's
+  // shortfall (the overlay) in red beneath it.
+  const overlay = guaranteed ? Math.max(0, tournament.guarantee - (tournament.totalPrizePool ?? 0)) : 0
 
   return (
     <>
       <div className="relative text-center w-full">
         <div className="font-display text-[4.4vmin] text-gold-300 mb-[1vh] truncate">{tournament.name}</div>
-        <div className="font-mono uppercase tracking-[0.35em] text-[1.9vmin] text-white/55 mb-[3vh]">Prize pool</div>
+        <div className="font-mono uppercase tracking-[0.35em] text-[1.9vmin] text-white/55 mb-[3vh]">
+          {overlay > 0 ? 'Guaranteed prize pool' : 'Prize pool'}
+        </div>
 
         <div className="font-display text-[min(16vmin,11vw)] leading-none text-white tabular-nums">
-          {formatDisplayMoney(tournament.totalPrizePool)}
+          {formatDisplayMoney(overlay > 0 ? tournament.guarantee : tournament.totalPrizePool)}
         </div>
-        {guaranteed && (
-          <div className="text-[2.5vmin] text-brand-300 mt-[1vh]">
-            {formatDisplayMoney(tournament.guarantee)} guaranteed
+        {overlay > 0 ? (
+          <div className="text-[3vmin] text-brand-400 mt-[1vh] tabular-nums">
+            Current overlay: {formatDisplayMoney(overlay)}
           </div>
+        ) : (
+          guaranteed && (
+            <div className="text-[2.5vmin] text-brand-300 mt-[1vh]">
+              {formatDisplayMoney(tournament.guarantee)} guaranteed
+            </div>
+          )
         )}
 
         {shown.length > 0 && (

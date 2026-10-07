@@ -44,9 +44,11 @@ function beep() {
   }
 }
 
+// Ante in parentheses, same form for this level and next (matches the TV).
 function entryBlinds(entry) {
   if (!entry || entry.type !== 'level') return null
-  return `${entry.smallBlind.toLocaleString()} / ${entry.bigBlind.toLocaleString()}`
+  const blinds = `${entry.smallBlind.toLocaleString()} / ${entry.bigBlind.toLocaleString()}`
+  return entry.ante > 0 ? `${blinds} (${entry.ante.toLocaleString()})` : blinds
 }
 
 function entryLabel(entry) {
@@ -263,9 +265,6 @@ export default function TournamentClock() {
           <div className="font-display text-5xl md:text-7xl text-sky-200 mb-2">Break</div>
         ) : (
           <div className="font-display text-6xl md:text-8xl text-white mb-2 tabular-nums">{blinds ?? '—'}</div>
-        )}
-        {!onBreak && heroEntry?.ante > 0 && (
-          <div className="text-white/65 text-lg md:text-xl mb-2">ante {heroEntry.ante.toLocaleString()}</div>
         )}
 
         <div className="font-display text-7xl md:text-[10rem] leading-none text-white tabular-nums my-4">
